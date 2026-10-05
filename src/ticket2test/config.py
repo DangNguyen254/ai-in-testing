@@ -29,12 +29,62 @@ class _Section(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class ClaudeCodeCLISettings(_Section):
+    # "claude" on PATH, or a full path (set via env; never commit a machine-specific path).
+    executable: str = "claude"
+    model: str = "claude-sonnet-5-5"
+    # Working directory for CLI calls (inside the repo, git-ignored).
+    workdir: Path = Path(".scratch/claude-cli")
+
+
+class ClaudeAPISettings(_Section):
+    model: str = "claude-sonnet-5-5"
+    # Server-side refusal fallback (`fallbacks: "default"`); Claude API only.
+    fallbacks: bool = True
+    effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
+
+
+class GeminiSettings(_Section):
+    model: str = ""  # required when provider is "gemini"; config-only
+
+
 class LLMSettings(_Section):
-    provider: str = "fake"
-    model: str = ""
+    provider: Literal["claude_code_cli", "claude", "gemini"] = "claude_code_cli"
+    # Applied where the provider supports it (Gemini). The Claude CLI exposes no temperature,
+    # and current Claude models reject non-default values, so Claude runs are not fully
+    # deterministic.
     temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     seed: int | None = 0
     max_retries_on_bad_json: int = Field(default=2, ge=0)
+    max_output_tokens: int = Field(default=16000, ge=1)
+    timeout_seconds: float = Field(default=300.0, gt=0)
+    claude_code_cli: ClaudeCodeCLISettings = ClaudeCodeCLISettings()
+    claude: ClaudeAPISettings = ClaudeAPISettings()
+    gemini: GeminiSettings = GeminiSettings()
+
+
+class MarkerSettings(_Section):
+    """Marker values of the target suite. Generic placeholders; set real ones per environment."""
+
+    priorities: list[str] = Field(default_factory=lambda: ["P0", "P1", "P2", "P3"], min_length=1)
+    suites: list[str] = Field(default_factory=lambda: ["smoke", "regression"], min_length=1)
+    project: str = "example-project"
+    required: list[str] = Field(
+        default_factory=lambda: ["priority", "project", "component", "suite"]
+    )
+
+
+class EvalSettings(_Section):
+    # Ticket ids in skip reasons (used to mine ticket <-> test pairs from git history).
+    ticket_id_pattern: str = r"\b[A-Z][A-Z0-9]+-\d+\b"
+
+
+class DraftSettings(_Section):
+    prompt_version: str = "draft_v1"
+    # Comments go into the prompt in order until this many characters; the rest are dropped.
+    max_comment_chars: int = Field(default=20000, ge=0)
+    # When the component can't be identified, confidence is capped at this value.
+    unknown_component_max_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
 
 
 class RetrievalSettings(_Section):
@@ -88,6 +138,8 @@ class PathSettings(_Section):
     output_dir: Path = Path("output")
     cache_dir: Path = Path(".t2t_cache")
     debug_log_dir: Path = Path("debug_logs")
+    # Versioned prompt templates. Default: the repo's prompts/ directory.
+    prompts_dir: Path | None = None
 
 
 class Settings(BaseSettings):
@@ -102,6 +154,9 @@ class Settings(BaseSettings):
     llm: LLMSettings = LLMSettings()
     tickets: TicketSettings = TicketSettings()
     normalize: NormalizeSettings = NormalizeSettings()
+    draft: DraftSettings = DraftSettings()
+    markers: MarkerSettings = MarkerSettings()
+    eval: EvalSettings = EvalSettings()
     retrieval: RetrievalSettings = RetrievalSettings()
     context: ContextSettings = ContextSettings()
     repair: RepairSettings = RepairSettings()

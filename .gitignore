@@ -25,6 +25,9 @@ reports/
 generated/
 drafts/
 
+# Claude Code temporary files (Hard Constraint 9)
+.scratch/
+
 # Editors / OS
 .vscode/
 .idea/

@@ -31,7 +31,7 @@ def test_version() -> None:
     assert __version__ in result.output
 
 
-PLACEHOLDERS = [name for name in SUBCOMMANDS if name != "normalize"]
+PLACEHOLDERS = [name for name in SUBCOMMANDS if name not in ("normalize", "draft")]
 
 
 @pytest.mark.parametrize("name", PLACEHOLDERS)
@@ -42,7 +42,7 @@ def test_placeholder_subcommands_fail_clearly(name: str) -> None:
 
 
 def test_missing_config_file_is_reported(tmp_path: Path) -> None:
-    result = runner.invoke(app, ["--config", str(tmp_path / "missing.yaml"), "draft"])
+    result = runner.invoke(app, ["--config", str(tmp_path / "missing.yaml"), "index"])
     assert result.exit_code == 2
     assert "Config file not found" in result.output
 

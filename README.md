@@ -4,7 +4,7 @@ Turns a bug ticket into **structured draft test cases**, then into **runnable te
 human QE to review. Generic and company-agnostic: ticket source, codebase, LLM endpoint, and
 conventions all sit behind adapters and config. Built and evaluated on public data only.
 
-> Status: Phase 1 (ticket normalizer). Other subcommands are placeholders. See `PROJECT_STATUS.md`.
+> Status: Phase 2 (draft generation). `normalize` and `draft` work; other subcommands are placeholders. See `PROJECT_STATUS.md`.
 
 ## Quick start
 
@@ -65,6 +65,29 @@ the raw source payload. Steps, expected, and actual are extracted by rules (sect
 such as "Steps to reproduce", "Expected behavior", "Actual:"). If a section is missing, the
 field is left empty. Nothing is guessed.
 
+### Draft test cases from a ticket
+
+```bash
+uv run ticket2test draft ticket.json            # -> output/drafts/<id>.drafts.json + .md
+uv run ticket2test draft ticket.json --out drafts/
+```
+
+The Markdown file is for human review. If the ticket lacks steps or expected behavior, the
+result is `insufficient_info` with a list of what's missing instead of a guessed test.
+
+### LLM providers
+
+Set `llm.provider` in `config.yaml`:
+
+| Provider | Auth | Notes |
+|---|---|---|
+| `claude_code_cli` (default) | Your Claude Code login | Runs `claude -p` as a plain LLM: all tools, MCP servers, skills and settings files disabled, in an empty temp dir. No temperature control. If `claude` isn't on PATH, the VS Code extension's bundled binary is used, or set `T2T_LLM__CLAUDE_CODE_CLI__EXECUTABLE`. |
+| `claude` | `ANTHROPIC_API_KEY` | Anthropic API. Current models don't accept `temperature`. |
+| `gemini` | `GEMINI_API_KEY` | Set `llm.gemini.model` first. Uses `temperature` and `seed`. |
+
+If `ANTHROPIC_API_KEY` is set in the environment, the Claude CLI uses it (API billing) instead
+of your subscription login. Full prompts and responses are logged only with `--debug-log`.
+
 ## Configuration
 
 Settings live in `config.yaml`. Any value can be overridden with an env var
@@ -83,7 +106,7 @@ fill it in, and load it with `uv run --env-file .env ticket2test ...`.
 
 - `uv run pytest` runs unit tests only. The LLM is always mocked (`FakeLLMClient`).
 - Tests that hit real services are marked `@pytest.mark.live` and run only with
-  `uv run pytest -m live`.
+  `uv run pytest -m live` (GitHub API, and real LLM calls with the configured provider).
 
 ## Safety
 

@@ -129,42 +129,89 @@ def _safe_name(ticket_id: str) -> str:
 
 
 @app.command()
-def draft() -> None:
-    """Generate structured test-case drafts from a Ticket (Phase 2)."""
-    _not_implemented(2)
+def draft(
+    ctx: typer.Context,
+    ticket_file: Annotated[Path, typer.Argument(help="Normalized ticket JSON (from `normalize`).")],
+    out: Annotated[
+        Path | None,
+        typer.Option(help="Output directory (default: <output_dir>/drafts)."),
+    ] = None,
+) -> None:
+    """Generate structured test-case drafts (JSON + Markdown) from a Ticket."""
+    from pydantic import ValidationError
+
+    from ticket2test.draft import generate_drafts, render_markdown
+    from ticket2test.llm.base import LLMError
+    from ticket2test.llm.factory import create_llm_client, model_name
+    from ticket2test.models import Ticket
+    from ticket2test.prompts import PromptError
+
+    state: AppState = ctx.obj
+    settings = state.settings
+    try:
+        ticket = Ticket.model_validate_json(ticket_file.read_text(encoding="utf-8"))
+    except (OSError, ValidationError) as exc:
+        typer.echo(f"Error: cannot read ticket {ticket_file}: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+
+    try:
+        client = create_llm_client(settings, debug_log=state.debug_log)
+        result = generate_drafts(
+            ticket, client, settings, provider=settings.llm.provider, model=model_name(settings)
+        )
+    except PromptError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    except LLMError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    target_dir = out or settings.paths.output_dir / "drafts"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    stem = _safe_name(ticket.id)
+    json_path = target_dir / f"{stem}.drafts.json"
+    md_path = target_dir / f"{stem}.drafts.md"
+    json_path.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+    md_path.write_text(render_markdown(result, ticket), encoding="utf-8")
+    summary = (
+        f"{len(result.drafts)} draft(s)"
+        if result.status == "ok"
+        else f"insufficient info: {', '.join(result.missing_info)}"
+    )
+    typer.echo(f"{ticket.id}: {summary}\nWrote {json_path}\nWrote {md_path}")
 
 
 @app.command()
 def index() -> None:
-    """Index a target repo: chunks, symbol catalog, BM25 (Phase 3)."""
-    _not_implemented(3)
-
-
-@app.command()
-def search() -> None:
-    """Search the index (Phase 3)."""
-    _not_implemented(3)
-
-
-@app.command()
-def retrieve() -> None:
-    """Retrieve relevant code and similar tests for a draft (Phase 4)."""
+    """Index a target repo: chunks, symbol catalog, BM25 (Phase 4)."""
     _not_implemented(4)
 
 
 @app.command()
-def generate() -> None:
-    """Generate test code from a draft and retrieval results (Phase 5)."""
+def search() -> None:
+    """Search the index (Phase 4)."""
+    _not_implemented(4)
+
+
+@app.command()
+def retrieve() -> None:
+    """Retrieve relevant code and similar tests for a draft (Phase 5)."""
     _not_implemented(5)
 
 
 @app.command()
-def validate() -> None:
-    """Validate generated tests and optionally run them in a sandbox (Phase 6)."""
+def generate() -> None:
+    """Generate test code + JSON data from a draft and retrieval results (Phase 6)."""
     _not_implemented(6)
+
+
+@app.command()
+def validate() -> None:
+    """Validate generated tests; collect them in a sandbox (Phase 7)."""
+    _not_implemented(7)
 
 
 @app.command(name="eval")
 def eval_() -> None:
-    """Run the eval harness over issue/fix-PR pairs (Phase 7)."""
-    _not_implemented(7)
+    """Run the eval harness over ticket/test pairs (Phase 8)."""
+    _not_implemented(8)

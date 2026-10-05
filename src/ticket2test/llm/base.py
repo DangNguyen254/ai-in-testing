@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -27,6 +27,8 @@ class LLMRequest(BaseModel):
     seed: int | None = None
     max_output_tokens: int | None = Field(default=None, ge=1)
     json_mode: bool = True
+    # When set, providers constrain the output to this JSON schema (see llm/schema.py).
+    json_schema: dict[str, Any] | None = None
 
 
 class LLMResponse(BaseModel):
@@ -36,6 +38,7 @@ class LLMResponse(BaseModel):
     model: str
     input_tokens: int | None = None
     output_tokens: int | None = None
+    cost_usd: float | None = None  # provider-reported estimate, if any
 
 
 class LLMClient(ABC):

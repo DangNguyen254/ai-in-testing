@@ -30,6 +30,13 @@ This is a **fixed workflow**, not an autonomous agent. LLM-driven tool use is al
 6. **No unbounded loops.** Every retry, repair, and search loop has an explicit max from config. No exceptions.
 7. **License.** The repo is MIT-licensed. Only add dependencies with permissive licenses (MIT, BSD, Apache-2.0). Flag anything else before adding it.
 8. **Do not log full prompts or full LLM responses by default.** They may contain source code. Logging these requires an explicit `--debug-log` flag and writes to a local, git-ignored directory.
+9. **Claude Code works only inside this repo.** Claude Code must not read, search, list, write, or delete anything outside this repository's directory, including the home directory, system temp dirs, other projects, and its own scratchpad or memory directories. Temporary files go in the git-ignored `.scratch/` folder inside the repo. The only exceptions:
+   - **Installed tools:** running the installed `uv`, Python, `git`, and the `claude` CLI is allowed; inspecting or changing their install locations is not.
+   - **Caches and temp dirs are redirected into the repo:** pytest uses `--basetemp=.scratch/pytest`; uv uses `cache-dir = ".scratch/uv-cache"` (set in `pyproject.toml`); the `claude_code_cli` provider runs in `.scratch/claude-cli`.
+   - **Public network fetches** (GitHub, PyPI, public docs) are allowed without asking, as long as everything fetched is saved into a git-ignored folder inside the repo. Any other network access needs the human's permission.
+   - **Containers:** Docker/Podman containers are allowed as described in Hard Constraint 3.
+   - Anything else outside the repo needs the human's explicit permission first, each time.
+   - Notes Claude wants to keep across sessions go in the repo (e.g. `CLAUDE.md` or `.scratch/`), not in an external memory directory.
 
 ## GUARDRAILS (pipeline behavior)
 

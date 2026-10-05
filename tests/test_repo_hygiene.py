@@ -9,7 +9,16 @@ import pytest
 
 from tests.conftest import REPO_ROOT
 
-SKIP_DIRS = {".git", ".venv", "venv", "__pycache__", ".mypy_cache", ".ruff_cache", ".pytest_cache"}
+SKIP_DIRS = {
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".pytest_cache",
+    ".scratch",
+}
 TEXT_SUFFIXES = {".py", ".md", ".toml", ".yaml", ".yml", ".txt", ".json", ".cfg", ".ini", ""}
 
 SECRET_PATTERNS = {

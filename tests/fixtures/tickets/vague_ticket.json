@@ -1,0 +1,14 @@
+{
+  "id": "DEMO-900",
+  "title": "Client is broken sometimes",
+  "description": "It doesn't work right with some URLs. Please fix this soon.",
+  "steps_to_reproduce": [],
+  "expected": null,
+  "actual": null,
+  "components": [],
+  "labels": ["bug"],
+  "comments": [],
+  "comments_omitted": 0,
+  "links": [],
+  "source": { "system": "jira", "ref": "DEMO-900", "url": null }
+}

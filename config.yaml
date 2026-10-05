@@ -3,11 +3,38 @@
 # Secrets never go in this file. See .env.example.
 
 llm:
-  provider: fake          # no real provider until Phase 2
-  model: ""
+  provider: claude_code_cli    # claude_code_cli | claude | gemini
+  # Used where supported (Gemini). The Claude CLI has no temperature setting and current
+  # Claude models reject non-default values, so Claude output is not fully deterministic.
   temperature: 0.0
   seed: 0
   max_retries_on_bad_json: 2
+  max_output_tokens: 16000
+  timeout_seconds: 300
+  claude_code_cli:
+    executable: claude         # or set T2T_LLM__CLAUDE_CODE_CLI__EXECUTABLE to a full path
+    model: claude-sonnet-5-5
+    workdir: .scratch/claude-cli   # git-ignored, inside the repo
+  claude:                      # Anthropic API; key from ANTHROPIC_API_KEY
+    model: claude-sonnet-5-5
+    fallbacks: true            # server-side refusal fallback
+    effort: null               # low | medium | high | xhigh | max (null = model default)
+  gemini:                      # key from GEMINI_API_KEY
+    model: ""                  # required when provider is gemini
+
+draft:
+  prompt_version: draft_v1
+  max_comment_chars: 20000
+  unknown_component_max_confidence: 0.5
+
+markers:                       # generic placeholders; set real values per environment
+  priorities: [P0, P1, P2, P3]  # first = highest
+  suites: [smoke, regression]
+  project: example-project
+  required: [priority, project, component, suite]
+
+eval:
+  ticket_id_pattern: '\b[A-Z][A-Z0-9]+-\d+\b'   # Jira-style: KEY-123
 
 tickets:
   github:
@@ -42,3 +69,4 @@ paths:
   output_dir: output
   cache_dir: .t2t_cache
   debug_log_dir: debug_logs
+  prompts_dir: null          # default: the repo's prompts/ directory
