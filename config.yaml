@@ -68,6 +68,19 @@ index:
 retrieval:
   top_k: 10
   max_followup_rounds: 2
+  use_llm: true                  # query rewrite + follow-ups; false = deterministic only
+  query_rewrite_prompt: query_rewrite_v1
+  followup_prompt: retrieval_followup_v1
+  bm25_candidates: 50
+  grep_max_matches: 40           # identifiers found in more chunks than this are too common
+  rrf_k: 60
+  expansion_seeds: 5
+  expansion_per_seed: 4
+  expansion_weight: 0.5
+  followup_max_searches: 3
+  followup_min_tests: 1          # follow-ups run only while top_k has fewer tests than this
+  max_templates: 3
+  max_ticket_chars: 6000
 
 context:
   max_tokens: 12000

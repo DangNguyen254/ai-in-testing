@@ -111,6 +111,20 @@ class IndexSettings(_Section):
 class RetrievalSettings(_Section):
     top_k: int = Field(default=10, ge=1)
     max_followup_rounds: int = Field(default=2, ge=0)
+    use_llm: bool = True  # query rewrite + follow-up rounds; False = deterministic only
+    query_rewrite_prompt: str = "query_rewrite_v1"
+    followup_prompt: str = "retrieval_followup_v1"
+    bm25_candidates: int = Field(default=50, ge=1)  # per BM25 query, before fusion
+    grep_max_matches: int = Field(default=40, ge=1)  # identifiers matching more are too common
+    rrf_k: int = Field(default=60, ge=1)  # reciprocal-rank-fusion constant
+    expansion_seeds: int = Field(default=5, ge=0)  # top fused chunks to expand from
+    expansion_per_seed: int = Field(default=4, ge=0)  # per relation (callee, caller, ...)
+    expansion_weight: float = Field(default=0.5, ge=0.0, le=1.0)
+    followup_max_searches: int = Field(default=3, ge=1)
+    # A follow-up round runs only while results are "thin":
+    followup_min_tests: int = Field(default=1, ge=0)  # fewer test chunks than this in top_k
+    max_templates: int = Field(default=3, ge=0)
+    max_ticket_chars: int = Field(default=6000, ge=200)  # ticket text sent to the LLM
 
 
 class ContextSettings(_Section):

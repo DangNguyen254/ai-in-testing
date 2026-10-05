@@ -250,9 +250,71 @@ def search(
 
 
 @app.command()
-def retrieve() -> None:
-    """Retrieve relevant code and similar tests for a draft (Phase 5)."""
-    _not_implemented(5)
+def retrieve(
+    ctx: typer.Context,
+    ticket_file: Annotated[Path, typer.Argument(help="Normalized ticket JSON (from `normalize`).")],
+    repo: Annotated[Path, typer.Option(help="Target repo (indexed on demand, read-only).")],
+    draft: Annotated[
+        Path | None,
+        typer.Option(help="Drafts JSON (from `draft`); the primary draft refines the query."),
+    ] = None,
+    no_llm: Annotated[
+        bool, typer.Option("--no-llm", help="Deterministic only: no query rewrite or follow-ups.")
+    ] = False,
+    out: Annotated[
+        Path | None,
+        typer.Option(help="Output JSON (default: <output_dir>/retrieval/<id>.retrieval.json)."),
+    ] = None,
+) -> None:
+    """Retrieve relevant code, similar tests, and JSON-entry templates for a ticket."""
+    from pydantic import ValidationError
+
+    from ticket2test.index.indexer import update_index
+    from ticket2test.llm.base import LLMError
+    from ticket2test.llm.factory import create_llm_client
+    from ticket2test.models import DraftResult, Ticket
+    from ticket2test.prompts import PromptError
+    from ticket2test.retrieve.pipeline import retrieve as run_retrieval
+
+    state: AppState = ctx.obj
+    settings = state.settings
+    try:
+        ticket = Ticket.model_validate_json(ticket_file.read_text(encoding="utf-8"))
+        primary = None
+        if draft is not None:
+            drafts = DraftResult.model_validate_json(draft.read_text(encoding="utf-8"))
+            primary = next((d for d in drafts.drafts if d.kind == "primary"), None)
+    except (OSError, ValidationError) as exc:
+        typer.echo(f"Error: cannot read input: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    if not repo.is_dir():
+        typer.echo(f"Error: not a directory: {repo}", err=True)
+        raise typer.Exit(code=2)
+
+    index, _, _ = update_index(repo, settings)
+    try:
+        client = None if no_llm else create_llm_client(settings, debug_log=state.debug_log)
+        result = run_retrieval(ticket, index, settings, client, primary)
+    except PromptError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    except LLMError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    target = (
+        out or settings.paths.output_dir / "retrieval" / f"{_safe_name(ticket.id)}.retrieval.json"
+    )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+    typer.echo(
+        f"{ticket.id}: {len(result.hits)} hits, {len(result.templates)} templates, "
+        f"{result.followup_rounds} follow-up round(s), {result.llm_calls} LLM call(s)"
+    )
+    for rank, hit in enumerate(result.hits, start=1):
+        why = "; ".join(r.detail for r in hit.reasons[:2])
+        typer.echo(f"{rank:>2}. [{hit.kind}] {hit.qualname} ({hit.file_path}) <- {why}")
+    typer.echo(f"Wrote {target}")
 
 
 @app.command()
@@ -268,6 +330,42 @@ def validate() -> None:
 
 
 @app.command(name="eval")
-def eval_() -> None:
-    """Run the eval harness over ticket/test pairs (Phase 8)."""
-    _not_implemented(8)
+def eval_(
+    ctx: typer.Context,
+    pair_set: Annotated[Path, typer.Option("--set", help="Eval pair set JSON in eval_data/.")],
+    stage: Annotated[
+        str, typer.Option(help="Stage to evaluate (retrieval for now).")
+    ] = "retrieval",
+    k: Annotated[int | None, typer.Option(help="Cut-off for recall@k (default: top_k).")] = None,
+    no_llm: Annotated[bool, typer.Option("--no-llm", help="Deterministic retrieval only.")] = False,
+    out: Annotated[
+        Path | None, typer.Option(help="Report directory (default: <output_dir>/reports).")
+    ] = None,
+) -> None:
+    """Run the eval harness. Phase 5 supports the retrieval stage (recall@k, MRR)."""
+    from datetime import UTC, datetime
+
+    from ticket2test.eval.pairs import load_pair_set
+    from ticket2test.eval.retrieval import evaluate_retrieval, render_markdown
+    from ticket2test.llm.base import LLMError
+    from ticket2test.llm.factory import create_llm_client
+
+    state: AppState = ctx.obj
+    if stage != "retrieval":
+        typer.echo(f"Stage {stage!r} is planned for Phase 8; only 'retrieval' works now.", err=True)
+        raise typer.Exit(code=1)
+    try:
+        pairs = load_pair_set(pair_set)
+        client = None if no_llm else create_llm_client(state.settings, debug_log=state.debug_log)
+        report = evaluate_retrieval(pairs, Path.cwd(), state.settings, client, k=k)
+    except (OSError, ValueError, LLMError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    folder = out or state.settings.paths.output_dir / "reports"
+    folder.mkdir(parents=True, exist_ok=True)
+    stem = f"{report.set_name}-{datetime.now(UTC):%Y%m%dT%H%M%S}"
+    (folder / f"{stem}.json").write_text(report.model_dump_json(indent=2), encoding="utf-8")
+    (folder / f"{stem}.md").write_text(render_markdown(report), encoding="utf-8")
+    typer.echo(render_markdown(report))
+    typer.echo(f"Wrote {folder / stem}.json and .md")

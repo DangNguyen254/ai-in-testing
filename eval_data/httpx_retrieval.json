@@ -1,0 +1,24 @@
+{
+  "name": "httpx-retrieval",
+  "description": "Public encode/httpx bug issues and the merged PRs that fixed them. Ground truth: Python files changed by the fix PR that still exist in the indexed checkout.",
+  "repo_path": ".scratch/repos/httpx",
+  "repo_ref": "0.28.1",
+  "repo_clone": "git clone --depth 1 --branch 0.28.1 https://github.com/encode/httpx .scratch/repos/httpx",
+  "ticket_source": "github",
+  "ground_truth": "fix_pr_files",
+  "pairs": [
+    { "id": "httpx-2985", "ticket": "encode/httpx#2985", "ticket_url": "https://github.com/encode/httpx/issues/2985", "fix_pr": 2986, "fix_pr_url": "https://github.com/encode/httpx/pull/2986" },
+    { "id": "httpx-2532", "ticket": "encode/httpx#2532", "ticket_url": "https://github.com/encode/httpx/issues/2532", "fix_pr": 2535, "fix_pr_url": "https://github.com/encode/httpx/pull/2535" },
+    { "id": "httpx-2139", "ticket": "encode/httpx#2139", "ticket_url": "https://github.com/encode/httpx/issues/2139", "fix_pr": 2156, "fix_pr_url": "https://github.com/encode/httpx/pull/2156" },
+    { "id": "httpx-1498", "ticket": "encode/httpx#1498", "ticket_url": "https://github.com/encode/httpx/issues/1498", "fix_pr": 1532, "fix_pr_url": "https://github.com/encode/httpx/pull/1532" },
+    { "id": "httpx-1482", "ticket": "encode/httpx#1482", "ticket_url": "https://github.com/encode/httpx/issues/1482", "fix_pr": 1537, "fix_pr_url": "https://github.com/encode/httpx/pull/1537" },
+    { "id": "httpx-1468", "ticket": "encode/httpx#1468", "ticket_url": "https://github.com/encode/httpx/issues/1468", "fix_pr": 1469, "fix_pr_url": "https://github.com/encode/httpx/pull/1469" },
+    { "id": "httpx-1463", "ticket": "encode/httpx#1463", "ticket_url": "https://github.com/encode/httpx/issues/1463", "fix_pr": 1465, "fix_pr_url": "https://github.com/encode/httpx/pull/1465" },
+    { "id": "httpx-1405", "ticket": "encode/httpx#1405", "ticket_url": "https://github.com/encode/httpx/issues/1405", "fix_pr": 1407, "fix_pr_url": "https://github.com/encode/httpx/pull/1407" },
+    { "id": "httpx-1365", "ticket": "encode/httpx#1365", "ticket_url": "https://github.com/encode/httpx/issues/1365", "fix_pr": 1391, "fix_pr_url": "https://github.com/encode/httpx/pull/1391" },
+    { "id": "httpx-1323", "ticket": "encode/httpx#1323", "ticket_url": "https://github.com/encode/httpx/issues/1323", "fix_pr": 1324, "fix_pr_url": "https://github.com/encode/httpx/pull/1324" },
+    { "id": "httpx-1315", "ticket": "encode/httpx#1315", "ticket_url": "https://github.com/encode/httpx/issues/1315", "fix_pr": 1316, "fix_pr_url": "https://github.com/encode/httpx/pull/1316" },
+    { "id": "httpx-1311", "ticket": "encode/httpx#1311", "ticket_url": "https://github.com/encode/httpx/issues/1311", "fix_pr": 1349, "fix_pr_url": "https://github.com/encode/httpx/pull/1349" },
+    { "id": "httpx-1310", "ticket": "encode/httpx#1310", "ticket_url": "https://github.com/encode/httpx/issues/1310", "fix_pr": 1313, "fix_pr_url": "https://github.com/encode/httpx/pull/1313" }
+  ]
+}

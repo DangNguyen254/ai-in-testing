@@ -4,7 +4,7 @@ Turns a bug ticket into **structured draft test cases**, then into **runnable te
 human QE to review. Generic and company-agnostic: ticket source, codebase, LLM endpoint, and
 conventions all sit behind adapters and config. Built and evaluated on public data only.
 
-> Status: Phase 4 (indexer). `normalize`, `draft`, `index`, and `search` work; other subcommands are placeholders. See `PROJECT_STATUS.md`.
+> Status: Phase 5 (retrieval). `normalize`, `draft`, `index`, `search`, `retrieve`, and `eval --stage retrieval` work; `generate` and `validate` are placeholders. See `PROJECT_STATUS.md`.
 
 ## Quick start
 
@@ -102,6 +102,27 @@ the symbol catalog includes page-object property chains such as `nav.inventory.i
 
 For the public stand-in used in tests: `git clone --depth 1 --branch 0.28.1
 https://github.com/encode/httpx .scratch/repos/httpx` (tests that need it skip without it).
+
+### Retrieve code and tests for a ticket
+
+```bash
+uv run ticket2test retrieve ticket.json --repo standin --draft drafts/X.drafts.json
+uv run ticket2test retrieve ticket.json --repo standin --no-llm      # deterministic only
+```
+
+Each hit records why it was retrieved (`bm25`, `grep`, `expansion`, `followup`, `template`).
+Templates are existing tests whose JSON entries can seed new ones. The LLM may request extra
+searches (own search tools only) for at most `retrieval.max_followup_rounds` rounds.
+
+### Measure retrieval
+
+```bash
+uv run ticket2test eval --set eval_data/standin_retrieval.json --no-llm
+uv run ticket2test eval --set eval_data/httpx_retrieval.json          # needs the httpx clone
+```
+
+Reports (JSON + Markdown, recall@k and MRR) go to `output/reports/`. Ground truth for httpx is
+the files changed by each fix PR, fetched from GitHub on first use and cached in `.t2t_cache/`.
 
 ## Stand-in suite
 
