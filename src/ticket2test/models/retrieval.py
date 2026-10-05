@@ -26,7 +26,9 @@ class RetrievedChunk(BaseModel):
     qualname: str
     kind: ChunkKind
     start_line: int
-    score: float
+    score: float  # after reranking
+    fused_score: float | None = None  # before reranking
+    rank_features: dict[str, float] = Field(default_factory=dict)
     reasons: list[Reason]
 
 

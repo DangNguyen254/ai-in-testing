@@ -108,6 +108,18 @@ class IndexSettings(_Section):
     name_boost: int = Field(default=3, ge=1)  # symbol name repeats in the search text
 
 
+class RerankSettings(_Section):
+    """Deterministic, feature-based reranking of the fused candidates (no LLM)."""
+
+    enabled: bool = True
+    max_chunks_per_file: int = Field(default=3, ge=1)  # diversity in the final top_k
+    min_tests: int = Field(default=2, ge=0)  # tests kept in top_k when any were found
+    identifier_weight: float = Field(default=0.3, ge=0.0)  # references verified identifiers
+    definition_weight: float = Field(default=0.2, ge=0.0)  # defines a verified identifier
+    test_link_weight: float = Field(default=0.15, ge=0.0)  # a test of a top source chunk
+    path_weight: float = Field(default=0.15, ge=0.0)  # ticket words in the file path
+
+
 class RetrievalSettings(_Section):
     top_k: int = Field(default=10, ge=1)
     max_followup_rounds: int = Field(default=2, ge=0)
@@ -125,6 +137,7 @@ class RetrievalSettings(_Section):
     followup_min_tests: int = Field(default=1, ge=0)  # fewer test chunks than this in top_k
     max_templates: int = Field(default=3, ge=0)
     max_ticket_chars: int = Field(default=6000, ge=200)  # ticket text sent to the LLM
+    rerank: RerankSettings = RerankSettings()
 
 
 class ContextSettings(_Section):

@@ -81,6 +81,14 @@ retrieval:
   followup_min_tests: 1          # follow-ups run only while top_k has fewer tests than this
   max_templates: 3
   max_ticket_chars: 6000
+  rerank:                        # deterministic re-scoring + diversity of the final top_k
+    enabled: true
+    max_chunks_per_file: 3
+    min_tests: 2
+    identifier_weight: 0.3
+    definition_weight: 0.2
+    test_link_weight: 0.15
+    path_weight: 0.15
 
 context:
   max_tokens: 12000

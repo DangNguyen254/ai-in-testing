@@ -111,6 +111,8 @@ uv run ticket2test retrieve ticket.json --repo standin --no-llm      # determini
 ```
 
 Each hit records why it was retrieved (`bm25`, `grep`, `expansion`, `followup`, `template`).
+A deterministic reranker then re-scores candidates and keeps the top k varied (at most 3 chunks
+per file, at least 2 tests); each hit records its `rank_features`.
 Templates are existing tests whose JSON entries can seed new ones. The LLM may request extra
 searches (own search tools only) for at most `retrieval.max_followup_rounds` rounds.
 

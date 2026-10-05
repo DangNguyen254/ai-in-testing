@@ -288,6 +288,14 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 **Open questions:**
 - After the baseline: is recall good enough, or do we need embeddings? Decide based on data. (Baselines above: LLM on reaches 0.618 on httpx and 1.000 on the stand-in. Revisit after Phase 8's larger set.)
 
+**Plan: LLM reranker (not built; only if Phase 8 data says it's needed)**
+- *Trigger to build it:* on the Phase 8 set (30+ pairs, several runs per config), recall@10 or MRR with the deterministic reranker stays clearly below what the generator needs, and the misses are ranking problems (the right chunk is in the top 30 but not the top 10), not search problems.
+- *Placement:* after the deterministic rerank, on its top `N` candidates (config, default 30); output replaces the order of the final top k. Off by default (`retrieval.llm_rerank.enabled`).
+- *Input per candidate:* chunk id, kind, qualname, file path, signature line, first docstring line, matched identifiers, and the deterministic rank. No full code by default; optional snippet with a character cap. Ticket text scrubbed like other prompts.
+- *Output:* `prompts/rerank_v1.md`, structured JSON `{ "order": [chunk ids], "reason": str }`, validated so it contains only given ids (unknown ids rejected → retry with the error, max `llm.max_retries_on_bad_json`); ids it leaves out keep their deterministic order after the ones it ranked. On failure, fall back to the deterministic order and record that.
+- *Cost/limits:* +1 LLM call per ticket, bounded input size; not a tool-use step (no searches), so it doesn't touch the follow-up-only tool-use rule.
+- *Evaluation:* A/B in Phase 8 (deterministic vs + LLM rerank), repeated runs to measure variance, report both; keep it only if the gain exceeds the run-to-run spread.
+
 **Log:**
 - 2026-10-05: Started. Eval pairs: 13 `encode/httpx` bug issues with the merged PR that fixed them, found via issue timelines (`eval_data/httpx_retrieval.json`, IDs/URLs only), and the 6 stand-in tickets → linked tests (`eval_data/standin_retrieval.json`). Fix-PR file lists and ticket payloads are fetched on demand and cached in `.t2t_cache/eval/` (git-ignored); finding the pairs used 29 unauthenticated GitHub requests (issue list, PR pages, issue timelines) and filling the cache 22 more, reusing already-downloaded issue JSON and the committed fixtures. #1428 was excluded (its linked PR only added docs).
 - 2026-10-05: Built. `prompts/query_rewrite_v1.md`, `prompts/retrieval_followup_v1.md`. `retrieve/query.py` (deterministic ticket+draft text; code-like identifiers verified against the catalog, so guessed names that don't exist are dropped and reported as `rejected_identifiers`). `retrieve/pipeline.py`: BM25 on the ticket text and on the LLM rewrite terms, "grep" over indexed code for verified identifiers (definitions first; identifiers matching more than `grep_max_matches` chunks are skipped as too common), reciprocal-rank fusion, expansion from the top seeds (non-test seeds: callees, tests that use it, callers; test seeds: page objects their `self.nav...` chains resolve to), follow-up rounds only while results are thin and only with the project's own tools (bm25 / grep / symbol), capped by `retrieval.max_followup_rounds` and `followup_max_searches`, stopping early on `done` or when a round adds nothing; templates = nearest tests with JSON entries (same component first). Every hit carries reasons (`bm25` / `grep` / `expansion` / `followup` / `template`). `eval/pairs.py` (pair sets + on-demand cache), `eval/retrieval.py` (recall@k and MRR: file-level for fix-PR files, test-level for linked tests; JSON + Markdown report). CLI `retrieve <ticket.json> --repo <path> [--draft] [--no-llm] [--out]` and `eval --set <file> [--stage retrieval] [--k] [--no-llm] [--out]`. Config `retrieval.*` additions.
@@ -301,6 +309,14 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
   | stand-in (6 pairs) | 0.667 / 0.218 | 0.667 / 0.354 | **1.000 / 0.557** |
 
   LLM on used 23 calls through the Claude CLI (19 query rewrites + 4 follow-up rounds, all on httpx), about 1m46s per set. With the rewrite, httpx #1482 (multipart) and #1365 (WSGI path) are now found, and STND-103 / STND-104 rank first; but some fix-PR **test** files dropped out of the top 10 (#2985, #2139, #1405) because the rewrite pulls source code up. Still missed: #1468, #1311. Claude-backed runs are not deterministic, so these LLM numbers will vary between runs.
+- 2026-10-05: **Deterministic reranker** (`retrieve/rerank.py`, config `retrieval.rerank`). Problem it fixes: with the rewrite on, several methods of one source file (e.g. `httpx/_client.py`) took most of the 10 slots and pushed the fix PR's test file to rank 11+. Each fused candidate is re-scored: normalized fused score + small bonuses for referencing verified ticket identifiers (0.3, scaled by count), defining one (0.2), being a test linked to a top source chunk by expansion (0.15), and ticket words in its file path (0.15). Then the top k is picked greedily with at most `max_chunks_per_file` (3) per file and at least `min_tests` (2) tests; the cap is relaxed only if there aren't enough files to fill k. Each hit records `fused_score` and `rank_features`. No LLM, same input → same order.
+
+  | Set | LLM off | LLM off + rerank | LLM on | **LLM on + rerank** |
+  |---|---|---|---|---|
+  | httpx (13 pairs) | 0.591 / 0.481 | 0.591 / 0.455 | 0.618 / 0.671 | **0.772 / 0.782** |
+  | stand-in (6 pairs) | 0.667 / 0.354 | 0.833 / 0.376 | 1.000 / 0.557 | **1.000 / 0.694** |
+
+  (recall@10 / MRR; AST refs in all columns; LLM-on runs used ~23 calls each.) With rerank + LLM, every httpx pair now has at least one ground-truth file in the top 10; #1468 and #1311 are found for the first time, and the test files of #2985 / #2139 are back. Lowest recall: #2532 (7 changed files, 2 found) and #1498 (4 files, 1 found). The weights were set once, not tuned per pair; with 19 pairs and LLM run-to-run variation, treat the gains as directional.
 
 ---
 
@@ -466,3 +482,4 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 | 2026-10-05 | 4 | Indexer built and verified (stand-in + httpx, ids vs collect-only, search, catalog chains, cache); marked ✅ Done |
 | 2026-10-05 | 5 | Retrieval built; deterministic recall@10 baseline httpx 0.591 / stand-in 0.667; marked ✅ Done (LLM-mode baseline pending a live run) |
 | 2026-10-05 | 5 | Retrieval references moved to the syntax tree (`Chunk.refs`); LLM-on baseline measured: httpx 0.618, stand-in 1.000 recall@10 |
+| 2026-10-05 | 5 | Deterministic feature-based reranker with per-file cap and minimum tests; LLM-on recall@10 httpx 0.772, stand-in 1.000; LLM-reranker plan recorded |

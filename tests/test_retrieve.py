@@ -299,3 +299,89 @@ def test_cli_retrieve_and_eval(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
         app, ["eval", "--set", "eval_data/standin_retrieval.json", "--stage", "e2e"]
     )
     assert other.exit_code == 1 and "Phase 8" in other.output
+
+
+# --- reranking -------------------------------------------------------------------------------
+
+
+def _chunk_stub(cid: str, path: str, kind: str = "function", names: dict[str, int] | None = None):  # type: ignore[no-untyped-def]
+    from ticket2test.models.chunk import Chunk, Refs
+
+    return Chunk(
+        id=f"{path}::{cid}",
+        file_path=path,
+        symbol_name=cid,
+        qualname=cid,
+        kind=kind,  # type: ignore[arg-type]
+        code="",
+        start_line=1,
+        end_line=1,
+        refs=Refs(names=names or {}),
+    )
+
+
+def test_rerank_caps_chunks_per_file_and_keeps_tests() -> None:
+    from ticket2test.config import RerankSettings
+    from ticket2test.retrieve.rerank import rerank
+
+    many = [(_chunk_stub(f"m{i}", "pkg/_client.py"), 10.0 - i, []) for i in range(8)]
+    others = [(_chunk_stub(f"o{i}", f"pkg/other{i}.py"), 1.0, []) for i in range(4)]
+    tests = [(_chunk_stub(f"test_{i}", "tests/test_client.py", "test"), 0.5, []) for i in range(3)]
+    picked = rerank(
+        many + others + tests,
+        [],
+        "",
+        k=10,
+        settings=RerankSettings(max_chunks_per_file=3, min_tests=2),
+    )
+    files = [r.chunk.file_path for r in picked]
+    assert len(picked) == 10
+    assert files.count("pkg/_client.py") == 3
+    assert sum(r.chunk.kind == "test" for r in picked) >= 2
+
+
+def test_rerank_relaxes_cap_when_too_few_files() -> None:
+    from ticket2test.config import RerankSettings
+    from ticket2test.retrieve.rerank import rerank
+
+    one_file = [(_chunk_stub(f"m{i}", "a.py"), 1.0 - i / 10, []) for i in range(6)]
+    picked = rerank(one_file, [], "", k=5, settings=RerankSettings(max_chunks_per_file=2))
+    assert len(picked) == 5  # cap relaxed rather than returning fewer than k
+
+
+def test_rerank_features_are_explainable() -> None:
+    from ticket2test.config import RerankSettings
+    from ticket2test.retrieve.rerank import rerank
+
+    definition = _chunk_stub("build_request", "pkg/_client.py", names={"build_request": 1})
+    user = _chunk_stub("test_build", "tests/test_multipart.py", "test", names={"build_request": 2})
+    plain = _chunk_stub("unrelated", "pkg/x.py")
+    picked = rerank(
+        [(plain, 1.0, []), (definition, 0.5, []), (user, 0.8, ["test of Client.build_request"])],
+        ["build_request"],
+        "multipart upload fails",
+        k=3,
+        settings=RerankSettings(),
+    )
+    by_id = {r.chunk.symbol_name: r for r in picked}
+    assert set(by_id["build_request"].features) == {"fused", "identifiers", "definition"}
+    assert set(by_id["test_build"].features) == {"fused", "identifiers", "test_link", "path"}
+    assert by_id["unrelated"].features == {"fused": 1.0}
+    assert picked[0].chunk.symbol_name == "test_build"  # boosts overturn a small fused gap
+    assert picked[-1].chunk.symbol_name == "build_request"  # but not a 2x gap
+
+
+def test_rerank_disabled_keeps_fused_order() -> None:
+    from ticket2test.config import RerankSettings
+    from ticket2test.retrieve.rerank import rerank
+
+    same = [(_chunk_stub(f"m{i}", "a.py"), 1.0 - i / 10, []) for i in range(5)]
+    picked = rerank(same, ["m4"], "", k=5, settings=RerankSettings(enabled=False))
+    assert [r.chunk.symbol_name for r in picked] == ["m0", "m1", "m2", "m3", "m4"]
+
+
+def test_hits_carry_rank_features(index: IndexData, tmp_path: Path) -> None:
+    result = retrieve(_ticket("STND-104"), index, _settings(tmp_path))
+    assert all("fused" in h.rank_features and h.fused_score is not None for h in result.hits)
+    files = [h.file_path for h in result.hits]
+    assert max(files.count(f) for f in set(files)) <= 3

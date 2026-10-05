@@ -27,6 +27,7 @@ from ticket2test.models.ticket import Ticket
 from ticket2test.prompts import load_prompt
 from ticket2test.retrieve.llm_steps import request_followups, rewrite_query
 from ticket2test.retrieve.query import candidate_identifiers, ticket_text, verify_identifiers
+from ticket2test.retrieve.rerank import Ranked, rerank
 
 RankedList = list[tuple[Chunk, Reason]]
 
@@ -232,10 +233,17 @@ def retrieve(
         assert client is not None
         prompt = load_prompt(cfg.followup_prompt, settings.paths.prompts_dir)
         for round_no in range(1, cfg.max_followup_rounds + 1):
-            if not _is_thin(_top(pool, cfg.top_k), cfg.top_k, cfg.followup_min_tests):
+            if not _is_thin(
+                _final(pool, identifiers, text, settings), cfg.top_k, cfg.followup_min_tests
+            ):
                 break
             response = request_followups(
-                client, prompt, text, searches_run, _describe(_top(pool, cfg.top_k)), settings
+                client,
+                prompt,
+                text,
+                searches_run,
+                _describe(_final(pool, identifiers, text, settings)),
+                settings,
             )
             llm_calls += response.attempts
             rounds = round_no
@@ -254,15 +262,17 @@ def retrieve(
     templates = retriever.templates(pool, draft)
     hits = [
         RetrievedChunk(
-            chunk_id=c.chunk.id,
-            file_path=c.chunk.file_path,
-            qualname=c.chunk.qualname,
-            kind=c.chunk.kind,
-            start_line=c.chunk.start_line,
-            score=round(c.score, 6),
-            reasons=c.reasons,
+            chunk_id=r.chunk.id,
+            file_path=r.chunk.file_path,
+            qualname=r.chunk.qualname,
+            kind=r.chunk.kind,
+            start_line=r.chunk.start_line,
+            score=r.score,
+            fused_score=round(r.fused, 6),
+            rank_features=r.features,
+            reasons=pool[r.chunk.id].reasons,
         )
-        for c in _top(pool, cfg.top_k)
+        for r in _final(pool, identifiers, text, settings)
     ]
     return RetrievalResult(
         ticket_id=ticket.id,
@@ -310,15 +320,20 @@ def _run_followups(
     return lists
 
 
-def _top(pool: dict[str, _Candidate], k: int) -> list[_Candidate]:
-    return sorted(pool.values(), key=lambda c: (-c.score, c.chunk.id))[:k]
+def _final(
+    pool: dict[str, _Candidate], identifiers: list[str], text: str, settings: Settings
+) -> list[Ranked]:
+    candidates = [(c.chunk, c.score, [r.detail for r in c.reasons]) for c in pool.values()]
+    return rerank(
+        candidates, identifiers, text, settings.retrieval.top_k, settings.retrieval.rerank
+    )
 
 
-def _is_thin(top: list[_Candidate], k: int, min_tests: int) -> bool:
-    return len(top) < k or sum(c.chunk.kind == "test" for c in top) < min_tests
+def _is_thin(top: list[Ranked], k: int, min_tests: int) -> bool:
+    return len(top) < k or sum(r.chunk.kind == "test" for r in top) < min_tests
 
 
-def _describe(top: list[_Candidate]) -> list[str]:
+def _describe(top: list[Ranked]) -> list[str]:
     return [
         f"{i}. [{c.chunk.kind}] {c.chunk.qualname} ({c.chunk.file_path})"
         for i, c in enumerate(top, 1)
