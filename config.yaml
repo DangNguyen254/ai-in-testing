@@ -1,0 +1,29 @@
+# ticket2test configuration. Every value can be overridden by an env var:
+#   T2T_<SECTION>__<KEY>, e.g. T2T_RETRIEVAL__TOP_K=5
+# Secrets never go in this file. See .env.example.
+
+llm:
+  provider: fake          # no real provider until Phase 2
+  model: ""
+  temperature: 0.0
+  seed: 0
+  max_retries_on_bad_json: 2
+
+retrieval:
+  top_k: 10
+  max_followup_rounds: 2
+
+context:
+  max_tokens: 12000
+
+repair:
+  max_attempts: 3
+
+sandbox:
+  runtime: docker         # docker | podman
+  timeout_seconds: 120
+
+paths:
+  output_dir: output
+  cache_dir: .t2t_cache
+  debug_log_dir: debug_logs
