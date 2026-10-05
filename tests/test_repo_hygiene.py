@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -42,13 +43,31 @@ PROVIDER_SDKS = (
 
 
 def _repo_files() -> list[Path]:
-    out = []
-    for path in REPO_ROOT.rglob("*"):
-        if any(part in SKIP_DIRS for part in path.relative_to(REPO_ROOT).parts):
-            continue
-        if path.is_file() and path.name != ".env" and path.suffix in TEXT_SUFFIXES | {".example"}:
-            out.append(path)
-    return out
+    """Files that are (or would be) committed: tracked plus untracked-but-not-ignored.
+
+    Git-ignored output such as index caches (which hold copies of third-party code) is
+    excluded; it never reaches the repo.
+    """
+    try:
+        listed = subprocess.run(
+            ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.splitlines()
+        candidates = [REPO_ROOT / line for line in listed]
+    except (OSError, subprocess.CalledProcessError):  # not a git checkout: walk the tree
+        candidates = [
+            p
+            for p in REPO_ROOT.rglob("*")
+            if not any(part in SKIP_DIRS for part in p.relative_to(REPO_ROOT).parts)
+        ]
+    return [
+        path
+        for path in candidates
+        if path.is_file() and path.name != ".env" and path.suffix in TEXT_SUFFIXES | {".example"}
+    ]
 
 
 @pytest.mark.parametrize("name", sorted(SECRET_PATTERNS))

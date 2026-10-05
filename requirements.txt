@@ -81,6 +81,10 @@ mdurl==0.1.2
 mypy==2.4.0
 mypy-extensions==1.1.0
     # via mypy
+numpy==2.4.6 ; python_full_version < '3.12'
+    # via rank-bm25
+numpy==2.5.3 ; python_full_version >= '3.12'
+    # via rank-bm25
 outcome==1.3.0.post0
     # via
     #   trio
@@ -118,6 +122,8 @@ python-dotenv==1.2.4
     # via pydantic-settings
 pyyaml==6.0.3
     # via ticket2test
+rank-bm25==0.2.2
+    # via ticket2test
 requests==2.34.2
     # via
     #   google-auth
@@ -137,6 +143,10 @@ sortedcontainers==2.4.0
     # via trio
 tenacity==9.1.4
     # via google-genai
+tree-sitter==0.26.0
+    # via ticket2test
+tree-sitter-python==0.25.0
+    # via ticket2test
 trio==0.34.0
     # via
     #   selenium

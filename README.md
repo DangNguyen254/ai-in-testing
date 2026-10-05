@@ -4,7 +4,7 @@ Turns a bug ticket into **structured draft test cases**, then into **runnable te
 human QE to review. Generic and company-agnostic: ticket source, codebase, LLM endpoint, and
 conventions all sit behind adapters and config. Built and evaluated on public data only.
 
-> Status: Phase 3 (synthetic stand-in suite in `standin/`). `normalize` and `draft` work; other subcommands are placeholders. See `PROJECT_STATUS.md`.
+> Status: Phase 4 (indexer). `normalize`, `draft`, `index`, and `search` work; other subcommands are placeholders. See `PROJECT_STATUS.md`.
 
 ## Quick start
 
@@ -87,6 +87,21 @@ Set `llm.provider` in `config.yaml`:
 
 If `ANTHROPIC_API_KEY` is set in the environment, the Claude CLI uses it (API billing) instead
 of your subscription login. Full prompts and responses are logged only with `--debug-log`.
+
+### Index and search a repo
+
+```bash
+uv run ticket2test index standin                     # parse, chunk, catalog, BM25; cached
+uv run ticket2test search "invite user" --repo standin --kind test --top-k 5
+```
+
+The index is cached under `.t2t_cache/index/` (git-ignored) and rebuilt incrementally: only
+files whose content changed are parsed again (`--force` rebuilds everything). Test chunks
+carry their decorators, markers, statically computed pytest ids, and matching JSON data entries;
+the symbol catalog includes page-object property chains such as `nav.inventory.items.search`.
+
+For the public stand-in used in tests: `git clone --depth 1 --branch 0.28.1
+https://github.com/encode/httpx .scratch/repos/httpx` (tests that need it skip without it).
 
 ## Stand-in suite
 

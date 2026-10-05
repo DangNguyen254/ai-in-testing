@@ -51,6 +51,20 @@ normalize:
   max_comments: 50                 # long threads keep the first + most recent comments
   max_comment_chars: 4000
 
+index:
+  ignore: [.git, .hg, .svn, .venv, venv, env, __pycache__, node_modules, .tox, .nox,
+           .mypy_cache, .ruff_cache, .pytest_cache, .scratch, build, dist, site-packages,
+           "*.egg-info", vendor, vendored, third_party, "*_pb2.py", "*_pb2_grpc.py"]
+  max_file_bytes: 1000000
+  test_file_globs: ["test_*.py", "*_test.py"]
+  test_function_prefix: test
+  test_class_prefix: Test
+  data_file_suffix: .json        # test_x.py -> test_x.json
+  chain_roots: [nav]             # page-object chains start here: nav.<area>.<page>
+  max_chain_depth: 4
+  max_chain_entries: 5000
+  name_boost: 3
+
 retrieval:
   top_k: 10
   max_followup_rounds: 2

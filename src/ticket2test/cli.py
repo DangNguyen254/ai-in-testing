@@ -182,15 +182,71 @@ def draft(
 
 
 @app.command()
-def index() -> None:
-    """Index a target repo: chunks, symbol catalog, BM25 (Phase 4)."""
-    _not_implemented(4)
+def index(
+    ctx: typer.Context,
+    repo_path: Annotated[Path, typer.Argument(help="Target repo to index (read-only).")],
+    force: Annotated[
+        bool, typer.Option("--force", help="Rebuild from scratch instead of reusing the cache.")
+    ] = False,
+) -> None:
+    """Index a target repo: chunks, symbol catalog, BM25 search tokens."""
+    from ticket2test.index.indexer import update_index
+
+    state: AppState = ctx.obj
+    if not repo_path.is_dir():
+        typer.echo(f"Error: not a directory: {repo_path}", err=True)
+        raise typer.Exit(code=2)
+    _, stats, path = update_index(repo_path, state.settings, force=force)
+    kinds = ", ".join(f"{n} {k}" for k, n in sorted(stats.chunks_by_kind.items()))
+    typer.echo(
+        f"Indexed {repo_path}: {stats.files} files ({stats.parsed} parsed, {stats.reused} reused, "
+        f"{len(stats.skipped)} skipped) in {stats.seconds:.1f}s\n"
+        f"Chunks: {kinds or 'none'}\n"
+        f"Symbols: {stats.symbols}, page-object chains: {stats.chains}\n"
+        f"Saved {path}"
+    )
+    for skipped in stats.skipped[:10]:
+        typer.echo(f"  skipped: {skipped.reason}")
+    if len(stats.skipped) > 10:
+        typer.echo(f"  ... and {len(stats.skipped) - 10} more")
 
 
 @app.command()
-def search() -> None:
-    """Search the index (Phase 4)."""
-    _not_implemented(4)
+def search(
+    ctx: typer.Context,
+    query: Annotated[str, typer.Argument(help="Words or identifiers to search for.")],
+    repo: Annotated[Path, typer.Option(help="Repo that was indexed with `index`.")] = Path("."),
+    top_k: Annotated[int | None, typer.Option(help="Results (default: retrieval.top_k).")] = None,
+    kind: Annotated[
+        list[str] | None,
+        typer.Option(help="Only these chunk kinds: test, function, class, page_object."),
+    ] = None,
+) -> None:
+    """Search an indexed repo (BM25 over chunks)."""
+    from ticket2test.index.indexer import index_dir, load_index
+
+    state: AppState = ctx.obj
+    allowed = {"test", "function", "class", "page_object"}
+    unknown = set(kind or []) - allowed
+    if unknown:
+        typer.echo(f"Error: unknown kind(s): {', '.join(sorted(unknown))}", err=True)
+        raise typer.Exit(code=2)
+    data = load_index(index_dir(repo, state.settings), state.settings)
+    if data is None:
+        typer.echo(f"Error: no index for {repo}. Run `ticket2test index {repo}` first.", err=True)
+        raise typer.Exit(code=1)
+    hits = data.search_index().search(
+        query,
+        top_k=top_k or state.settings.retrieval.top_k,
+        kinds=kind or None,  # type: ignore[arg-type]
+    )
+    if not hits:
+        typer.echo("No results.")
+        return
+    for rank, hit in enumerate(hits, start=1):
+        c = hit.chunk
+        where = f"{c.file_path}:{c.start_line}"
+        typer.echo(f"{rank:>2}. {hit.score:6.2f}  {c.kind:<11} {c.qualname}  ({where})")
 
 
 @app.command()

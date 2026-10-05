@@ -20,7 +20,7 @@ Tracks progress, scope, and acceptance criteria for each phase. Read together wi
 | 1 | Ticket normalizer | ✅ | 0 |
 | 2 | Draft generation | ✅ | 1 |
 | 3 | Synthetic stand-in repo | ✅ | 0 |
-| 4 | Indexer (Python) | 🟡 | 3 |
+| 4 | Indexer (Python) | ✅ | 3 |
 | 5 | Retrieval | ⬜ | 2, 4 |
 | 6 | Code generation (code + JSON pair) | ⬜ | 5 |
 | 7 | Validators, repair, sandbox | ⬜ | 6 |
@@ -219,7 +219,7 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 ---
 
 ## Phase 4: Indexer (Python)
-**Status:** 🟡 In progress
+**Status:** ✅ Done (2026-10-05)
 
 **Goal:** Make a codebase searchable by structure and keywords, and know which names (incl. page-object chains) really exist.
 
@@ -241,17 +241,20 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 - Must handle a repo of ~1,000 Python files in a reasonable time (target under 2 minutes)
 
 **Definition of Done:**
-- [ ] Indexing the stand-in and `httpx` completes, and the cache reloads without re-parsing
-- [ ] Stand-in test chunks carry their decorators, markers, and matching JSON entries
-- [ ] Static id computation matches `pytest --collect-only` on the stand-in, incl. stacked parametrize (tested)
-- [ ] For 5 hand-picked known functions or pages, a search returns their tests in the top 5
-- [ ] Symbol catalog confirms existence and non-existence of names **and property chains** (tested)
-- [ ] Identifier splitting has unit tests
-- [ ] Parsing errors in a single file are logged and skipped, not fatal
+- [x] Indexing the stand-in and `httpx` completes, and the cache reloads without re-parsing
+- [x] Stand-in test chunks carry their decorators, markers, and matching JSON entries
+- [x] Static id computation matches `pytest --collect-only` on the stand-in, incl. stacked parametrize (tested)
+- [x] For 5 hand-picked known functions or pages, a search returns their tests in the top 5
+- [x] Symbol catalog confirms existence and non-existence of names **and property chains** (tested)
+- [x] Identifier splitting has unit tests
+- [x] Parsing errors in a single file are logged and skipped, not fatal
 
 **Open questions:** –
 
-**Log:** –
+**Log:**
+- 2026-10-05: Started. Dependencies from the CLAUDE.md tech stack: `tree-sitter` 0.26 (MIT), `tree-sitter-python` 0.25 (MIT), `rank-bm25` 0.2.2 (Apache-2.0). Flagged: `rank-bm25` pulls in `numpy` 2.5, licensed `BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0` (Zlib and CC0 are permissive but outside MIT/BSD/Apache). `encode/httpx` cloned at tag 0.28.1 into `.scratch/repos/httpx` (public, git-ignored).
+- 2026-10-05: Built. `adapters/repo/local_path.py` (read-only; ignore patterns per path segment, binary/oversize/non-UTF-8 detection, refuses paths outside the root). `index/extract.py` (tree-sitter: module functions, classes, methods, decorators, params, return/attribute annotations, `self.x = Callee(...)`; syntax errors raise and the file is skipped). `index/pytest_ids.py` (mirrors pytest's IdMaker for literal values: explicit ids, ASCII escaping, `<argname><idx>` fallback, duplicate counters, stacked bottom-first, class-level after function; non-literals, `ids=` callables, parametrized fixtures and a custom `pytest_make_parametrize_id` hook mark ids "not computed"). `index/catalog.py` (symbols incl. fixtures and markers; classes with members through base classes; property-chain resolution with `ok` / `missing` / `unknown_type` / `no_root`, call steps `x()`, self-returning methods; chain enumeration from `index.chain_roots` bounded by depth and size; page objects = classes reached by chains + their bases). `index/chunks.py` (test chunk = function + decorators + markers + parametrize + fixtures + test ids + JSON entries; page objects chunked whole; plain classes as header-only; methods as function chunks). `index/tokens.py` (snake/Camel/acronym/digit splitting + whole identifier). `index/search.py` (BM25 over name-boosted text incl. ids, markers, entry data). `index/indexer.py` (cache `<cache_dir>/index/<repo>-<hash>/index.json`; per-file SHA-256 reuse; settings fingerprint invalidates; unreadable/unparsable files logged and skipped). CLI `index <repo> [--force]` and `search "<q>" --repo <path> [--top-k] [--kind]`. `Chunk` model adds `qualname`, `docstring`, `fixtures`, `test_ids_computed`, `test_ids_note` to the CLAUDE.md fields. Config `index.*`. The repo secret scan now checks only files git tracks or would add, so git-ignored index caches (copies of third-party code) don't trip it.
+- 2026-10-05: Verified. Stand-in: 25 files, 22 test / 16 page_object / 12 class / 162 function chunks, 345 symbols, 225 chains; static ids equal `pytest --collect-only` exactly. httpx: 60 files in ~2 s, 539 test chunks, 1515 symbols; cached rebuild parses 0 files. Search: `get_environment_proxies`, `URLPattern`, `DigestAuth`, `Cookies`, `BasicAuth` (httpx) and `item_editor`, `invite` (stand-in) return tests that use them within the top 5. Pytest-id rules checked against pytest's own IdMaker on 14 decorator shapes. Benchmark: 1,020 files cold build 33 s, cached rebuild 10 s (target < 2 min). ruff, mypy strict (49 files), pytest 318 passed, 7 live deselected. Done.
 
 ---
 
@@ -448,3 +451,4 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 | 2026-10-05 | 2 | Phase 2 draft generation built and verified (offline checks, live run, human Markdown review); marked ✅ Done |
 | 2026-10-05 | 3 | Stand-in built and verified; all DoD items pass except the human name review |
 | 2026-10-05 | 3 | Human name review done; Phase 3 marked ✅ Done. Phase 4 started |
+| 2026-10-05 | 4 | Indexer built and verified (stand-in + httpx, ids vs collect-only, search, catalog chains, cache); marked ✅ Done |

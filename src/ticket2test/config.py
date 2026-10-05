@@ -87,6 +87,27 @@ class DraftSettings(_Section):
     unknown_component_max_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
 
 
+class IndexSettings(_Section):
+    # fnmatch patterns matched against every path segment.
+    ignore: list[str] = Field(
+        default_factory=lambda: [
+            ".git", ".hg", ".svn", ".venv", "venv", "env", "__pycache__", "node_modules",
+            ".tox", ".nox", ".mypy_cache", ".ruff_cache", ".pytest_cache", ".scratch",
+            "build", "dist", "site-packages", "*.egg-info", "vendor", "vendored",
+            "third_party", "*_pb2.py", "*_pb2_grpc.py",
+        ]
+    )  # fmt: skip
+    max_file_bytes: int = Field(default=1_000_000, ge=1)
+    test_file_globs: list[str] = Field(default_factory=lambda: ["test_*.py", "*_test.py"])
+    test_function_prefix: str = "test"
+    test_class_prefix: str = "Test"
+    data_file_suffix: str = ".json"  # test_x.py -> test_x.json
+    chain_roots: list[str] = Field(default_factory=lambda: ["nav"])
+    max_chain_depth: int = Field(default=4, ge=1)
+    max_chain_entries: int = Field(default=5000, ge=1)
+    name_boost: int = Field(default=3, ge=1)  # symbol name repeats in the search text
+
+
 class RetrievalSettings(_Section):
     top_k: int = Field(default=10, ge=1)
     max_followup_rounds: int = Field(default=2, ge=0)
@@ -154,6 +175,7 @@ class Settings(BaseSettings):
     llm: LLMSettings = LLMSettings()
     tickets: TicketSettings = TicketSettings()
     normalize: NormalizeSettings = NormalizeSettings()
+    index: IndexSettings = IndexSettings()
     draft: DraftSettings = DraftSettings()
     markers: MarkerSettings = MarkerSettings()
     eval: EvalSettings = EvalSettings()
