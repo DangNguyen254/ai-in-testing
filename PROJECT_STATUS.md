@@ -18,7 +18,7 @@ Tracks progress, scope, and acceptance criteria for each phase. Read together wi
 |---|---|---|---|
 | 0 | Skeleton | ✅ (models extended, see notes) | – |
 | 1 | Ticket normalizer | ✅ | 0 |
-| 2 | Draft generation | 🟡 | 1 |
+| 2 | Draft generation | ✅ | 1 |
 | 3 | Synthetic stand-in repo | ⬜ | 0 |
 | 4 | Indexer (Python) | ⬜ | 3 |
 | 5 | Retrieval | ⬜ | 2, 4 |
@@ -115,7 +115,7 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 ---
 
 ## Phase 2: Draft generation
-**Status:** 🟡 In progress (paused 2026-10-05 for the target-suite scope update; resumed the same day after the human approved it).
+**Status:** ✅ Done (2026-10-05)
 
 **Goal:** Turn a `Ticket` into structured `TestCaseDraft`(s) a QE can review before any code is written.
 
@@ -147,10 +147,11 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 - [x] Malformed LLM output triggers a retry and then a clean failure (tested with the fake LLM)
 - [x] Secret scrubber has unit tests for at least: API-key-like strings, bearer tokens, passwords in URLs
 - [x] Drafts include `markers`, `test_kind`, and `deployment_type` (schema-tested)
-- [ ] Markdown output is readable by a non-engineer (checked by a human)
+- [x] Markdown output is readable by a non-engineer (checked by a human)
 
 **Open questions:**
 - The `httpx` fixture tickets are library bugs, so their drafts will be `test_kind: "api"`. UI drafts get exercised by the stand-in's fake tickets once Phase 3 exists. Is that OK for this phase's DoD? **Resolved 2026-10-05:** yes.
+- Prompt improvement for a future `draft_v2`: in the #1498 review, a precondition said "Install httpx 0.17.0 or the latest version with the fix", but 0.17.0 is the version where the bug appeared. Add a rule against citing versions unless the ticket makes them essential. Not blocking.
 
 **Log:**
 - 2026-10-05: Decisions from the human: SDKs `anthropic` (MIT) and `google-genai` (Apache-2.0) approved; default model `claude-sonnet-5-5`; Gemini model config-only (ID to be provided later); new `claude_code_cli` provider as the default (no API key available); unknown-component confidence cap 0.5; live tests run by the human.
@@ -161,6 +162,7 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 - 2026-10-05: Verified (offline). ruff check + format, mypy strict (40 files), pytest 234 passed, 7 live deselected. Tests cover: CLI provider args (tools/MCP/skills/settings off, no `--bare`, prompt via stdin, isolated workdir, timeout, errors, VS Code binary fallback, API-key billing warning), Claude API request shape (structured output, fallbacks, no temperature/seed), Gemini request shape (temperature, seed, JSON schema), retry cap, scrubber (incl. no false positives on normal code), draft ok/insufficient/precheck paths, invalid marker values and draft counts trigger retries, secrets removed from prompt and output, Markdown, CLI. The CLI resolves to the bundled VS Code `claude.exe` on this machine. **Not yet run:** the live draft tests (`uv run pytest -m live`), left for the human as agreed. Known noise: a `DeprecationWarning` from `google-genai` on Python 3.14 (third-party).
 - 2026-10-05: Hard Constraint 9 applied. pytest temp → `.scratch/pytest` (`--basetemp`), uv cache → `.scratch/uv-cache` (`[tool.uv] cache-dir`), CLI provider workdir → `.scratch/claude-cli` (config `llm.claude_code_cli.workdir`). VS Code binary lookup removed; the binary comes from `llm.claude_code_cli.executable` (PATH name or full path via env). Repo secret scan skips `.scratch/`. Re-verified: ruff, mypy strict (40 files), pytest 234 passed, 7 live deselected. One real CLI call (via the provider class, from Python) with a canary `CLAUDE.md` in a parent folder of the workdir: the model reported no project instructions and did not return the canary codeword, so parent `CLAUDE.md` files are not loaded with these flags (single sample).
 - 2026-10-05: Live run by the human (`uv run --env-file .env pytest -m live -v`): 7 passed in 116 s (5 fixture tickets, vague ticket → `insufficient_info`, GitHub fetch). Two setup bugs fixed first: the autouse conftest fixture stripped `T2T_*` env vars from live tests too (live tests are now exempt); and uv's `.env` parser rejected a backslash Windows path (use forward slashes). `uv` added as a dev dependency so an activated venv has it. Remaining: Markdown readability review and the billing check (both by the human).
+- 2026-10-05: Markdown review by the human: `encode/httpx#1498` (1 primary + 2 edge-case drafts; edge-case values traced to the ticket's comments) and the vague `DEMO-900` (`insufficient_info`, both items missing) judged readable. Billing check by the human: no usage on the Claude Console (API), so the CLI calls appear to count against the Pro subscription; Pro usage can't be broken down far enough to confirm. Consistent with the probe's `apiKeySource: "none"`. Every DoD item checked. Done.
 
 ---
 
@@ -439,3 +441,4 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 | 2026-10-05 | all | Scope update from target-suite patterns: test output is a code + JSON data pair; Chunk includes decorators/markers/JSON entries; symbol catalog adds page-object property chains; new data-consistency validators; config-block reuse; TestCaseDraft gains markers/test_kind/deployment_type; `pytest --collect-only` is the primary execution check; git-history mining for eval pairs; UI tests in scope. New Phase 3 (synthetic stand-in); former Phases 3–8 renumbered to 4–9. Phase 2 paused. |
 | 2026-10-05 | all | Human approved the scope update, incl. the 3 hard-constraint wording changes and moving priority/component into `markers`. Answers: `selenium` in the stand-in; `http.server` for the fake app; host `--collect-only` only for the hand-written stand-in; httpx API drafts OK for Phase 2; generic placeholder marker values and a Jira-style ticket-id regex in config. Phase 2 resumed. |
 | 2026-10-05 | all | New Hard Constraint 9: Claude Code works only inside this repo (no reading, searching, or writing elsewhere; temp files in git-ignored `.scratch/`). |
+| 2026-10-05 | 2 | Phase 2 draft generation built and verified (offline checks, live run, human Markdown review); marked ✅ Done |
