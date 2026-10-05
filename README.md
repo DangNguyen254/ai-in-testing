@@ -101,6 +101,11 @@ Use `--config path.yaml` or `T2T_CONFIG=path.yaml` to point at another file.
 
 Secrets (API tokens) are **never** in `config.yaml`. Copy `.env.example` to `.env` (git-ignored),
 fill it in, and load it with `uv run --env-file .env ticket2test ...`.
+Write Windows paths in `.env` with forward slashes (`C:/path/to/claude.exe`): uv's `.env`
+parser treats backslashes in unquoted values as escapes.
+
+`uv` is also a dev dependency, so after the first `uv sync` an activated venv has its own `uv`.
+If `uv` isn't on PATH at all, `py -m uv ...` works when uv was installed with `pip install uv`.
 
 ## Tests
 

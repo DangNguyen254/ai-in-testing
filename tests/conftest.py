@@ -16,8 +16,16 @@ GITHUB_FIXTURE_ISSUES = (2985, 1482, 1498, 1234, 914)
 
 
 @pytest.fixture(autouse=True)
-def _isolate_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Keep tests independent of the developer's shell env and working directory."""
+def _isolate_env(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Keep unit tests independent of the developer's shell env and working directory.
+
+    Live tests are exempt: they need the real environment (e.g. the CLI path from
+    `uv run --env-file .env`) and run from the repo root.
+    """
+    if request.node.get_closest_marker("live"):
+        return
     for key in list(os.environ):
         if key.startswith("T2T_") or key == "GITHUB_TOKEN":
             monkeypatch.delenv(key)
