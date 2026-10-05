@@ -1,0 +1,112 @@
+{
+  "url": "https://api.github.com/repos/encode/httpx/issues/1234",
+  "repository_url": "https://api.github.com/repos/encode/httpx",
+  "labels_url": "https://api.github.com/repos/encode/httpx/issues/1234/labels{/name}",
+  "comments_url": "https://api.github.com/repos/encode/httpx/issues/1234/comments",
+  "events_url": "https://api.github.com/repos/encode/httpx/issues/1234/events",
+  "html_url": "https://github.com/encode/httpx/issues/1234",
+  "id": 688073130,
+  "node_id": "MDU6SXNzdWU2ODgwNzMxMzA=",
+  "number": 1234,
+  "title": "Auth fails for responses that include multiple WWW-Authenticate headers.",
+  "user": {
+    "login": "beruhan",
+    "id": 7598892,
+    "node_id": "MDQ6VXNlcjc1OTg4OTI=",
+    "avatar_url": "https://avatars.githubusercontent.com/u/7598892?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/beruhan",
+    "html_url": "https://github.com/beruhan",
+    "followers_url": "https://api.github.com/users/beruhan/followers",
+    "following_url": "https://api.github.com/users/beruhan/following{/other_user}",
+    "gists_url": "https://api.github.com/users/beruhan/gists{/gist_id}",
+    "starred_url": "https://api.github.com/users/beruhan/starred{/owner}{/repo}",
+    "subscriptions_url": "https://api.github.com/users/beruhan/subscriptions",
+    "organizations_url": "https://api.github.com/users/beruhan/orgs",
+    "repos_url": "https://api.github.com/users/beruhan/repos",
+    "events_url": "https://api.github.com/users/beruhan/events{/privacy}",
+    "received_events_url": "https://api.github.com/users/beruhan/received_events",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false
+  },
+  "labels": [
+    {
+      "id": 1304068458,
+      "node_id": "MDU6TGFiZWwxMzA0MDY4NDU4",
+      "url": "https://api.github.com/repos/encode/httpx/labels/bug",
+      "name": "bug",
+      "color": "d73a4a",
+      "default": true,
+      "description": "Something isn't working",
+      "archived_at": null,
+      "archived_by": null
+    }
+  ],
+  "state": "closed",
+  "locked": false,
+  "assignees": [
+
+  ],
+  "milestone": null,
+  "comments": 9,
+  "created_at": "2020-08-28T13:24:24Z",
+  "updated_at": "2020-09-02T09:33:55Z",
+  "closed_at": "2020-09-01T13:08:11Z",
+  "assignee": null,
+  "author_association": "NONE",
+  "issue_field_values": [
+
+  ],
+  "type": null,
+  "active_lock_reason": null,
+  "sub_issues_summary": {
+    "total": 0,
+    "completed": 0,
+    "percent_completed": 0
+  },
+  "issue_dependencies_summary": {
+    "blocked_by": 0,
+    "total_blocked_by": 0,
+    "blocking": 0,
+    "total_blocking": 0
+  },
+  "body": "### Checklist\r\n\r\nhttpx==0.11.1\r\n\r\n### Describe the bug\r\nI use httpx request camera mjpeg,The camera response two WWW-Authenticate headers,I used the right username and password,but It response 401. When I user chrome, everything is ok, I doubt the httpx.DigestAuth may have bug when handle digest.\r\nWireShark Data as follows:\r\n\r\n**request with httpx**\r\n```\r\nGET /cgi-bin/guest/Video.cgi?media=MJPEG&channel=0 HTTP/1.1\r\nhost: 192.168.12.88\r\nuser-agent: python-httpx/0.11.1\r\naccept: */*\r\naccept-encoding: gzip, deflate, br\r\nconnection: keep-alive\r\n\r\nHTTP/1.1 401 Unauthorized\r\nConnection: close\r\nContent-Type: text/html; charset=ISO-8859-1\r\nWWW-Authenticate: Digest realm=\"server\", nonce=\"4f3b1a0c93d39d1cab4d5d2a8928f85a3cc41bd5e8180e5c37587a9a8aea5097\"\r\nWWW-Authenticate: Basic realm=\"server\"\r\nContent-Length: 211\r\n\r\n<HTML><HEAD><TITLE>401 Unauthorized</TITLE></HEAD>\r\n<BODY><H1>401 Unauthorized</H1>\r\nYour client does not have permission to get URL /cgi-bin/guest/Video.cgi?media=MJPEG&channel=0 from this server.\r\n</BODY></HTML>\r\n\r\nGET /cgi-bin/guest/Video.cgi?media=MJPEG&channel=0 HTTP/1.1\r\nhost: 192.168.12.88\r\nuser-agent: python-httpx/0.11.1\r\naccept: */*\r\naccept-encoding: gzip, deflate, br\r\nconnection: keep-alive\r\nauthorization: Digest username=\"admin\", realm=\"server\", nonce=\"4f3b1a0c93d39d1cab4d5d2a8928f85a3cc41bd5e8180e5c37587a9a8aea5097\", uri=\"/cgi-bin/guest/Video.cgi?media=MJPEG&channel=0\", response=\"43265b82a45736ef943ae501f0234807\", algorithm=MD5\r\n\r\nHTTP/1.1 401 Unauthorized\r\nConnection: close\r\nContent-Type: text/html; charset=ISO-8859-1\r\nWWW-Authenticate: Digest realm=\"server\", nonce=\"4f3b1a0ca12e0b92dc8ccca22e84edf7ce355d7825ac0e21eedf8f97d82ec588\"\r\nWWW-Authenticate: Basic realm=\"server\"\r\nContent-Length: 211\r\n\r\n<HTML><HEAD><TITLE>401 Unauthorized</TITLE></HEAD>\r\n<BODY><H1>401 Unauthorized</H1>\r\nYour client does not have permission to get URL /cgi-bin/guest/Video.cgi?media=MJPEG&channel=0 from this server.\r\n</BODY></HTML>\r\n```\r\n\r\n**request with chrome**\r\n```\r\nGET /cgi-bin/guest/Video.cgi?media=MJPEG&channel=0 HTTP/1.1\r\nHost: 192.168.12.88\r\nConnection: keep-alive\r\nCache-Control: max-age=0\r\nUpgrade-Insecure-Requests: 1\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/84.0.4147.105 Safari/537.36\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9\r\nAccept-Encoding: gzip, deflate\r\nAccept-Language: zh-CN,zh;q=0.9,en;q=0.8\r\nCookie: pbAudioFalg=ON; RESOLUTION=720P; LifeTime=0; captcha=4PTT5z50/JVrA\r\n\r\nHTTP/1.1 401 Unauthorized\r\nConnection: close\r\nContent-Type: text/html; charset=ISO-8859-1\r\nWWW-Authenticate: Digest realm=\"server\", nonce=\"4f3b1c6b2dccae706af263fdc5001a702ae3512d3cc4e42ebf823c60431f64b6\"\r\nWWW-Authenticate: Basic realm=\"server\"\r\nContent-Length: 211\r\n\r\n<HTML><HEAD><TITLE>401 Unauthorized</TITLE></HEAD>\r\n<BODY><H1>401 Unauthorized</H1>\r\nYour client does not have permission to get URL /cgi-bin/guest/Video.cgi?media=MJPEG&channel=0 from this server.\r\n</BODY></HTML>\r\n\r\nGET /cgi-bin/guest/Video.cgi?media=MJPEG&channel=0 HTTP/1.1\r\nHost: 192.168.12.88\r\nConnection: keep-alive\r\nCache-Control: max-age=0\r\nAuthorization: Digest username=\"admin\", realm=\"server\", nonce=\"4f3b1c6b2dccae706af263fdc5001a702ae3512d3cc4e42ebf823c60431f64b6\", uri=\"/cgi-bin/guest/Video.cgi?media=MJPEG&channel=0\", response=\"7411b325f99b1ef61db78f6a1ba3ff9d\"\r\nUpgrade-Insecure-Requests: 1\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/84.0.4147.105 Safari/537.36\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9\r\nAccept-Encoding: gzip, deflate\r\nAccept-Language: zh-CN,zh;q=0.9,en;q=0.8\r\nCookie: pbAudioFalg=ON; RESOLUTION=720P; LifeTime=0; captcha=4PTT5z50/JVrA\r\n\r\nHTTP/1.1 200 OK\r\nExpires: 0\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nContent-Type: multipart/x-mixed-replace;boundary=\"boundary\"\r\n\r\n--boundary\r\nContent-Type: image/jpeg\r\nContent-Length: 59048\r\n\r\nxxxxx\r\n```\r\n",
+  "closed_by": {
+    "login": "lovelydinosaur",
+    "id": 647359,
+    "node_id": "MDQ6VXNlcjY0NzM1OQ==",
+    "avatar_url": "https://avatars.githubusercontent.com/u/647359?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/lovelydinosaur",
+    "html_url": "https://github.com/lovelydinosaur",
+    "followers_url": "https://api.github.com/users/lovelydinosaur/followers",
+    "following_url": "https://api.github.com/users/lovelydinosaur/following{/other_user}",
+    "gists_url": "https://api.github.com/users/lovelydinosaur/gists{/gist_id}",
+    "starred_url": "https://api.github.com/users/lovelydinosaur/starred{/owner}{/repo}",
+    "subscriptions_url": "https://api.github.com/users/lovelydinosaur/subscriptions",
+    "organizations_url": "https://api.github.com/users/lovelydinosaur/orgs",
+    "repos_url": "https://api.github.com/users/lovelydinosaur/repos",
+    "events_url": "https://api.github.com/users/lovelydinosaur/events{/privacy}",
+    "received_events_url": "https://api.github.com/users/lovelydinosaur/received_events",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false
+  },
+  "reactions": {
+    "url": "https://api.github.com/repos/encode/httpx/issues/1234/reactions",
+    "total_count": 0,
+    "+1": 0,
+    "-1": 0,
+    "laugh": 0,
+    "hooray": 0,
+    "confused": 0,
+    "heart": 0,
+    "rocket": 0,
+    "eyes": 0
+  },
+  "timeline_url": "https://api.github.com/repos/encode/httpx/issues/1234/timeline",
+  "performed_via_github_app": null,
+  "state_reason": "completed",
+  "pinned_comment": null
+}

@@ -4,7 +4,7 @@ Turns a bug ticket into **structured draft test cases**, then into **runnable te
 human QE to review. Generic and company-agnostic: ticket source, codebase, LLM endpoint, and
 conventions all sit behind adapters and config. Built and evaluated on public data only.
 
-> Status: Phase 0 (skeleton). Subcommands are placeholders. See `PROJECT_STATUS.md`.
+> Status: Phase 1 (ticket normalizer). Other subcommands are placeholders. See `PROJECT_STATUS.md`.
 
 ## Quick start
 
@@ -46,6 +46,24 @@ dependencies in `pyproject.toml`, regenerate it:
 uv lock
 uv export --format requirements-txt --no-hashes --no-emit-project -o requirements.txt
 ```
+
+## Usage
+
+### Normalize a ticket
+
+```bash
+# GitHub issue (public repos work without a token; set GITHUB_TOKEN for a higher rate limit)
+uv run ticket2test normalize encode/httpx#1498 --out ticket.json
+uv run ticket2test normalize https://github.com/encode/httpx/issues/1498
+
+# Jira: read one issue from an exported JSON file (no network)
+uv run ticket2test normalize DEMO-101 --jira-export export.json --out ticket.json
+```
+
+Without `--out`, the ticket is written to `output/tickets/<id>.json`. `--raw-out FILE` also saves
+the raw source payload. Steps, expected, and actual are extracted by rules (section headings
+such as "Steps to reproduce", "Expected behavior", "Actual:"). If a section is missing, the
+field is left empty. Nothing is guessed.
 
 ## Configuration
 

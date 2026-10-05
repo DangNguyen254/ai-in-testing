@@ -1,0 +1,40 @@
+{
+  "_comment": "Hand-written FAKE data in Jira Server/DC (API v2, wiki markup) search-export shape. Not real tickets.",
+  "total": 2,
+  "issues": [
+    {
+      "id": "20001",
+      "key": "DEMO-202",
+      "self": "https://jira.example.com/rest/api/2/issue/20001",
+      "fields": {
+        "summary": "Timeout setting ignored for streaming downloads",
+        "labels": ["timeouts"],
+        "components": [{ "name": "streaming" }],
+        "description": "Setting a read timeout has no effect when streaming a response body.\n\nh2. Steps to Reproduce\n# Create a client with {{timeout=1}}\n# Stream [a slow endpoint|https://slow.example.com/drip]\n# Wait\n\n{code:python}\nwith client.stream(\"GET\", url) as r:\n    for chunk in r.iter_bytes():\n        pass\n{code}\n\nh2. Expected Behavior\nA timeout error after about 1 second.\n\nh2. Actual Behavior\nThe download hangs for minutes.",
+        "customfield_10050": null,
+        "comment": { "total": 0, "comments": [] },
+        "issuelinks": []
+      }
+    },
+    {
+      "id": "20002",
+      "key": "DEMO-203",
+      "self": "https://jira.example.com/rest/api/2/issue/20002",
+      "fields": {
+        "summary": "Cookie jar not cleared between sessions",
+        "labels": [],
+        "components": [],
+        "description": "Cookies persist after calling {{clear()}}.",
+        "customfield_10050": "* Open a session\n* Call clear()\n* Inspect the jar",
+        "customfield_10051": "The jar is empty.",
+        "comment": {
+          "total": 1,
+          "comments": [
+            { "author": { "displayName": "Alex Example" }, "created": "2026-02-01T09:00:00.000+0000", "body": "Seen on 2.x as well." }
+          ]
+        },
+        "issuelinks": []
+      }
+    }
+  ]
+}

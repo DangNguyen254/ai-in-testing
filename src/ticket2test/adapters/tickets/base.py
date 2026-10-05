@@ -8,6 +8,18 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict
 
 
+class TicketSourceError(RuntimeError):
+    """A ticket could not be fetched. The message is safe to show to the user."""
+
+
+class TicketNotFoundError(TicketSourceError):
+    pass
+
+
+class RateLimitError(TicketSourceError):
+    pass
+
+
 class RawTicket(BaseModel):
     """A ticket exactly as the source returned it, before normalization."""
 

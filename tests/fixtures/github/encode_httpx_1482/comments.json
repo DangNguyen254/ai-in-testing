@@ -1,0 +1,49 @@
+[
+  {
+    "url": "https://api.github.com/repos/encode/httpx/issues/comments/784758337",
+    "html_url": "https://github.com/encode/httpx/issues/1482#issuecomment-784758337",
+    "issue_url": "https://api.github.com/repos/encode/httpx/issues/1482",
+    "id": 784758337,
+    "node_id": "MDEyOklzc3VlQ29tbWVudDc4NDc1ODMzNw==",
+    "user": {
+      "login": "j178",
+      "id": 10510431,
+      "node_id": "MDQ6VXNlcjEwNTEwNDMx",
+      "avatar_url": "https://avatars.githubusercontent.com/u/10510431?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/j178",
+      "html_url": "https://github.com/j178",
+      "followers_url": "https://api.github.com/users/j178/followers",
+      "following_url": "https://api.github.com/users/j178/following{/other_user}",
+      "gists_url": "https://api.github.com/users/j178/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/j178/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/j178/subscriptions",
+      "organizations_url": "https://api.github.com/users/j178/orgs",
+      "repos_url": "https://api.github.com/users/j178/repos",
+      "events_url": "https://api.github.com/users/j178/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/j178/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "created_at": "2021-02-24T04:49:14Z",
+    "updated_at": "2021-02-24T04:50:31Z",
+    "body": "Looks like we calculate `Content-Length` using Unicode length:\r\nhttps://github.com/encode/httpx/blob/0f280af8b170ed5cc48c12a894f71a8b5762f748/httpx/_multipart.py#L90-L91\r\n\r\nbut sends with bytes:\r\nhttps://github.com/encode/httpx/blob/0f280af8b170ed5cc48c12a894f71a8b5762f748/httpx/_multipart.py#L122-L123\r\n",
+    "author_association": "CONTRIBUTOR",
+    "pin": null,
+    "reactions": {
+      "url": "https://api.github.com/repos/encode/httpx/issues/comments/784758337/reactions",
+      "total_count": 0,
+      "+1": 0,
+      "-1": 0,
+      "laugh": 0,
+      "hooray": 0,
+      "confused": 0,
+      "heart": 0,
+      "rocket": 0,
+      "eyes": 0
+    },
+    "performed_via_github_app": null,
+    "minimized": null
+  }
+]

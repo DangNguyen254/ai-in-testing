@@ -17,7 +17,7 @@ Tracks progress, scope, and acceptance criteria for each phase. Read together wi
 | Phase | Name | Status | Depends on |
 |---|---|---|---|
 | 0 | Skeleton | ✅ | – |
-| 1 | Ticket normalizer | ⬜ | 0 |
+| 1 | Ticket normalizer | ✅ | 0 |
 | 2 | Draft generation | ⬜ | 1 |
 | 3 | Indexer (Python) | ⬜ | 0 |
 | 4 | Retrieval | ⬜ | 2, 3 |
@@ -68,7 +68,7 @@ Phase 3 depends only on Phase 0, so it may be built in parallel with Phases 1–
 ---
 
 ## Phase 1: Ticket normalizer
-**Status:** ⬜ Not started
+**Status:** ✅ Done
 
 **Goal:** Turn raw tickets from any source into one clean `Ticket` object, so the rest of the pipeline never depends on the source.
 
@@ -89,14 +89,18 @@ Phase 3 depends only on Phase 0, so it may be built in parallel with Phases 1–
 - Missing fields become `None` or empty lists, never invented text.
 
 **Definition of Done:**
-- [ ] 5 real public `httpx` issues saved as fixtures (raw API JSON) and normalized correctly in tests
-- [ ] A Jira-style sample JSON (hand-written, fake data) normalizes correctly
-- [ ] Unit tests cover: missing description, no steps section, very long comment threads
-- [ ] Unit tests make no live network calls (fixtures only; live test marked `@pytest.mark.live`)
+- [x] 5 real public `httpx` issues saved as fixtures (raw API JSON) and normalized correctly in tests
+- [x] A Jira-style sample JSON (hand-written, fake data) normalizes correctly
+- [x] Unit tests cover: missing description, no steps section, very long comment threads
+- [x] Unit tests make no live network calls (fixtures only; live test marked `@pytest.mark.live`)
 
-**Open questions:** –
+**Open questions:**
+- GitHub has no "components" field. `Ticket.components` stays empty for GitHub unless `tickets.github.component_label_prefixes` is configured (e.g. `["component:"]`). httpx labels like `proxies` or `http/2` are not treated as components. Phase 2's insufficient-info check must therefore not rely on `components` alone for GitHub tickets.
 
-**Log:** –
+**Log:**
+- 2026-10-05: Started. Fixtures: `encode/httpx` #2985 (no sections, no comments), #1482 (full template), #1498 (code steps, multi-paragraph expected/actual), #1234 (free-form, no sections), #914 (open, 43 comments, external links). Saved as raw `issue.json` + `comments.json` under `tests/fixtures/github/`.
+- 2026-10-05: Built. `Ticket`/`Comment`/`SourceInfo` models (`Ticket` adds `comments_omitted`; `source` is `{system, ref, url}`). `GitHubIssueSource` (httpx; optional `GITHUB_TOKEN`; comment pagination capped by `tickets.github.max_comment_pages`; clear errors for rate limit with reset time/retry-after, 404/410, 401, PRs, network). `JiraExportSource` (local file only; single issue, `{"issues": [...]}`, or list). Normalizer: ADF and wiki markup → Markdown → plain text; HTML template comments and markup stripped; fenced code kept verbatim; steps/expected/actual from headings, bold lines, and `Label:` lines, ignoring code; links from prose URLs and `#123` refs (not code or inline code). Long threads keep first + latest comments up to `normalize.max_comments` (50); each comment capped at `normalize.max_comment_chars` (4000) on a line boundary. Optional Jira `field_map` for custom steps/expected/actual fields. CLI `normalize <ref> [--jira-export F] [--out F] [--raw-out F]`. New config sections `tickets.github`, `tickets.jira`, `normalize` (additive to the Phase 0 `Settings`).
+- 2026-10-05: Verified. ruff check + format, mypy strict (28 files), pytest 147 passed (1 live deselected). Autouse fixture blocks sockets in all non-live tests (with its own test). Live test (`pytest -m live`) passed against the real API, and `ticket2test normalize https://github.com/encode/httpx/issues/1498` gives the same result as the fixture. Done.
 
 ---
 
@@ -344,3 +348,4 @@ Phase 3 depends only on Phase 0, so it may be built in parallel with Phases 1–
 |---|---|---|
 | – | – | File created |
 | 2026-10-05 | 0 | Phase 0 skeleton built and verified; marked ✅ Done |
+| 2026-10-05 | 1 | Phase 1 ticket normalizer built and verified; marked ✅ Done |

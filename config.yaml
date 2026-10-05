@@ -9,6 +9,21 @@ llm:
   seed: 0
   max_retries_on_bad_json: 2
 
+tickets:
+  github:
+    api_url: https://api.github.com
+    timeout_seconds: 30
+    comments_per_page: 100
+    max_comment_pages: 10
+    component_label_prefixes: []   # e.g. ["component:"]
+  jira:
+    browse_url: null               # e.g. https://jira.example.com/browse
+    field_map: {}                  # e.g. {steps_to_reproduce: customfield_10050}
+
+normalize:
+  max_comments: 50                 # long threads keep the first + most recent comments
+  max_comment_chars: 4000
+
 retrieval:
   top_k: 10
   max_followup_rounds: 2

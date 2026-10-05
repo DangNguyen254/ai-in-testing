@@ -1,0 +1,125 @@
+{
+  "_comment": "Hand-written FAKE data in Jira Cloud (API v3, ADF) shape. Not a real ticket.",
+  "id": "10001",
+  "key": "DEMO-101",
+  "self": "https://jira.example.com/rest/api/3/issue/10001",
+  "fields": {
+    "summary": "Redirect drops query string when Location header is relative",
+    "labels": ["regression", "http-client"],
+    "components": [{ "name": "redirects" }, { "name": "url-parsing" }],
+    "status": { "name": "Open" },
+    "description": {
+      "type": "doc",
+      "version": 1,
+      "content": [
+        {
+          "type": "paragraph",
+          "content": [
+            { "type": "text", "text": "Following a redirect with a relative " },
+            { "type": "text", "text": "Location", "marks": [{ "type": "code" }] },
+            { "type": "text", "text": " header loses the original query string. See " },
+            {
+              "type": "text",
+              "text": "the RFC",
+              "marks": [{ "type": "link", "attrs": { "href": "https://www.rfc-editor.org/rfc/rfc9110" } }]
+            },
+            { "type": "text", "text": "." }
+          ]
+        },
+        { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "Steps to reproduce" }] },
+        {
+          "type": "orderedList",
+          "attrs": { "order": 1 },
+          "content": [
+            {
+              "type": "listItem",
+              "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Start the demo server on port 8080." }] }]
+            },
+            {
+              "type": "listItem",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    { "type": "text", "text": "Request " },
+                    { "type": "text", "text": "/old?page=2", "marks": [{ "type": "code" }] },
+                    { "type": "text", "text": " with redirects enabled." }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "listItem",
+              "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Inspect the final request URL." }] }]
+            }
+          ]
+        },
+        {
+          "type": "codeBlock",
+          "attrs": { "language": "python" },
+          "content": [{ "type": "text", "text": "client = Client(follow_redirects=True)\nresp = client.get(\"http://localhost:8080/old?page=2\")\nprint(resp.url)" }]
+        },
+        { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "Expected result" }] },
+        {
+          "type": "paragraph",
+          "content": [
+            { "type": "text", "text": "Final URL is " },
+            { "type": "text", "text": "http://localhost:8080/new?page=2", "marks": [{ "type": "code" }] }
+          ]
+        },
+        { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "Actual result" }] },
+        {
+          "type": "paragraph",
+          "content": [
+            { "type": "text", "text": "Final URL is " },
+            { "type": "text", "text": "http://localhost:8080/new", "marks": [{ "type": "code" }] },
+            { "type": "hardBreak" },
+            { "type": "text", "text": "The query string is gone.", "marks": [{ "type": "strong" }] }
+          ]
+        },
+        { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "Environment" }] },
+        {
+          "type": "bulletList",
+          "content": [
+            { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Library version 1.2.3" }] }] }
+          ]
+        }
+      ]
+    },
+    "comment": {
+      "total": 2,
+      "comments": [
+        {
+          "author": { "displayName": "Alex Example" },
+          "created": "2026-01-15T10:30:00.000+0000",
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  { "type": "mention", "attrs": { "id": "fake-1", "text": "@Sam Sample" } },
+                  { "type": "text", "text": " confirmed on main." }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "author": { "displayName": "Sam Sample" },
+          "created": "2026-01-16T08:00:00.000+0000",
+          "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Probably in the URL join helper." }] }]
+          }
+        }
+      ]
+    },
+    "issuelinks": [
+      { "type": { "name": "Relates" }, "outwardIssue": { "key": "DEMO-42" } },
+      { "type": { "name": "Duplicate" }, "inwardIssue": { "key": "DEMO-7" } }
+    ]
+  }
+}

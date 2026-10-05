@@ -55,6 +55,35 @@ class SandboxSettings(_Section):
     timeout_seconds: int = Field(default=120, ge=1)
 
 
+class GitHubSettings(_Section):
+    api_url: str = "https://api.github.com"
+    timeout_seconds: float = Field(default=30.0, gt=0)
+    comments_per_page: int = Field(default=100, ge=1, le=100)
+    max_comment_pages: int = Field(default=10, ge=1)
+    # Labels starting with one of these prefixes become Ticket.components (prefix stripped).
+    component_label_prefixes: list[str] = Field(default_factory=list)
+
+
+class JiraSettings(_Section):
+    # Optional "https://<host>/browse" base used to turn issue keys into URLs.
+    browse_url: str | None = None
+    # Map Ticket fields to custom Jira field IDs, e.g. {"steps_to_reproduce": "customfield_10050"}.
+    field_map: dict[Literal["steps_to_reproduce", "expected", "actual"], str] = Field(
+        default_factory=dict
+    )
+
+
+class TicketSettings(_Section):
+    github: GitHubSettings = GitHubSettings()
+    jira: JiraSettings = JiraSettings()
+
+
+class NormalizeSettings(_Section):
+    # Long threads keep the first and the most recent comments, up to this many in total.
+    max_comments: int = Field(default=50, ge=0)
+    max_comment_chars: int = Field(default=4000, ge=100)
+
+
 class PathSettings(_Section):
     output_dir: Path = Path("output")
     cache_dir: Path = Path(".t2t_cache")
@@ -71,6 +100,8 @@ class Settings(BaseSettings):
     )
 
     llm: LLMSettings = LLMSettings()
+    tickets: TicketSettings = TicketSettings()
+    normalize: NormalizeSettings = NormalizeSettings()
     retrieval: RetrievalSettings = RetrievalSettings()
     context: ContextSettings = ContextSettings()
     repair: RepairSettings = RepairSettings()

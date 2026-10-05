@@ -1,0 +1,123 @@
+{
+  "url": "https://api.github.com/repos/encode/httpx/issues/1498",
+  "repository_url": "https://api.github.com/repos/encode/httpx",
+  "labels_url": "https://api.github.com/repos/encode/httpx/issues/1498/labels{/name}",
+  "comments_url": "https://api.github.com/repos/encode/httpx/issues/1498/comments",
+  "events_url": "https://api.github.com/repos/encode/httpx/issues/1498/events",
+  "html_url": "https://github.com/encode/httpx/issues/1498",
+  "id": 822012303,
+  "node_id": "MDU6SXNzdWU4MjIwMTIzMDM=",
+  "number": 1498,
+  "title": "Bug with merging base_url with relative path if colon present in path",
+  "user": {
+    "login": "gtors",
+    "id": 9943520,
+    "node_id": "MDQ6VXNlcjk5NDM1MjA=",
+    "avatar_url": "https://avatars.githubusercontent.com/u/9943520?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/gtors",
+    "html_url": "https://github.com/gtors",
+    "followers_url": "https://api.github.com/users/gtors/followers",
+    "following_url": "https://api.github.com/users/gtors/following{/other_user}",
+    "gists_url": "https://api.github.com/users/gtors/gists{/gist_id}",
+    "starred_url": "https://api.github.com/users/gtors/starred{/owner}{/repo}",
+    "subscriptions_url": "https://api.github.com/users/gtors/subscriptions",
+    "organizations_url": "https://api.github.com/users/gtors/orgs",
+    "repos_url": "https://api.github.com/users/gtors/repos",
+    "events_url": "https://api.github.com/users/gtors/events{/privacy}",
+    "received_events_url": "https://api.github.com/users/gtors/received_events",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false
+  },
+  "labels": [
+    {
+      "id": 1304068458,
+      "node_id": "MDU6TGFiZWwxMzA0MDY4NDU4",
+      "url": "https://api.github.com/repos/encode/httpx/labels/bug",
+      "name": "bug",
+      "color": "d73a4a",
+      "default": true,
+      "description": "Something isn't working",
+      "archived_at": null,
+      "archived_by": null
+    },
+    {
+      "id": 1508947811,
+      "node_id": "MDU6TGFiZWwxNTA4OTQ3ODEx",
+      "url": "https://api.github.com/repos/encode/httpx/labels/user-experience",
+      "name": "user-experience",
+      "color": "ff85a1",
+      "default": false,
+      "description": "Ensuring that users have a good experience using the library",
+      "archived_at": null,
+      "archived_by": null
+    }
+  ],
+  "state": "closed",
+  "locked": false,
+  "assignees": [
+
+  ],
+  "milestone": null,
+  "comments": 3,
+  "created_at": "2021-03-04T10:52:26Z",
+  "updated_at": "2021-03-24T10:51:34Z",
+  "closed_at": "2021-03-24T10:51:34Z",
+  "assignee": null,
+  "author_association": "NONE",
+  "issue_field_values": [
+
+  ],
+  "type": null,
+  "active_lock_reason": null,
+  "sub_issues_summary": {
+    "total": 0,
+    "completed": 0,
+    "percent_completed": 0
+  },
+  "issue_dependencies_summary": {
+    "blocked_by": 0,
+    "total_blocked_by": 0,
+    "blocking": 0,
+    "total_blocking": 0
+  },
+  "body": "### Checklist\r\n\r\n<!-- Please make sure you check all these items before submitting your bug report. -->\r\n\r\n- [X] The bug is reproducible against the latest release and/or `master`.\r\n- [X] There are no similar issues or pull requests to fix it yet.\r\n\r\n### Describe the bug\r\n\r\nAfter upgrading to `httpx 0.17.0` from `httpx 0.16.1`, the `base_url` merge with relative paths containing a colon was broken.\r\n\r\n### To reproduce\r\n\r\n```py\r\nimport httpx\r\n\r\nclient = httpx.Client(base_url=\"https://example.org/some/path\")\r\nclient.build_request(\"POST\", \"/sub:path\")  # colon in path\r\n\r\n# <Request('POST', 'sub:path')> instead of <Request('POST', 'https://example.org/some/path/sub%3Apath')>\r\n```\r\n\r\nalso, calling the `get` method leads to the following exception:\r\n\r\n```py\r\nIn [6]: client.get(\"/sub:path\")\r\n---------------------------------------------------------------------------\r\nUnsupportedProtocol                       Traceback (most recent call last)\r\n~/.local/share/virtualenvs/bug-IVcS609A/lib/python3.9/site-packages/httpx/_exceptions.py in map_exceptions(mapping, **kwargs)\r\n    325     try:\r\n--> 326         yield\r\n    327     except Exception as exc:\r\n\r\n~/.local/share/virtualenvs/bug-IVcS609A/lib/python3.9/site-packages/httpx/_client.py in _send_single_request(self, request, timeout)\r\n    855         with map_exceptions(HTTPCORE_EXC_MAP, request=request):\r\n--> 856             (status_code, headers, stream, ext) = transport.request(\r\n    857                 request.method.encode(),\r\n\r\n~/.local/share/virtualenvs/bug-IVcS609A/lib/python3.9/site-packages/httpx/_transports/default.py in request(self, method, url, headers, stream, ext)\r\n    101     ) -> typing.Tuple[int, Headers, httpcore.SyncByteStream, dict]:\r\n--> 102         return self._pool.request(method, url, headers=headers, stream=stream, ext=ext)\r\n    103\r\n\r\n~/.local/share/virtualenvs/bug-IVcS609A/lib/python3.9/site-packages/httpcore/_sync/connection_pool.py in request(self, method, url, headers, stream, ext)\r\n    190             scheme = url[0].decode(\"latin-1\")\r\n--> 191             raise UnsupportedProtocol(f\"Unsupported URL protocol {scheme!r}\")\r\n    192         if not url[1]:\r\n\r\nUnsupportedProtocol: Unsupported URL protocol 'sub'\r\n\r\nThe above exception was the direct cause of the following exception:\r\n\r\nUnsupportedProtocol                       Traceback (most recent call last)\r\n<ipython-input-6-0ea8464e1217> in <module>\r\n----> 1 client.get(\"/sub:path\")\r\n\r\n~/.local/share/virtualenvs/bug-IVcS609A/lib/python3.9/site-packages/httpx/_client.py in get(self, url, params, headers, cookies, auth, allow_redirects, timeout)\r\n    900         **Parameters**: See `httpx.request`.\r\n    901         \"\"\"\r\n--> 902         return self.request(\r\n    903             \"GET\",\r\n    904             url,\r\n\r\n~/.local/share/virtualenvs/bug-IVcS609A/lib/python3.9/site-packages/httpx/_client.py in request(self, method, url, content, data, files, json, params, headers, cookies, auth, allow_redirects, timeout)\r\n    726             cookies=cookies,\r\n    727         )\r\n--> 728         return self.send(\r\n    729             request, auth=auth, allow_redirects=allow_redirects, timeout=timeout\r\n    730         )\r\n\r\n~/.local/share/virtualenvs/bug-IVcS609A/lib/python3.9/site-packages/httpx/_client.py in send(self, request, stream, auth, allow_redirects, timeout)\r\n    760         auth = self._build_request_auth(request, auth)\r\n    761\r\n--> 762         response = self._send_handling_auth(\r\n    763             request,\r\n    764             auth=auth,\r\n\r\n~/.local/share/virtualenvs/bug-IVcS609A/lib/python3.9/site-packages/httpx/_client.py in _send_handling_auth(self, request, auth, timeout, allow_redirects, history)\r\n    798\r\n    799         while True:\r\n--> 800             response = self._send_handling_redirects(\r\n    801                 request,\r\n    802                 timeout=timeout,\r\n\r\n~/.local/share/virtualenvs/bug-IVcS609A/lib/python3.9/site-packages/httpx/_client.py in _send_handling_redirects(self, request, timeout, allow_redirects, history)\r\n    830                 )\r\n    831\r\n--> 832             response = self._send_single_request(request, timeout)\r\n    833             response.history = list(history)\r\n    834\r\n\r\n~/.local/share/virtualenvs/bug-IVcS609A/lib/python3.9/site-packages/httpx/_client.py in _send_single_request(self, request, timeout)\r\n    854\r\n    855         with map_exceptions(HTTPCORE_EXC_MAP, request=request):\r\n--> 856             (status_code, headers, stream, ext) = transport.request(\r\n    857                 request.method.encode(),\r\n    858                 request.url.raw,\r\n\r\n/usr/lib/python3.9/contextlib.py in __exit__(self, type, value, traceback)\r\n    133                 value = type()\r\n    134             try:\r\n--> 135                 self.gen.throw(type, value, traceback)\r\n    136             except StopIteration as exc:\r\n    137                 # Suppress StopIteration *unless* it's the same exception that\r\n\r\n~/.local/share/virtualenvs/bug-IVcS609A/lib/python3.9/site-packages/httpx/_exceptions.py in map_exceptions(mapping, **kwargs)\r\n    341\r\n    342         message = str(exc)\r\n--> 343         raise mapped_exc(message, **kwargs) from exc  # type: ignore\r\n    344\r\n    345\r\n\r\nUnsupportedProtocol: Unsupported URL protocol 'sub'\r\n```\r\n\r\n### Expected behavior\r\n\r\n`client.build_request(\"POST\", \"/sub:path\")` returns `<Request('POST', 'https://example.org/some/path/sub%3Apath')>` \r\n\r\n`client.get(\"/sub:path\")` not raises UnsupportedProtocol exception\r\n\r\n### Actual behavior\r\n\r\n`client.build_request(\"POST\", \"/sub:path\")` returns `<Request('POST', 'sub:path')>` \r\n\r\n`client.get(\"/sub:path\")` raises UnsupportedProtocol exception\r\n\r\n\r\n### Environment\r\n\r\n- OS: Linux\r\n- Python version: 3.9\r\n- HTTPX version: 0.17.0\r\n- Async environment: asyncio\r\n- HTTP proxy: no\r\n- Custom certificates: no\r\n\r\n",
+  "closed_by": {
+    "login": "lovelydinosaur",
+    "id": 647359,
+    "node_id": "MDQ6VXNlcjY0NzM1OQ==",
+    "avatar_url": "https://avatars.githubusercontent.com/u/647359?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/lovelydinosaur",
+    "html_url": "https://github.com/lovelydinosaur",
+    "followers_url": "https://api.github.com/users/lovelydinosaur/followers",
+    "following_url": "https://api.github.com/users/lovelydinosaur/following{/other_user}",
+    "gists_url": "https://api.github.com/users/lovelydinosaur/gists{/gist_id}",
+    "starred_url": "https://api.github.com/users/lovelydinosaur/starred{/owner}{/repo}",
+    "subscriptions_url": "https://api.github.com/users/lovelydinosaur/subscriptions",
+    "organizations_url": "https://api.github.com/users/lovelydinosaur/orgs",
+    "repos_url": "https://api.github.com/users/lovelydinosaur/repos",
+    "events_url": "https://api.github.com/users/lovelydinosaur/events{/privacy}",
+    "received_events_url": "https://api.github.com/users/lovelydinosaur/received_events",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false
+  },
+  "reactions": {
+    "url": "https://api.github.com/repos/encode/httpx/issues/1498/reactions",
+    "total_count": 0,
+    "+1": 0,
+    "-1": 0,
+    "laugh": 0,
+    "hooray": 0,
+    "confused": 0,
+    "heart": 0,
+    "rocket": 0,
+    "eyes": 0
+  },
+  "timeline_url": "https://api.github.com/repos/encode/httpx/issues/1498/timeline",
+  "performed_via_github_app": null,
+  "state_reason": "completed",
+  "pinned_comment": null
+}
