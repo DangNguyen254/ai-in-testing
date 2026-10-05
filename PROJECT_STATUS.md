@@ -8,7 +8,7 @@ Tracks progress, scope, and acceptance criteria for each phase. Read together wi
 - A phase is `✅ Done` only when **every** Definition of Done (DoD) item is checked.
 - Put anything unresolved under **Open questions** and stop for the human to answer.
 
-**Status legend:** ⬜ Not started · 🟡 In progress · ⏸️ Blocked · ✅ Done
+**Status legend:** ⬜ Not started · 🟡 In progress · ⏸️ Blocked or paused · ✅ Done
 
 ---
 
@@ -16,17 +16,18 @@ Tracks progress, scope, and acceptance criteria for each phase. Read together wi
 
 | Phase | Name | Status | Depends on |
 |---|---|---|---|
-| 0 | Skeleton | ✅ | – |
+| 0 | Skeleton | ✅ (models extended, see notes) | – |
 | 1 | Ticket normalizer | ✅ | 0 |
-| 2 | Draft generation | ⬜ | 1 |
-| 3 | Indexer (Python) | ⬜ | 0 |
-| 4 | Retrieval | ⬜ | 2, 3 |
-| 5 | Code generation | ⬜ | 4 |
-| 6 | Validators, repair, sandbox | ⬜ | 5 |
-| 7 | Eval harness | ⬜ | 4 (minimal), 6 (full) |
-| 8 | Rust support | ⬜ | 7 |
+| 2 | Draft generation | 🟡 | 1 |
+| 3 | Synthetic stand-in repo | ⬜ | 0 |
+| 4 | Indexer (Python) | ⬜ | 3 |
+| 5 | Retrieval | ⬜ | 2, 4 |
+| 6 | Code generation (code + JSON pair) | ⬜ | 5 |
+| 7 | Validators, repair, sandbox | ⬜ | 6 |
+| 8 | Eval harness | ⬜ | 5 (minimal), 7 (full) |
+| 9 | Rust support | ⬜ | 8 |
 
-Phase 3 depends only on Phase 0, so it may be built in parallel with Phases 1–2 if useful.
+Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the synthetic stand-in became Phase 3; former Phases 3–8 are now 4–9.
 
 ---
 
@@ -59,6 +60,13 @@ Phase 3 depends only on Phase 0, so it may be built in parallel with Phases 1–
 
 **Open questions:**
 - Indirect dependencies that are not MIT/BSD/Apache (all pulled in by pre-approved packages): `certifi` MPL-2.0 (via httpx), `pathspec` MPL-2.0 (via mypy, dev only), `shellingham` ISC (via typer), `typing_extensions` PSF-2.0 (via pydantic). All are permissive or weak-copyleft and used unmodified; flagged for the company dependency review. **Resolved 2026-10-05: accepted by the human.**
+
+**Model changes after completion (2026-10-05):** additive only; no existing behavior changes.
+- `LLMRequest` gains optional `json_schema`; `LLMResponse` gains optional `cost_usd` (done in the uncommitted Phase 2 work).
+- `Settings` gains `llm.*` provider sections and `draft.*` (done in the uncommitted Phase 2 work). The `llm.model` key moved into per-provider sections, and `llm.provider` became a fixed set (`claude_code_cli` | `claude` | `gemini`).
+- Later phases will add config sections for markers (required markers, allowed values), data-file naming, the stand-in path, and git-history mining (ticket-id regex). All additive.
+- `RepoSource` stays unchanged. Git history mining gets its own read-only adapter in `adapters/repo/`, so `tests/test_interfaces.py::test_repo_source_has_no_write_methods` stays valid.
+- Code to update when work resumes: `tests/test_config.py` for the new sections (the defaults test still holds). The `cli.py` subcommand list is unchanged.
 
 **Log:**
 - 2026-10-05: Started. Decisions: phases run strictly in order (CLAUDE.md rule wins over the "Phase 3 in parallel" note); `search` placeholder added to the CLI now; `types-PyYAML` (Apache-2.0) added as a dev dep for strict mypy; build backend `uv_build`.
@@ -95,63 +103,124 @@ Phase 3 depends only on Phase 0, so it may be built in parallel with Phases 1–
 - [x] Unit tests make no live network calls (fixtures only; live test marked `@pytest.mark.live`)
 
 **Open questions:**
-- GitHub has no "components" field. `Ticket.components` stays empty for GitHub unless `tickets.github.component_label_prefixes` is configured (e.g. `["component:"]`). httpx labels like `proxies` or `http/2` are not treated as components. Phase 2's insufficient-info check must therefore not rely on `components` alone for GitHub tickets.
+- GitHub has no "components" field. `Ticket.components` stays empty for GitHub unless `tickets.github.component_label_prefixes` is configured (e.g. `["component:"]`). httpx labels like `proxies` or `http/2` are not treated as components. Phase 2's insufficient-info check must therefore not rely on `components` alone for GitHub tickets. **Resolved 2026-10-05:** the LLM infers the component from ticket text (labels as hints); if it can't, `component: "unknown"` with lowered confidence. Not a reason for `insufficient_info`.
+
+**Model changes after completion (2026-10-05):** none. `Ticket` is unchanged by the scope update. Ticket ids found in test skip reasons are handled by the eval miner (Phase 8), not the normalizer.
 
 **Log:**
 - 2026-10-05: Started. Fixtures: `encode/httpx` #2985 (no sections, no comments), #1482 (full template), #1498 (code steps, multi-paragraph expected/actual), #1234 (free-form, no sections), #914 (open, 43 comments, external links). Saved as raw `issue.json` + `comments.json` under `tests/fixtures/github/`.
-- 2026-10-05: Built. `Ticket`/`Comment`/`SourceInfo` models (`Ticket` adds `comments_omitted`; `source` is `{system, ref, url}`). `GitHubIssueSource` (httpx; optional `GITHUB_TOKEN`; comment pagination capped by `tickets.github.max_comment_pages`; clear errors for rate limit with reset time/retry-after, 404/410, 401, PRs, network). `JiraExportSource` (local file only; single issue, `{"issues": [...]}`, or list). Normalizer: ADF and wiki markup → Markdown → plain text; HTML template comments and markup stripped; fenced code kept verbatim; steps/expected/actual from headings, bold lines, and `Label:` lines, ignoring code; links from prose URLs and `#123` refs (not code or inline code). Long threads keep first + latest comments up to `normalize.max_comments` (50); each comment capped at `normalize.max_comment_chars` (4000) on a line boundary. Optional Jira `field_map` for custom steps/expected/actual fields. CLI `normalize <ref> [--jira-export F] [--out F] [--raw-out F]`. New config sections `tickets.github`, `tickets.jira`, `normalize` (additive to the Phase 0 `Settings`).
+- 2026-10-05: Built. `Ticket`/`Comment`/`SourceInfo` models (`Ticket` adds `comments_omitted`; `source` is `{system, ref, url}`). `GitHubIssueSource` (httpx; optional `GITHUB_TOKEN`; comment pagination capped by `tickets.github.max_comment_pages`; clear errors for rate limit with reset time/retry-after, 404/410, 401, PRs, network). `JiraExportSource` (local file only; single issue, `{"issues": [...]}`, or list). Normalizer: ADF and wiki markup → Markdown → plain text; HTML template comments and markup stripped; fenced code kept verbatim; steps/expected/actual from headings, bold lines, and `Label:` lines, ignoring code; links from prose URLs and `#123` refs (not code or inline code). Long threads keep first + latest comments up to `normalize.max_comments` (50); each comment capped at `normalize.max_comment_chars` (4000) on a line boundary. Optional Jira `field_map` for custom steps/expected/actual fields. CLI `normalize <ref> [--jira-export F] [--out F] [--raw-out F]`. New config sections `tickets.github`, `tickets.jira`, `normalize` (additive to the Phase 0 `Settings`). Approved by the human on 2026-10-05, along with keeping code fences in plain-text output.
 - 2026-10-05: Verified. ruff check + format, mypy strict (28 files), pytest 147 passed (1 live deselected). Autouse fixture blocks sockets in all non-live tests (with its own test). Live test (`pytest -m live`) passed against the real API, and `ticket2test normalize https://github.com/encode/httpx/issues/1498` gives the same result as the fixture. Done.
 
 ---
 
 ## Phase 2: Draft generation
-**Status:** ⬜ Not started
+**Status:** 🟡 In progress (paused 2026-10-05 for the target-suite scope update; resumed the same day after the human approved it).
 
 **Goal:** Turn a `Ticket` into structured `TestCaseDraft`(s) a QE can review before any code is written.
 
 **Inputs:** `Ticket` (from Phase 1).
 
 **Outputs:**
-- `TestCaseDraft` model (fields per `CLAUDE.md`)
-- First real `LLMClient` implementation (provider chosen via config)
+- `TestCaseDraft` model (fields per `CLAUDE.md`, incl. `markers` {priority, component, suite}, `test_kind` (ui | api | hybrid), `deployment_type` (cloud | on_prem | both))
+- `LLMClient` implementations: `claude_code_cli` (default; `claude -p --output-format json --json-schema`, all tools disabled), `claude` (Anthropic API), `gemini` (model ID config-only, to be provided)
 - `prompts/draft_v1.md`
 - `draft/` module with structured output, JSON validation, and retry-with-error
-- Secret scrubber in `security/`, applied to all prompt input
+- Secret scrubber in `security/`, applied to all prompt input and to the output
 - Markdown renderer for human review
 - CLI: `ticket2test draft ticket.json --out drafts/`
 
 **Constraints:**
-- Temperature 0
+- Temperature 0 where the provider supports it (Gemini). The Claude CLI has no temperature setting, and current Claude models reject non-default values, so Claude runs are best-effort.
 - Max JSON retries from config (default 2); then fail with a clear error
-- Must return `status: "insufficient_info"` with `missing_info[]` when the ticket lacks steps, expected behavior, or an identifiable component
+- Must return `status: "insufficient_info"` with `missing_info[]` when the ticket lacks steps or expected behavior
+- Component: inferred by the LLM from ticket text, using labels as hints. If it can't be inferred, `component: "unknown"` and confidence capped at 0.5 (`draft.unknown_component_max_confidence`). Never `insufficient_info` for that alone.
+- `test_kind` and `deployment_type` come from the ticket. Defaults when the ticket doesn't say: `deployment_type: "both"`, and `test_kind` inferred from the steps (browser actions → `ui`, API calls only → `api`, both → `hybrid`).
+- `markers.priority`: one of `markers.priorities` from config (generic placeholders `P0`–`P3`). `markers.suite`: one of `markers.suites` from config (placeholders `smoke`, `regression`), or `"unknown"` if it can't be determined. Real values are set later in the company environment.
+- LLM providers: Claude and Gemini, both behind `LLMClient`, selected via config
 - Each draft records its `prompt_version`
 - One ticket may produce 1 primary draft (reproduce + verify fix) plus 0–3 edge-case drafts. No more.
 
 **Definition of Done:**
-- [ ] Runs end-to-end on the 5 fixture tickets (live test)
+- [ ] Runs end-to-end on the 5 fixture tickets (live test, run by the human; default provider `claude_code_cli`)
 - [ ] A deliberately vague ticket returns `insufficient_info`
 - [ ] Malformed LLM output triggers a retry and then a clean failure (tested with the fake LLM)
 - [ ] Secret scrubber has unit tests for at least: API-key-like strings, bearer tokens, passwords in URLs
+- [ ] Drafts include `markers`, `test_kind`, and `deployment_type` (schema-tested)
 - [ ] Markdown output is readable by a non-engineer (checked by a human)
 
-**Open questions:** –
+**Open questions:**
+- The `httpx` fixture tickets are library bugs, so their drafts will be `test_kind: "api"`. UI drafts get exercised by the stand-in's fake tickets once Phase 3 exists. Is that OK for this phase's DoD? **Resolved 2026-10-05:** yes.
+
+**Log:**
+- 2026-10-05: Decisions from the human: SDKs `anthropic` (MIT) and `google-genai` (Apache-2.0) approved; default model `claude-sonnet-5-5`; Gemini model config-only (ID to be provided later); new `claude_code_cli` provider as the default (no API key available); unknown-component confidence cap 0.5; live tests run by the human.
+- 2026-10-05: Claude CLI probe (one tiny call). `apiKeySource: "none"` (subscription login, no API key in the environment). Only the internal `StructuredOutput` tool was available (no file/shell/web tools, no MCP, no slash commands). Structured result arrives in `structured_output`. The CLI also made a small internal Haiku call. `--bare` is **not** usable: it forces API-key auth. Where the usage is billed still needs the human to check on their account dashboard.
+- 2026-10-05: Built (uncommitted, paused): config `llm.*` / `draft.*` sections; `LLMRequest.json_schema`; `llm/schema.py` (provider-safe JSON schema), `llm/structured.py` (capped retry-with-error), `llm/claude_code_cli.py`, `llm/claude_api.py`, `llm/gemini.py`, `llm/factory.py`, `llm/debug.py` (`--debug-log` only); `security/scrubber.py`; `models/draft.py` (first version); `prompts.py` loader; `prompts/draft_v1.md` (first version). `.env.example` provider keys are commented out so a placeholder `ANTHROPIC_API_KEY` can't switch the CLI to API billing. Dependencies added: `anthropic`, `google-genai` (+ transitive; all MIT/BSD/Apache, `cffi` MIT-0). Not yet run through ruff/mypy/pytest.
+- Code to update when resuming (scope change): `models/draft.py` (add `markers`, `test_kind`, `deployment_type`; move `priority`/`component` into `markers`); `prompts/draft_v1.md` (new fields; edit in place since it was never released); the draft generator, Markdown renderer, CLI command, and tests (not written yet).
+
+---
+
+## Phase 3: Synthetic stand-in repo
+**Status:** ⬜ Not started
+
+**Goal:** A small, invented target repo that follows the target test-suite patterns (see `CLAUDE.md`), so the indexer, generator, validators, and eval can be built against the real shape without private data.
+
+**Inputs:** The generic patterns in `CLAUDE.md` → "Target test-suite patterns".
+
+**Outputs (all under `standin/`):**
+- `app/`: a tiny fake web app (a few HTML pages + a small JSON API + in-memory backend state that tests can seed and check)
+- Framework layer:
+  - base test class (setup/teardown: driver, config, cleanup, failure artifacts)
+  - page-object hierarchy reached through property chains (`nav.<area>.<page>`)
+  - shared helpers and validation methods, mixins
+  - decorators: retry, per-browser skip, deployment-type skip (cloud-only / on-prem-only)
+  - a name-generator helper with a placeholder token
+  - a data loader that resolves a test's JSON entry by its pytest-generated id
+- `tests/<area>/`: one class/file per feature area, each with a matching JSON data file
+  - markers for priority, project, component, and suite
+  - stacked `parametrize` (so the bottom-first id order matters); one JSON entry per variant
+  - entries with seed state, expected backend results, and inputs; large config blocks repeated across entries; placeholder names; per-entry priority override and skip by ticket id
+  - mix: ~85–90% UI tests, at least one pure API test, at least one hybrid
+- Fake tickets for the stand-in (hand-written; generic names) linked to specific tests
+- A script that builds a throwaway git history for the stand-in (in a git-ignored cache dir) with at least one ticket-id skip added and later removed by a "fix" commit, for eval mining
+
+**Constraints:**
+- Invented, generic names only. No real company, product, URL, or internal tool names; hosts are `localhost` / `example.com`.
+- Collectable with `pytest --collect-only` without a browser and without network
+- The pipeline treats `standin/` as a target repo: read-only, indexed from a copy when sandboxed
+- Hand-written stand-in code is trusted project code: this project's unit tests may run `pytest --collect-only` on it on the host. Generated tests for it still run only in the sandbox (Hard Constraint 3).
+- Minimal dependencies; anything new (e.g. a browser-automation library) needs approval first
+
+**Definition of Done:**
+- [ ] At least 4 feature areas and 20 tests, with the UI/API/hybrid mix above
+- [ ] `pytest --collect-only` on the stand-in succeeds with no browser and no network
+- [ ] Every JSON data file's keys exactly match the collected test ids (checked by a project test), including a stacked-parametrize case
+- [ ] At least one entry overrides priority and at least one is skipped by ticket id; at least one test is deployment-type skipped
+- [ ] At least 5 fake tickets mapped to tests, and the scripted git history contains a skip-removal fix
+- [ ] Human review: all names are generic and invented
+
+**Open questions:**
+- Browser automation in the stand-in: depend on `selenium` (Apache-2.0) so imports look like the real target, or use a small fake driver interface with no new dependency? **Resolved 2026-10-05:** use `selenium` (approved dependency for the stand-in). Collecting tests doesn't launch a browser.
+- Fake web app: stdlib `http.server` (no new dependency) is the proposal. OK? **Resolved 2026-10-05:** yes.
+- Can this project's own unit tests run `pytest --collect-only` on the hand-written stand-in on the host? It's trusted code, not generated. Generated tests always use the sandbox. **Resolved 2026-10-05:** yes, for the hand-written stand-in only. Generated tests always go through the sandbox.
 
 **Log:** –
 
 ---
 
-## Phase 3: Indexer (Python)
+## Phase 4: Indexer (Python)
 **Status:** ⬜ Not started
 
-**Goal:** Make a codebase searchable by structure and keywords, and know which names really exist.
+**Goal:** Make a codebase searchable by structure and keywords, and know which names (incl. page-object chains) really exist.
 
-**Inputs:** A local path to a target repo (via `RepoSource`).
+**Inputs:** A local path to a target repo (via `RepoSource`): the stand-in and `httpx`.
 
 **Outputs:**
 - tree-sitter Python parsing
-- Chunks (`Chunk` model) by test function, including related fixtures and parametrize data; also chunks for non-test functions and classes
-- Symbol catalog: every function, class, method, and module name, with file and line
-- BM25 index with identifier splitting (`snake_case` / `CamelCase` → words)
+- Chunks (`Chunk` model). Chunk unit for tests = test function + its decorators/markers + its JSON entries (resolved via the computed test ids). Also chunks for page objects, helpers, non-test functions, and classes.
+- Static pytest-id computation: stacked `parametrize` (bottom decorator first), explicit `ids=`, literal values. Cases it can't compute statically are flagged and left to `pytest --collect-only` in the sandbox (Phase 7).
+- Symbol catalog: every function, class, method, module, fixture, and marker value, with file and line, **plus page-object property chains** (each attribute/property step from a root such as `nav`, with the type it resolves to)
+- BM25 index with identifier splitting (`snake_case` / `CamelCase` → words), including JSON entry text
 - Index persisted to disk (git-ignored cache dir); rebuild only changed files when possible
 - CLI: `ticket2test index <repo_path>` and `ticket2test search "<query>"`
 
@@ -162,9 +231,11 @@ Phase 3 depends only on Phase 0, so it may be built in parallel with Phases 1–
 - Must handle a repo of ~1,000 Python files in a reasonable time (target under 2 minutes)
 
 **Definition of Done:**
-- [ ] Indexing `httpx` completes and the cache reloads without re-parsing
-- [ ] For 5 hand-picked known functions, a search returns their tests in the top 5
-- [ ] Symbol catalog lookup confirms existence and non-existence correctly (tested)
+- [ ] Indexing the stand-in and `httpx` completes, and the cache reloads without re-parsing
+- [ ] Stand-in test chunks carry their decorators, markers, and matching JSON entries
+- [ ] Static id computation matches `pytest --collect-only` on the stand-in, incl. stacked parametrize (tested)
+- [ ] For 5 hand-picked known functions or pages, a search returns their tests in the top 5
+- [ ] Symbol catalog confirms existence and non-existence of names **and property chains** (tested)
 - [ ] Identifier splitting has unit tests
 - [ ] Parsing errors in a single file are logged and skipped, not fatal
 
@@ -174,20 +245,21 @@ Phase 3 depends only on Phase 0, so it may be built in parallel with Phases 1–
 
 ---
 
-## Phase 4: Retrieval
+## Phase 5: Retrieval
 **Status:** ⬜ Not started
 
-**Goal:** Given a ticket and draft, find the relevant code and the most similar existing tests.
+**Goal:** Given a ticket and draft, find the relevant code, the most similar existing tests, and the nearest JSON entries to use as templates.
 
-**Inputs:** `Ticket`, `TestCaseDraft`, index and symbol catalog (Phase 3).
+**Inputs:** `Ticket`, `TestCaseDraft`, index and symbol catalog (Phase 4).
 
 **Outputs:**
 - `prompts/query_rewrite_v1.md`: ticket wording → likely code terms
-- Retrieval pipeline: query rewrite → BM25 + grep → merge and de-duplicate → AST expansion (callers, callees, related tests) → ranked list
+- Retrieval pipeline: query rewrite → BM25 + grep → merge and de-duplicate → AST expansion (callers, callees, related tests, page objects used) → ranked list
+- Template selection: nearest similar existing JSON entries (same area/component/test kind first)
 - Follow-up rounds: the LLM may request extra searches when results are thin
-- Retrieval result records every chunk ID and why it was retrieved (bm25 / grep / expansion / follow-up)
+- Retrieval result records every chunk ID and why it was retrieved (bm25 / grep / expansion / follow-up / template)
 - CLI: `ticket2test retrieve ticket.json --draft draft.json`
-- **Minimal eval** (pulled forward from Phase 7): recall@k on a small set of issue ↔ fix-PR pairs
+- **Minimal eval** (pulled forward from Phase 8): recall@k on a small set of pairs
 
 **Constraints:**
 - `retrieval.top_k` and `retrieval.max_followup_rounds` from config (defaults 10 and 2)
@@ -195,8 +267,8 @@ Phase 3 depends only on Phase 0, so it may be built in parallel with Phases 1–
 - No embeddings in this phase
 
 **Definition of Done:**
-- [ ] At least 10 public `httpx` issue ↔ fix-PR pairs collected in `eval_data/` (IDs/URLs only)
-- [ ] Recall@10 measured and recorded in the log below (no target yet; this is the baseline)
+- [ ] At least 10 public `httpx` issue ↔ fix-PR pairs collected in `eval_data/` (IDs/URLs only), plus the stand-in's ticket ↔ test pairs
+- [ ] Recall@10 measured on both sets and recorded in the log below (no target yet; this is the baseline)
 - [ ] Follow-up rounds provably stop at the configured cap (tested)
 - [ ] Each retrieved chunk carries its retrieval reason
 
@@ -207,29 +279,32 @@ Phase 3 depends only on Phase 0, so it may be built in parallel with Phases 1–
 
 ---
 
-## Phase 5: Code generation
+## Phase 6: Code generation (code + JSON pair)
 **Status:** ⬜ Not started
 
-**Goal:** Generate runnable test code from a draft, in the style of the existing tests.
+**Goal:** Generate a test (code file + JSON data entries) from a draft, in the style of the existing tests.
 
-**Inputs:** `TestCaseDraft`, retrieval results (Phase 4), optional conventions doc (path from config).
+**Inputs:** `TestCaseDraft`, retrieval results incl. template entries (Phase 5), optional conventions doc (path from config).
 
 **Outputs:**
 - Context builder: ranks and trims chunks to fit `context.max_tokens`, putting similar tests first as few-shot examples
-- `prompts/generate_v1.md`
-- `GeneratedTest` with full traceability (ticket, draft, chunk IDs, prompt version)
+- `prompts/generate_v1.md`: the LLM returns the test code plus only the **unique** parts of each JSON entry (inputs, seed state, expected backend results)
+- Deterministic entry assembly: copy large repeated config blocks verbatim from the nearest existing entry, merge the unique parts, and key each entry by the pytest-generated id (one per variant). Unique names use the placeholder token + name-generator helper.
+- Code follows the suite patterns: base class, markers from the draft (priority, component, suite, project), page-object property chains, deployment-type skip from `deployment_type`, parametrize from `variants`
+- `GeneratedTest` pair with full traceability (ticket, draft, chunk IDs, template entry, prompt version)
 - CLI: `ticket2test generate draft.json --retrieval retrieval.json --out generated/`
 
 **Constraints:**
 - Never truncate mid-function when trimming context
 - The conventions doc, if configured, is always included in context
-- Secret scrubber runs on both the prompt and the generated output
+- Secret scrubber runs on both the prompt and the generated output (code and JSON)
 - Output files go only to the project's output dir, never into the target repo
 
 **Definition of Done:**
-- [ ] Generates a test file for each of 5 drafts (live test)
+- [ ] Generates a code + JSON pair for each of 5 stand-in drafts (live test)
+- [ ] Copied config blocks are byte-identical to the template entry (tested)
 - [ ] Context never exceeds the token budget (tested)
-- [ ] Every `GeneratedTest` has complete traceability fields
+- [ ] Every `GeneratedTest` has complete traceability fields, incl. `template_entry_ref`
 - [ ] Generated code follows the style of retrieved examples (spot-checked by a human)
 
 **Open questions:** –
@@ -238,36 +313,40 @@ Phase 3 depends only on Phase 0, so it may be built in parallel with Phases 1–
 
 ---
 
-## Phase 6: Validators, repair loop, sandbox
+## Phase 7: Validators, repair loop, sandbox
 **Status:** ⬜ Not started
 
-**Goal:** Catch bad generated code cheaply before a human sees it, and fix it automatically when possible.
+**Goal:** Catch bad generated tests cheaply before a human sees them, and fix them automatically when possible.
 
-**Inputs:** `GeneratedTest` (Phase 5), symbol catalog (Phase 3).
+**Inputs:** `GeneratedTest` pair (Phase 6), symbol catalog (Phase 4).
 
 **Outputs:**
-- Validators, each returning structured errors:
+- Deterministic validators, each returning structured errors:
   - Syntax parses
-  - Every referenced name exists in the catalog or is defined in the test
+  - Every referenced name exists in the catalog or is defined in the test, **including page-object property chains**
   - Imports resolve
-  - Parametrize cases match their data
+  - JSON keys exactly match the pytest-generated ids (respecting stacked decorator order)
+  - Every parametrize variant has a JSON entry, and no entry is orphaned
+  - Required markers are present, with known values
+  - The base test class is used
   - Naming conventions (configurable patterns)
 - Repair loop: validator errors → LLM fix → re-validate, capped
-- Sandbox runner: executes tests in a container (Podman or Docker)
-- `validation_report` attached to each `GeneratedTest`
-- CLI: `ticket2test validate generated/ [--run]`
+- Sandbox runner: `pytest --collect-only` in a container (Podman or Docker) as the primary execution check (imports resolve, ids match, no browser needed). Running tests is optional and later (API tests first).
+- `validation_report` and `collect_report` attached to each `GeneratedTest`
+- CLI: `ticket2test validate generated/ [--collect] [--run]`
 
 **Constraints:**
 - `repair.max_attempts` from config (default 3)
 - Sandbox: **no network**, target repo mounted **read-only**, a writable temp dir only, `sandbox.timeout_seconds` enforced
-- Generated code never executes on the host, including in this project's own tests
-- If the container runtime isn't available, `--run` fails clearly. It never falls back to host execution.
+- Generated code never executes on the host, including collection and this project's own tests
+- If the container runtime isn't available, `--collect` / `--run` fail clearly. They never fall back to host execution.
 
 **Definition of Done:**
 - [ ] Each validator has unit tests with passing and failing examples
-- [ ] A test calling a non-existent function is caught and reported
+- [ ] A test using a non-existent function or property chain is caught and reported
+- [ ] A JSON key mismatch caused by wrong stacked-decorator order is caught
 - [ ] Repair loop stops at the cap (tested with the fake LLM)
-- [ ] Sandbox enforces no-network and timeout (tested)
+- [ ] `pytest --collect-only` runs in the sandbox on a generated stand-in test, with no network and a timeout (tested)
 - [ ] Missing container runtime produces a clear error, not host execution
 
 **Open questions:** –
@@ -276,29 +355,31 @@ Phase 3 depends only on Phase 0, so it may be built in parallel with Phases 1–
 
 ---
 
-## Phase 7: Eval harness
+## Phase 8: Eval harness
 **Status:** ⬜ Not started
 
 **Goal:** Measure quality per stage, so we know what to improve and can prove value.
 
-**Inputs:** `eval_data/` issue ↔ fix-PR pairs (expand to 30+), the full pipeline.
+**Inputs:** `eval_data/`: public issue ↔ fix-PR pairs, stand-in ticket ↔ test pairs, and pairs mined from git history; the full pipeline.
 
 **Outputs:**
+- Eval data mining: a read-only git history reader finds commits where a ticket-id skip was removed, and records ticket ↔ test pairs (ticket-id pattern from config)
 - Metrics:
-  - **Retrieval:** recall@k, MRR (ground truth = files changed in the fix PR)
-  - **Faithfulness:** rate of invented names; draft-matches-ticket via LLM-as-judge
-  - **End-to-end:** fail-before-fix / pass-after-fix rate (pre-fix and post-fix commits run in the sandbox)
+  - **Retrieval:** recall@k, MRR (ground truth = files changed in the fix PR, or the test linked to the ticket)
+  - **Faithfulness:** rate of invented names (incl. property chains); draft-matches-ticket via LLM-as-judge
+  - **Execution (primary):** `pytest --collect-only` pass rate in the sandbox
+  - **Execution (later, optional, API tests only):** fail-before-fix / pass-after-fix rate
   - **Cost:** tokens and wall-clock time per ticket
 - Report as JSON + Markdown, saved per run with a timestamp and config snapshot
 - CLI: `ticket2test eval --set eval_data/ --out reports/`
 
 **Constraints:**
 - LLM-as-judge results are labeled **"unvalidated"** until compared against human labels on a sample
-- Eval runs are reproducible: same config + same data → comparable report
-- All code execution goes through the Phase 6 sandbox
+- Eval runs are reproducible: same config + same data → comparable report. Claude-backed runs are not fully deterministic (no temperature control), so repeat runs and report variance.
+- All code execution (incl. collection) goes through the Phase 7 sandbox
 
 **Definition of Done:**
-- [ ] At least 30 eval pairs
+- [ ] At least 30 eval pairs across the sources above, incl. at least one mined from git history
 - [ ] One full baseline report generated and summarized in the log below
 - [ ] Re-running with the same config gives consistent retrieval metrics
 - [ ] Report clearly separates measured metrics from unvalidated judge metrics
@@ -310,7 +391,7 @@ Phase 3 depends only on Phase 0, so it may be built in parallel with Phases 1–
 
 ---
 
-## Phase 8: Rust support
+## Phase 9: Rust support
 **Status:** ⬜ Not started
 
 **Goal:** Extend indexing and validation to Rust code.
@@ -328,7 +409,7 @@ Phase 3 depends only on Phase 0, so it may be built in parallel with Phases 1–
 **Definition of Done:**
 - [ ] Mixed repo indexes successfully
 - [ ] Symbol catalog includes Rust functions, structs, and impl methods
-- [ ] Python eval metrics show no regression versus the Phase 7 baseline
+- [ ] Python eval metrics show no regression versus the Phase 8 baseline
 
 **Open questions:**
 - How are Rust functions exposed to Python in the target codebase? (Affects cross-language linking.)
@@ -340,7 +421,9 @@ Phase 3 depends only on Phase 0, so it may be built in parallel with Phases 1–
 ## Global open questions (for the human)
 - Which LLM provider/endpoint will the company environment require?
 - Is there an existing conventions doc for tests at the company?
-- Are most company bug tests API-level or UI-level? (Affects whether frontend support is needed.)
+- ~~Are most company bug tests API-level or UI-level?~~ **Resolved 2026-10-05:** ~85–90% browser UI tests, a minority API, a few hybrid. Frontend/UI test generation is in scope.
+- Which marker values (priority levels, suites, projects) does the target use? **Resolved 2026-10-05:** use generic placeholders in config for now (priorities `P0`–`P3`, suites `smoke`/`regression`, a generic project name); the human sets the real values later.
+- What ticket-id format appears in skip reasons? **Resolved 2026-10-05:** the standard Jira pattern (uppercase project key, dash, number), configurable as a regex.
 - Approval to bring this code into the company environment (IP, license, dependency review).
 
 ## Changelog
@@ -349,3 +432,5 @@ Phase 3 depends only on Phase 0, so it may be built in parallel with Phases 1–
 | – | – | File created |
 | 2026-10-05 | 0 | Phase 0 skeleton built and verified; marked ✅ Done |
 | 2026-10-05 | 1 | Phase 1 ticket normalizer built and verified; marked ✅ Done |
+| 2026-10-05 | all | Scope update from target-suite patterns: test output is a code + JSON data pair; Chunk includes decorators/markers/JSON entries; symbol catalog adds page-object property chains; new data-consistency validators; config-block reuse; TestCaseDraft gains markers/test_kind/deployment_type; `pytest --collect-only` is the primary execution check; git-history mining for eval pairs; UI tests in scope. New Phase 3 (synthetic stand-in); former Phases 3–8 renumbered to 4–9. Phase 2 paused. |
+| 2026-10-05 | all | Human approved the scope update, incl. the 3 hard-constraint wording changes and moving priority/component into `markers`. Answers: `selenium` in the stand-in; `http.server` for the fake app; host `--collect-only` only for the hand-written stand-in; httpx API drafts OK for Phase 2; generic placeholder marker values and a Jira-style ticket-id regex in config. Phase 2 resumed. |
