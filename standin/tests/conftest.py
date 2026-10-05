@@ -13,7 +13,7 @@ from framework.data import entry_for
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     """Apply per-entry overrides from the JSON data file.
 
-    - ``"priority": "P2"`` replaces the test's priority marker for that variant.
+    - ``"priority": "p2"`` replaces the test's priority marker for that variant.
     - ``"skip": {"ticket": "KEY-123", "reason": "..."}`` skips the variant, citing the ticket.
     """
     for item in items:

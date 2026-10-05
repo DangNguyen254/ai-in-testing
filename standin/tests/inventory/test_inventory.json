@@ -102,7 +102,7 @@
         ]
       }
     },
-    "priority": "P2"
+    "priority": "p2"
   },
   "test_create_item_rejects_invalid_quantity[0-typed]": {
     "config": {

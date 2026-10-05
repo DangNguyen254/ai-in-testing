@@ -107,7 +107,7 @@ def test_stacked_decorators_bottom_first() -> None:
     ids = compute_test_ids(
         "test_x",
         [
-            'pytest.mark.priority("P2")',
+            'pytest.mark.priority("p2")',
             'pytest.mark.parametrize("mode", ["typed", "pasted"])',
             'pytest.mark.parametrize("q", ["0", "-1"])',
         ],

@@ -44,7 +44,7 @@ from framework.base_test import BaseTest
 @pytest.mark.project("example-project")
 @pytest.mark.component("orders")
 class TestStnd104(BaseTest):
-    @pytest.mark.priority("P1")
+    @pytest.mark.priority("p1")
     @pytest.mark.suite("regression")
     @pytest.mark.parametrize("units", [1, 2])
     def test_cancel_order_returns_stock(self, units: int) -> None:
@@ -73,7 +73,7 @@ def _draft(**changes: Any) -> TestCaseDraft:
         ticket_id="STND-104",
         kind="primary",
         intent="Cancelling an open order sets it to cancelled and returns the stock.",
-        markers={"priority": "P1", "component": "orders", "suite": "regression"},
+        markers={"priority": "p1", "component": "orders", "suite": "regression"},
         test_kind="ui",
         deployment_type="both",
         preconditions=["An open order for 2 units of an item"],
@@ -183,7 +183,7 @@ def test_prompt_contains_conventions_draft_template_and_markers(
     assert "Team conventions for tests" in user and "Reach pages only through" in user
     assert "Template test:" in user and '"config"' in user
     assert (
-        '@pytest.mark.priority("P1")' in user and '@pytest.mark.project("example-project")' in user
+        '@pytest.mark.priority("p1")' in user and '@pytest.mark.project("example-project")' in user
     )
     assert "STND-104/d1" in user
     assert "Placeholder token for unique names: {{unique}}" in user
@@ -336,7 +336,7 @@ def test_assemble_entry_copies_shared_blocks_and_drops_overrides() -> None:
         "seed": {"items": []},
         "inputs": {"a": 1},
         "expected": {"x": 1},
-        "priority": "P3",
+        "priority": "p3",
         "skip": {"ticket": "KEY-1", "reason": "r"},
         "extra": "kept",
     }
@@ -357,13 +357,13 @@ def test_marker_values_use_known_values(index: IndexData, retrieval: RetrievalRe
     template = chunks[retrieval.templates[0].chunk_id]
     known = marker_values(_draft(), Settings(), template, index)
     assert known == {
-        "priority": "P1",
+        "priority": "p1",
         "project": "example-project",
         "component": "orders",
         "suite": "regression",
     }
     fuzzy = _draft(
-        markers={"priority": "P2", "component": "order cancellation", "suite": "unknown"}
+        markers={"priority": "p2", "component": "order cancellation", "suite": "unknown"}
     )
     values = marker_values(fuzzy, Settings(), template, index)
     template_component = next(m.args[0] for m in template.markers if m.name == "component")

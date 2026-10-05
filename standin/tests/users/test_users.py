@@ -11,7 +11,7 @@ from framework.decorators import cloud_only, on_prem_only
 @pytest.mark.project("example-project")
 @pytest.mark.component("users")
 class TestUsers(BaseTest):
-    @pytest.mark.priority("P0")
+    @pytest.mark.priority("p0")
     @pytest.mark.suite("smoke")
     @pytest.mark.parametrize("role", ["viewer", "editor", "admin"])
     def test_invite_user(self, role: str) -> None:
@@ -22,7 +22,7 @@ class TestUsers(BaseTest):
         assert user_list.role_of(self.inputs["email"]) == role
         self.assert_backend(self.expected["backend"])
 
-    @pytest.mark.priority("P1")
+    @pytest.mark.priority("p1")
     @pytest.mark.suite("regression")
     def test_invite_user_rejects_duplicate_email(self) -> None:
         invite = self.nav.users.invite.open()
@@ -31,7 +31,7 @@ class TestUsers(BaseTest):
         assert invite.error_message == self.expected["error"]
         assert len(self.api.users()) == self.expected["user_count"]
 
-    @pytest.mark.priority("P2")
+    @pytest.mark.priority("p2")
     @pytest.mark.suite("regression")
     def test_change_user_role(self) -> None:
         profile = self.nav.users.profile.open_for(self.inputs["email"])
@@ -40,7 +40,7 @@ class TestUsers(BaseTest):
         assert profile.flash_message == "Role updated"
         self.assert_backend(self.expected["backend"])
 
-    @pytest.mark.priority("P1")
+    @pytest.mark.priority("p1")
     @pytest.mark.suite("regression")
     @on_prem_only
     def test_deactivate_user(self) -> None:
@@ -50,7 +50,7 @@ class TestUsers(BaseTest):
         assert profile.status == "inactive"
         self.assert_backend(self.expected["backend"])
 
-    @pytest.mark.priority("P3")
+    @pytest.mark.priority("p3")
     @pytest.mark.suite("regression")
     @cloud_only
     def test_sso_banner_on_user_list(self) -> None:

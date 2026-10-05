@@ -26,7 +26,7 @@ def data_file_for(path: str, settings: IndexSettings) -> str:
 
 
 def parse_marker(decorator: str, source: str = "function") -> Marker | None:
-    """``pytest.mark.priority("P1")`` -> Marker(name="priority", args=["P1"])."""
+    """``pytest.mark.priority("p1")`` -> Marker(name="priority", args=["p1"])."""
     head, _, rest = decorator.partition("(")
     parts = head.strip().split(".")
     if len(parts) < 2 or parts[-2] != "mark" or parts[-1] == "parametrize":

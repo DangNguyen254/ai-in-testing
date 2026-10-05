@@ -66,7 +66,7 @@ class LLMSettings(_Section):
 class MarkerSettings(_Section):
     """Marker values of the target suite. Generic placeholders; set real ones per environment."""
 
-    priorities: list[str] = Field(default_factory=lambda: ["P0", "P1", "P2", "P3"], min_length=1)
+    priorities: list[str] = Field(default_factory=lambda: ["p0", "p1", "p2", "p3"], min_length=1)
     suites: list[str] = Field(default_factory=lambda: ["smoke", "regression"], min_length=1)
     project: str = "example-project"
     required: list[str] = Field(

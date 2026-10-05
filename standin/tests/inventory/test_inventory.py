@@ -11,7 +11,7 @@ from framework.decorators import retry
 @pytest.mark.project("example-project")
 @pytest.mark.component("inventory")
 class TestInventory(BaseTest):
-    @pytest.mark.priority("P1")
+    @pytest.mark.priority("p1")
     @pytest.mark.suite("smoke")
     @pytest.mark.parametrize("quantity", [1, 50])
     def test_create_item(self, quantity: int) -> None:
@@ -23,7 +23,7 @@ class TestInventory(BaseTest):
         assert self.nav.inventory.items.flash_message == "Item created"
         self.assert_backend(self.expected["backend"])
 
-    @pytest.mark.priority("P2")
+    @pytest.mark.priority("p2")
     @pytest.mark.suite("regression")
     @pytest.mark.parametrize("entry_mode", ["typed", "pasted"])
     @pytest.mark.parametrize("quantity", ["0", "-1"])
@@ -39,14 +39,14 @@ class TestInventory(BaseTest):
         assert editor.error_message == self.expected["error"]
         self.assert_no_item(self.inputs["name"])
 
-    @pytest.mark.priority("P2")
+    @pytest.mark.priority("p2")
     @pytest.mark.suite("regression")
     def test_search_items_by_name(self) -> None:
         items = self.nav.inventory.items.open().search(self.inputs["query"])
 
         assert sorted(items.item_names()) == sorted(self.expected["visible_items"])
 
-    @pytest.mark.priority("P2")
+    @pytest.mark.priority("p2")
     @pytest.mark.suite("regression")
     @retry(times=2)
     def test_edit_item_category(self) -> None:
@@ -57,7 +57,7 @@ class TestInventory(BaseTest):
         assert self.nav.inventory.items.flash_message == "Item saved"
         self.assert_backend(self.expected["backend"])
 
-    @pytest.mark.priority("P1")
+    @pytest.mark.priority("p1")
     @pytest.mark.suite("regression")
     def test_delete_item(self) -> None:
         self.nav.inventory.item_editor.open_existing(self.inputs["name"]).delete()
@@ -65,7 +65,7 @@ class TestInventory(BaseTest):
         assert self.nav.inventory.items.flash_message == "Item deleted"
         self.assert_no_item(self.inputs["name"])
 
-    @pytest.mark.priority("P1")
+    @pytest.mark.priority("p1")
     @pytest.mark.suite("smoke")
     def test_items_api_lists_seeded_items(self) -> None:
         names = sorted(item["name"] for item in self.api.items())

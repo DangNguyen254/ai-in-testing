@@ -139,8 +139,8 @@ def test_tests_use_the_base_class() -> None:
 
 def test_entry_priority_override_is_applied(items: list[dict[str, Any]]) -> None:
     by_name = {i["name"]: i for i in items}
-    assert by_name["test_create_item[1]"]["priority"] == "P1"  # from the decorator
-    assert by_name["test_create_item[50]"]["priority"] == "P2"  # from the JSON entry
+    assert by_name["test_create_item[1]"]["priority"] == "p1"  # from the decorator
+    assert by_name["test_create_item[50]"]["priority"] == "p2"  # from the JSON entry
 
 
 def test_entry_skip_cites_a_ticket_id(items: list[dict[str, Any]]) -> None:

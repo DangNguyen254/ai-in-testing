@@ -28,7 +28,7 @@ draft:
   unknown_component_max_confidence: 0.5
 
 markers:                       # generic placeholders; set real values per environment
-  priorities: [P0, P1, P2, P3]  # first = highest
+  priorities: [p0, p1, p2, p3]  # first = highest
   suites: [smoke, regression]
   project: example-project
   required: [priority, project, component, suite]

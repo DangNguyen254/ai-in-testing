@@ -28,7 +28,7 @@ tools/build_history.py  builds a throwaway git history where ticket skips are re
 
 ## Patterns it reproduces
 
-- **Markers** on every test: `priority` (P0–P3), `project`, `component`, `suite` (smoke / regression).
+- **Markers** on every test: `priority` (p0–p3), `project`, `component`, `suite` (smoke / regression).
 - **Data files**: each `test_<area>.py` has `test_<area>.json`. Keys are the pytest test names
   including parametrize ids, e.g. `test_create_item[1]`. With stacked `parametrize`, the bottom
   decorator's value comes first: `test_create_item_rejects_invalid_quantity[0-typed]`.

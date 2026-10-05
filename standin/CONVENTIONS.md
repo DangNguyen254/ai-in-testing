@@ -11,7 +11,7 @@ Generic conventions for this synthetic suite. Generated tests must follow them.
 ## Markers
 - Every test has `priority`, `project`, `component`, and `suite` markers. `project` and `component`
   may sit on the class; `priority` and `suite` sit on the method.
-- Priority values: `P0` (highest) to `P3`. Suites: `smoke`, `regression`.
+- Priority values: `p0` (highest) to `p3`. Suites: `smoke`, `regression`.
 
 ## Data
 - Read data only through `self.inputs`, `self.expected`, and `self.data`. No literal test data in code.

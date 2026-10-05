@@ -112,6 +112,6 @@ def test_validation_context_reaches_validators() -> None:
     )
     fake = FakeLLMClient([reply])
     result = complete_structured(
-        fake, _request(), DraftResponse, max_retries=0, context={"priorities": ["P1"]}
+        fake, _request(), DraftResponse, max_retries=0, context={"priorities": ["p1"]}
     )
     assert result.value.status == "insufficient_info"

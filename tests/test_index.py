@@ -82,7 +82,7 @@ def test_extract_whole_definitions_with_decorators() -> None:
     info = extract_file("tests/inventory/test_inventory.py", source)
     test_class = info.classes[0]
     method = next(m for m in test_class.methods if m.name == "test_create_item")
-    assert method.code.startswith('@pytest.mark.priority("P1")')
+    assert method.code.startswith('@pytest.mark.priority("p1")')
     assert method.code.rstrip().endswith('self.assert_backend(self.expected["backend"])')
     assert method.decorators[-1] == 'pytest.mark.parametrize("quantity", [1, 50])'
     assert test_class.decorators == [
@@ -105,7 +105,7 @@ def test_test_chunks_carry_decorators_markers_ids_and_entries(standin_index: Ind
     assert chunk.kind == "test"  # type: ignore[attr-defined]
     assert chunk.class_name == "TestInventory"  # type: ignore[attr-defined]
     assert {m.name: m.args for m in chunk.markers} == {  # type: ignore[attr-defined]
-        "priority": ["P2"],
+        "priority": ["p2"],
         "suite": ["regression"],
         "project": ["example-project"],
         "component": ["inventory"],
@@ -156,7 +156,7 @@ def test_catalog_confirms_existence_and_non_existence(standin_index: IndexData) 
     ):
         assert not catalog.has(name), name
     assert catalog.fixtures["_base_setup"] is False
-    assert catalog.markers["priority"] == ["P0", "P1", "P2", "P3"]
+    assert catalog.markers["priority"] == ["p0", "p1", "p2", "p3"]
     assert catalog.markers["suite"] == ["regression", "smoke"]
 
 

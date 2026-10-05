@@ -11,8 +11,8 @@ def test_draft_v1_loads_and_renders() -> None:
     prompt = load_prompt("draft_v1")
     assert prompt.version == "draft_v1"
     assert "insufficient_info" in prompt.system
-    text = prompt.render_user(ticket_json='{"id": "X"}', priorities="P0, P1", suites="smoke")
-    assert '{"id": "X"}' in text and "P0, P1" in text
+    text = prompt.render_user(ticket_json='{"id": "X"}', priorities="p0, p1", suites="smoke")
+    assert '{"id": "X"}' in text and "p0, p1" in text
     assert "{{" not in text
 
 

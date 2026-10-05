@@ -136,7 +136,7 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 - Must return `status: "insufficient_info"` with `missing_info[]` when the ticket lacks steps or expected behavior
 - Component: inferred by the LLM from ticket text, using labels as hints. If it can't be inferred, `component: "unknown"` and confidence capped at 0.5 (`draft.unknown_component_max_confidence`). Never `insufficient_info` for that alone.
 - `test_kind` and `deployment_type` come from the ticket. Defaults when the ticket doesn't say: `deployment_type: "both"`, and `test_kind` inferred from the steps (browser actions → `ui`, API calls only → `api`, both → `hybrid`).
-- `markers.priority`: one of `markers.priorities` from config (generic placeholders `P0`–`P3`). `markers.suite`: one of `markers.suites` from config (placeholders `smoke`, `regression`), or `"unknown"` if it can't be determined. Real values are set later in the company environment.
+- `markers.priority`: one of `markers.priorities` from config (generic placeholders `p0`–`p3`). `markers.suite`: one of `markers.suites` from config (placeholders `smoke`, `regression`), or `"unknown"` if it can't be determined. Real values are set later in the company environment.
 - LLM providers: Claude and Gemini, both behind `LLMClient`, selected via config
 - Each draft records its `prompt_version`
 - One ticket may produce 1 primary draft (reproduce + verify fix) plus 0–3 edge-case drafts. No more.
@@ -467,7 +467,7 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 - Which LLM provider/endpoint will the company environment require?
 - Is there an existing conventions doc for tests at the company?
 - ~~Are most company bug tests API-level or UI-level?~~ **Resolved 2026-10-05:** ~85–90% browser UI tests, a minority API, a few hybrid. Frontend/UI test generation is in scope.
-- Which marker values (priority levels, suites, projects) does the target use? **Resolved 2026-10-05:** use generic placeholders in config for now (priorities `P0`–`P3`, suites `smoke`/`regression`, a generic project name); the human sets the real values later.
+- Which marker values (priority levels, suites, projects) does the target use? **Resolved 2026-10-05:** use generic placeholders in config for now (priorities `p0`–`p3`, suites `smoke`/`regression`, a generic project name); the human sets the real values later.
 - What ticket-id format appears in skip reasons? **Resolved 2026-10-05:** the standard Jira pattern (uppercase project key, dash, number), configurable as a regex.
 - Approval to bring this code into the company environment (IP, license, dependency review).
 
@@ -489,3 +489,4 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 | 2026-10-05 | 5 | Deterministic feature-based reranker with per-file cap and minimum tests; LLM-on recall@10 httpx 0.772, stand-in 1.000; LLM-reranker plan recorded |
 | 2026-10-05 | 6 | Code generation built and verified offline; live run and human style check pending |
 | 2026-10-05 | 6 | Live generation run: 5/5 pairs; STND-104 reads a data key its entry lacks (proposed Phase 7 data-key validator) |
+| 2026-10-05 | all | Priority marker values changed to lowercase `p0`–`p3` (human request) in config, the stand-in suite and its data, and tests. Earlier log entries keep the values as written then. |

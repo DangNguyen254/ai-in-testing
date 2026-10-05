@@ -31,7 +31,7 @@ def _item(**changes: Any) -> dict[str, Any]:
     item: dict[str, Any] = {
         "kind": "primary",
         "intent": "Uploading a non-ASCII text file sends a correct Content-Length.",
-        "markers": {"priority": "P1", "component": "multipart file upload", "suite": "regression"},
+        "markers": {"priority": "p1", "component": "multipart file upload", "suite": "regression"},
         "test_kind": "api",
         "deployment_type": "both",
         "preconditions": ["A test server that accepts uploads"],
@@ -81,7 +81,7 @@ def test_ok_path_builds_traceable_drafts() -> None:
     first = result.drafts[0]
     assert first.ticket_id == "encode/httpx#1482"
     assert first.prompt_version == "draft_v1"
-    assert first.markers.priority == "P1"
+    assert first.markers.priority == "p1"
     assert first.test_kind == "api"
     assert first.deployment_type == "both"
 
@@ -92,18 +92,18 @@ def test_request_carries_schema_prompt_and_allowed_values() -> None:
     request = fake.requests[0]
     assert request.messages[0].role == "system"
     user = request.messages[1].content
-    assert "Allowed priorities (highest first): P0, P1, P2, P3" in user
+    assert "Allowed priorities (highest first): p0, p1, p2, p3" in user
     assert "Allowed suites: smoke, regression, unknown" in user
     assert "Too much data for declared Content-Length" in user
     assert request.temperature == 0.0
     markers = request.json_schema["properties"]["drafts"]["items"]["properties"]["markers"]  # type: ignore[index]
-    assert markers["properties"]["priority"]["enum"] == ["P0", "P1", "P2", "P3"]
+    assert markers["properties"]["priority"]["enum"] == ["p0", "p1", "p2", "p3"]
     assert markers["properties"]["suite"]["enum"] == ["smoke", "regression", "unknown"]
 
 
 @pytest.mark.parametrize("component", ["unknown", "Unknown", "", "n/a"])
 def test_unknown_component_caps_confidence(component: str) -> None:
-    item = _item(markers={"priority": "P2", "component": component, "suite": "unknown"})
+    item = _item(markers={"priority": "p2", "component": component, "suite": "unknown"})
     result = _run(FakeLLMClient([_reply(item)]))
     draft = result.drafts[0]
     assert draft.markers.component == "unknown"
@@ -145,7 +145,7 @@ def test_precheck_leaves_tickets_with_a_description_to_the_llm() -> None:
     [
         "not json",
         _reply(_item(markers={"priority": "urgent", "component": "c", "suite": "smoke"})),
-        _reply(_item(markers={"priority": "P1", "component": "c", "suite": "nightly"})),
+        _reply(_item(markers={"priority": "p1", "component": "c", "suite": "nightly"})),
         _reply(_item(kind="edge_case")),  # no primary
         _reply(_item(), *[_item(kind="edge_case")] * 4),  # too many edge cases
         _reply(_item(confidence=1.5)),
@@ -199,13 +199,13 @@ def test_draft_schema_does_not_mutate_between_calls() -> None:
 
 def test_markdown_ok() -> None:
     edge = _item(
-        kind="edge_case", markers={"priority": "P2", "component": "unknown", "suite": "smoke"}
+        kind="edge_case", markers={"priority": "p2", "component": "unknown", "suite": "smoke"}
     )
     result = _run(FakeLLMClient([_reply(_item(), edge)]))
     md = render_markdown(result, _ticket())
     assert md.startswith("# Test drafts for encode/httpx#1482:")
     assert "## 1. Main test:" in md and "## 2. Edge case:" in md
-    assert "| Priority | P1 |" in md
+    assert "| Priority | p1 |" in md
     assert "| Test type | API |" in md
     assert "| Runs on | All deployments |" in md
     assert "| Confidence | 90% |" in md
