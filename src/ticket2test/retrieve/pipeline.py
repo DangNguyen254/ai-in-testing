@@ -7,7 +7,6 @@ follow-up rounds (own search tools only) -> ranked hits with reasons + JSON-entr
 
 from __future__ import annotations
 
-import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
@@ -28,7 +27,6 @@ from ticket2test.models.ticket import Ticket
 from ticket2test.prompts import load_prompt
 from ticket2test.retrieve.llm_steps import request_followups, rewrite_query
 from ticket2test.retrieve.query import candidate_identifiers, ticket_text, verify_identifiers
-from ticket2test.retrieve.refs import called_names, self_chains
 
 RankedList = list[tuple[Chunk, Reason]]
 
@@ -58,10 +56,11 @@ class Retriever:
         for chunk in index.chunks:
             if chunk.kind != "test":
                 self._definitions.setdefault(chunk.symbol_name, []).append(chunk)
-        self._postings: dict[str, set[str]] = {}
-        for chunk_id, tokens in index.tokens.items():
-            for token in set(tokens):
-                self._postings.setdefault(token, set()).add(chunk_id)
+        # Syntax-tree reference index: identifier -> chunks that reference it.
+        self._users: dict[str, list[Chunk]] = {}
+        for chunk in index.chunks:
+            for name in chunk.refs.names:
+                self._users.setdefault(name, []).append(chunk)
 
     # --- tools (also the only tools follow-up rounds may use) ----------------------------
 
@@ -73,14 +72,14 @@ class Retriever:
         ]
 
     def grep(self, identifier: str, label: str = "grep") -> RankedList:
-        """Chunks whose code contains the identifier: definitions first, then most uses."""
+        """Exact identifier search over syntax-tree references: definitions first, then the
+        chunks that reference it most (comments, docstrings and strings don't count)."""
         matches = self._containing(identifier)
         if not matches or len(matches) > self.cfg.grep_max_matches:
             return []
-        pattern = _word(identifier)
         ranked = sorted(
             matches,
-            key=lambda c: (c.symbol_name != identifier, -len(pattern.findall(c.code)), c.id),
+            key=lambda c: (c.symbol_name != identifier, -c.refs.names.get(identifier, 0), c.id),
         )
         source = "followup" if label.startswith("followup") else "grep"
         return [
@@ -95,12 +94,10 @@ class Retriever:
         ]
 
     def _containing(self, identifier: str) -> list[Chunk]:
-        token = identifier.strip("_").lower()
-        candidate_ids = self._postings.get(token, set())
-        pattern = _word(identifier)
-        return [
-            self.chunks[i] for i in sorted(candidate_ids) if pattern.search(self.chunks[i].code)
-        ]
+        """Chunks that define or reference the identifier (from the syntax tree)."""
+        found = {c.id: c for c in self._definitions.get(identifier, [])}
+        found.update((c.id, c) for c in self._users.get(identifier, []))
+        return [found[i] for i in sorted(found)]
 
     # --- fusion and expansion ----------------------------------------------------------
 
@@ -128,7 +125,7 @@ class Retriever:
             else:
                 callees = [
                     d
-                    for name in called_names(chunk.code)
+                    for name in chunk.refs.calls
                     if name != chunk.symbol_name
                     for d in self._definitions.get(name, [])
                 ]
@@ -145,16 +142,17 @@ class Retriever:
                     )
 
     def _uses_of(self, chunk: Chunk) -> list[Chunk]:
+        """Chunks that reference this chunk's symbol (syntax tree), unless it's too common."""
         if chunk.symbol_name.startswith("__") or len(chunk.symbol_name) < 3:
             return []
-        found = self._containing(chunk.symbol_name)
-        return found if len(found) <= self.cfg.grep_max_matches else []
+        users = self._users.get(chunk.symbol_name, [])
+        return users if len(users) <= self.cfg.grep_max_matches else []
 
     def _page_objects_used(self, test: Chunk) -> list[Chunk]:
         if test.class_name is None:
             return []
         found: dict[str, Chunk] = {}
-        for steps in self_chains(test.code):
+        for steps in test.refs.self_chains:
             resolution = self.catalog.resolve_chain(test.class_name, steps)
             for qualname in resolution.types:
                 entry = self.catalog.classes.get(qualname) if qualname else None
@@ -330,7 +328,3 @@ def _describe(top: list[_Candidate]) -> list[str]:
 def _same_file_first(chunks: list[Chunk], file_path: str) -> list[Chunk]:
     unique = list({c.id: c for c in chunks}.values())
     return sorted(unique, key=lambda c: c.file_path != file_path)
-
-
-def _word(identifier: str) -> re.Pattern[str]:
-    return re.compile(rf"(?<![A-Za-z0-9_]){re.escape(identifier)}(?![A-Za-z0-9_])")

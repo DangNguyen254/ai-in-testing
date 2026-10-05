@@ -101,6 +101,7 @@ def _function_chunk(info: FileInfo, fn: FunctionInfo, cls: ClassInfo | None) -> 
         start_line=fn.start_line,
         end_line=fn.end_line,
         docstring=fn.docstring,
+        refs=fn.refs,
         class_name=cls.name if cls else None,
         decorators=fn.decorators,
     )
@@ -117,6 +118,7 @@ def _class_chunk(info: FileInfo, cls: ClassInfo, kind: str, whole: bool) -> Chun
         start_line=cls.start_line,
         end_line=cls.end_line,
         docstring=cls.docstring,
+        refs=cls.refs if whole else cls.header_refs,
         decorators=cls.decorators,
     )
 
@@ -155,6 +157,7 @@ def _test_chunk(
         start_line=fn.start_line,
         end_line=fn.end_line,
         docstring=fn.docstring,
+        refs=fn.refs,
         class_name=cls.name if cls else None,
         decorators=fn.decorators,
         markers=markers,

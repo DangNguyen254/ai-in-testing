@@ -9,6 +9,21 @@ from pydantic import BaseModel, ConfigDict, Field
 ChunkKind = Literal["test", "function", "class", "page_object"]
 
 
+class Refs(BaseModel):
+    """What a definition references, read from the syntax tree (not from text).
+
+    Comments, docstrings and string literals are ignored (f-string ``{...}`` code is not);
+    parameter declarations, keyword-argument names and the definition's own name are not
+    references.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    calls: list[str] = Field(default_factory=list)  # called names, in order: f(...) / x.f(...)
+    names: dict[str, int] = Field(default_factory=dict)  # referenced identifiers -> count
+    self_chains: list[list[str]] = Field(default_factory=list)  # ["nav", "users", "open()", ...]
+
+
 class Marker(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -40,6 +55,7 @@ class Chunk(BaseModel):
     start_line: int
     end_line: int
     docstring: str | None = None
+    refs: Refs = Field(default_factory=Refs)  # from the syntax tree
 
     # Tests only
     class_name: str | None = None

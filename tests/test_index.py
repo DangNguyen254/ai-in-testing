@@ -332,3 +332,56 @@ def test_cli_search_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
     assert bad_kind.exit_code == 2
     not_dir = runner.invoke(app, ["index", str(tmp_path / "nope")])
     assert not_dir.exit_code == 2
+
+
+# --- syntax-tree references ------------------------------------------------------------------
+
+_REFS_SOURCE = b'''class T(Base):
+    """Class doc mentions helper()."""
+    LOC = (By.ID, "x")
+
+    @retry(times=2)
+    def f(self, a, b=DEFAULT, *, c: Kind = 2) -> Result:
+        """doc mentions build_request()"""
+        # comment build_request()
+        x = g(base_url=a, key=f"{h(y)} text 'not_a_ref()'")
+        self.nav.users.invite.open().invite(e, r)
+        self.api.items()
+        self.client: Client = make_client(self.config)
+        return [z for z in other.values()]
+'''
+
+
+def test_refs_come_from_the_syntax_tree() -> None:
+    info = extract_file("t.py", _REFS_SOURCE)
+    refs = info.classes[0].methods[0].refs
+    assert refs.calls == ["retry", "g", "h", "invite", "open", "items", "make_client", "values"]
+    # Docstring, comment, and string-literal mentions are not references.
+    assert "build_request" not in refs.names and "not_a_ref" not in refs.names
+    # f-string code is; keyword names, parameter declarations, and the def's name are not.
+    assert refs.names["h"] == 1 and refs.names["y"] == 1
+    for not_a_ref in ("base_url", "key", "b", "c", "f", "self"):
+        assert not_a_ref not in refs.names
+    # Defaults, annotations, and decorators are references.
+    for name in ("DEFAULT", "Kind", "Result", "retry"):
+        assert name in refs.names
+    assert refs.self_chains == [["nav", "users", "invite", "open()", "invite"], ["api", "items"]]
+
+
+def test_self_assignments_from_the_syntax_tree() -> None:
+    fn = extract_file("t.py", _REFS_SOURCE).classes[0].methods[0]
+    assert [(a.name, a.annotation, a.call) for a in fn.self_assignments] == [
+        ("client", "Client", "make_client")
+    ]
+
+
+def test_class_header_refs_exclude_methods() -> None:
+    cls = extract_file("t.py", _REFS_SOURCE).classes[0]
+    assert set(cls.header_refs.names) == {"Base", "LOC", "By", "ID"}
+    assert "make_client" in cls.refs.names  # whole-class refs include the methods
+
+
+def test_chunks_carry_refs(standin_index: IndexData) -> None:
+    test = _chunk(standin_index, "TestUsers.test_invite_user")
+    assert ["nav", "users", "invite", "open()", "invite"] in test.refs.self_chains  # type: ignore[attr-defined]
+    assert "assert_backend" in test.refs.calls  # type: ignore[attr-defined]

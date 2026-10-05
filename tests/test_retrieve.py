@@ -26,7 +26,6 @@ from ticket2test.models import Ticket
 from ticket2test.normalize import normalize
 from ticket2test.retrieve.pipeline import retrieve
 from ticket2test.retrieve.query import candidate_identifiers, verify_identifiers
-from ticket2test.retrieve.refs import called_names, self_chains
 
 STANDIN = REPO_ROOT / "standin"
 EXPORT = STANDIN / "tickets" / "export.json"
@@ -57,7 +56,7 @@ def _followup(searches: list[dict[str, str]], done: bool = False) -> str:
     return json.dumps({"done": done, "searches": searches, "reason": "r"})
 
 
-# --- query building and references -----------------------------------------------------------
+# --- query building -----------------------------------------------------------
 
 
 def test_candidate_identifiers_and_verification(index: IndexData) -> None:
@@ -78,15 +77,6 @@ def test_candidate_identifiers_and_verification(index: IndexData) -> None:
     )
     assert verified == ["ItemEditorPage", "unique_name"]
     assert "FooBarWidget" in rejected and "The" in rejected
-
-
-def test_reference_extraction() -> None:
-    code = (
-        "self.nav.users.invite.open().invite(email, role)\n"
-        "x = len(self.api.users())\nwait_until(lambda: True)"
-    )
-    assert called_names(code) == ["open", "invite", "users", "wait_until"]
-    assert self_chains(code) == [["nav", "users", "invite", "open()", "invite"], ["api", "users()"]]
 
 
 # --- deterministic pipeline ------------------------------------------------------------------
