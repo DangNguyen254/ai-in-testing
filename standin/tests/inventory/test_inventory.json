@@ -1,0 +1,498 @@
+{
+  "test_create_item[1]": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": true,
+        "audit_log": true,
+        "beta_reports": false,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {},
+    "inputs": {
+      "name": "item-{{unique}}",
+      "category": "hardware"
+    },
+    "expected": {
+      "backend": {
+        "items": [
+          {
+            "name": "item-{{unique}}",
+            "quantity": 1,
+            "category": "hardware",
+            "status": "active"
+          }
+        ]
+      }
+    }
+  },
+  "test_create_item[50]": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": true,
+        "audit_log": true,
+        "beta_reports": false,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {},
+    "inputs": {
+      "name": "item-{{unique}}",
+      "category": "hardware"
+    },
+    "expected": {
+      "backend": {
+        "items": [
+          {
+            "name": "item-{{unique}}",
+            "quantity": 50,
+            "category": "hardware",
+            "status": "active"
+          }
+        ]
+      }
+    },
+    "priority": "P2"
+  },
+  "test_create_item_rejects_invalid_quantity[0-typed]": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": true,
+        "audit_log": true,
+        "beta_reports": false,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {},
+    "inputs": {
+      "name": "item-{{unique}}",
+      "category": "general"
+    },
+    "expected": {
+      "error": "Quantity must be at least 1"
+    }
+  },
+  "test_create_item_rejects_invalid_quantity[0-pasted]": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": true,
+        "audit_log": true,
+        "beta_reports": false,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {},
+    "inputs": {
+      "name": "item-{{unique}}",
+      "category": "general"
+    },
+    "expected": {
+      "error": "Quantity must be at least 1"
+    }
+  },
+  "test_create_item_rejects_invalid_quantity[-1-typed]": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": true,
+        "audit_log": true,
+        "beta_reports": false,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {},
+    "inputs": {
+      "name": "item-{{unique}}",
+      "category": "general"
+    },
+    "expected": {
+      "error": "Quantity must be at least 1"
+    }
+  },
+  "test_create_item_rejects_invalid_quantity[-1-pasted]": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": true,
+        "audit_log": true,
+        "beta_reports": false,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {},
+    "inputs": {
+      "name": "item-{{unique}}",
+      "category": "general"
+    },
+    "expected": {
+      "error": "Quantity must be at least 1"
+    }
+  },
+  "test_search_items_by_name": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": true,
+        "audit_log": true,
+        "beta_reports": false,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {
+      "items": [
+        {
+          "name": "desk-lamp-{{unique}}"
+        },
+        {
+          "name": "Desk-Chair-{{unique}}"
+        },
+        {
+          "name": "monitor-{{unique}}"
+        }
+      ]
+    },
+    "inputs": {
+      "query": "desk"
+    },
+    "expected": {
+      "visible_items": [
+        "desk-lamp-{{unique}}",
+        "Desk-Chair-{{unique}}"
+      ]
+    }
+  },
+  "test_edit_item_category": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": true,
+        "audit_log": true,
+        "beta_reports": false,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {
+      "items": [
+        {
+          "name": "cable-{{unique}}",
+          "quantity": 4,
+          "category": "general"
+        }
+      ]
+    },
+    "inputs": {
+      "name": "cable-{{unique}}",
+      "category": "office"
+    },
+    "expected": {
+      "backend": {
+        "items": [
+          {
+            "name": "cable-{{unique}}",
+            "quantity": 4,
+            "category": "office"
+          }
+        ]
+      }
+    }
+  },
+  "test_delete_item": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": true,
+        "audit_log": true,
+        "beta_reports": false,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {
+      "items": [
+        {
+          "name": "old-stock-{{unique}}",
+          "quantity": 2
+        }
+      ]
+    },
+    "inputs": {
+      "name": "old-stock-{{unique}}"
+    },
+    "expected": {}
+  },
+  "test_items_api_lists_seeded_items": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": true,
+        "audit_log": true,
+        "beta_reports": false,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {
+      "items": [
+        {
+          "name": "alpha-{{unique}}"
+        },
+        {
+          "name": "beta-{{unique}}"
+        },
+        {
+          "name": "gamma-{{unique}}"
+        }
+      ]
+    },
+    "inputs": {},
+    "expected": {
+      "item_names": [
+        "alpha-{{unique}}",
+        "beta-{{unique}}",
+        "gamma-{{unique}}"
+      ]
+    }
+  }
+}

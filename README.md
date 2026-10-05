@@ -4,7 +4,7 @@ Turns a bug ticket into **structured draft test cases**, then into **runnable te
 human QE to review. Generic and company-agnostic: ticket source, codebase, LLM endpoint, and
 conventions all sit behind adapters and config. Built and evaluated on public data only.
 
-> Status: Phase 2 (draft generation). `normalize` and `draft` work; other subcommands are placeholders. See `PROJECT_STATUS.md`.
+> Status: Phase 3 (synthetic stand-in suite in `standin/`). `normalize` and `draft` work; other subcommands are placeholders. See `PROJECT_STATUS.md`.
 
 ## Quick start
 
@@ -81,12 +81,18 @@ Set `llm.provider` in `config.yaml`:
 
 | Provider | Auth | Notes |
 |---|---|---|
-| `claude_code_cli` (default) | Your Claude Code login | Runs `claude -p` as a plain LLM: all tools, MCP servers, skills and settings files disabled, in an empty temp dir. No temperature control. If `claude` isn't on PATH, the VS Code extension's bundled binary is used, or set `T2T_LLM__CLAUDE_CODE_CLI__EXECUTABLE`. |
+| `claude_code_cli` (default) | Your Claude Code login | Runs `claude -p` as a plain LLM: all tools, MCP servers, skills and settings files disabled, in `.scratch/claude-cli`. No temperature control. Needs `claude` on PATH, or set `T2T_LLM__CLAUDE_CODE_CLI__EXECUTABLE` to the full path. |
 | `claude` | `ANTHROPIC_API_KEY` | Anthropic API. Current models don't accept `temperature`. |
 | `gemini` | `GEMINI_API_KEY` | Set `llm.gemini.model` first. Uses `temperature` and `seed`. |
 
 If `ANTHROPIC_API_KEY` is set in the environment, the Claude CLI uses it (API billing) instead
 of your subscription login. Full prompts and responses are logged only with `--debug-log`.
+
+## Stand-in suite
+
+`standin/` is a synthetic target suite (invented names only) that mirrors the target test
+style: page objects, a base test class, markers, and a JSON data file per test file. See
+`standin/README.md`. `uv run pytest` checks it with `pytest --collect-only` (no browser needed).
 
 ## Configuration
 

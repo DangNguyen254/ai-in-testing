@@ -14,13 +14,20 @@ anyio==4.15.1
     #   httpx2
 ast-serialize==0.12.1
     # via mypy
+attrs==26.1.0
+    # via
+    #   outcome
+    #   trio
 certifi==2026.7.22
     # via
     #   httpcore
     #   httpx
     #   requests
-cffi==2.1.1 ; platform_python_implementation != 'PyPy'
-    # via cryptography
+    #   selenium
+cffi==2.1.1 ; (implementation_name != 'pypy' and os_name == 'nt') or platform_python_implementation != 'PyPy'
+    # via
+    #   cryptography
+    #   trio
 charset-normalizer==3.5.2
     # via requests
 colorama==0.4.6 ; sys_platform == 'win32'
@@ -41,6 +48,7 @@ h11==0.16.0
     # via
     #   httpcore
     #   httpcore2
+    #   wsproto
 httpcore==1.0.9
     # via httpx
 httpcore2==2.13.1 ; sys_platform != 'emscripten'
@@ -59,6 +67,7 @@ idna==3.20
     #   httpx
     #   httpx2
     #   requests
+    #   trio
 iniconfig==2.3.0
     # via pytest
 jiter==0.17.0
@@ -72,6 +81,10 @@ mdurl==0.1.2
 mypy==2.4.0
 mypy-extensions==1.1.0
     # via mypy
+outcome==1.3.0.post0
+    # via
+    #   trio
+    #   trio-websocket
 packaging==26.3
     # via pytest
 pathspec==1.1.1
@@ -82,7 +95,7 @@ pyasn1==0.6.4
     # via pyasn1-modules
 pyasn1-modules==0.4.2
     # via google-auth
-pycparser==3.0 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
+pycparser==3.0 ; (implementation_name != 'PyPy' and implementation_name != 'pypy' and os_name == 'nt') or (implementation_name != 'PyPy' and platform_python_implementation != 'PyPy')
     # via cffi
 pydantic==2.13.5
     # via
@@ -98,6 +111,8 @@ pygments==2.21.0
     # via
     #   pytest
     #   rich
+pysocks==1.7.1
+    # via urllib3
 pytest==9.1.1
 python-dotenv==1.2.4
     # via pydantic-settings
@@ -110,14 +125,24 @@ requests==2.34.2
 rich==15.0.0
     # via typer
 ruff==0.16.10
+selenium==4.50.0
 shellingham==1.5.4
     # via typer
 sniffio==1.3.1
     # via
     #   anthropic
     #   google-genai
+    #   trio
+sortedcontainers==2.4.0
+    # via trio
 tenacity==9.1.4
     # via google-genai
+trio==0.34.0
+    # via
+    #   selenium
+    #   trio-websocket
+trio-websocket==0.12.2
+    # via selenium
 truststore==0.10.4 ; sys_platform != 'emscripten'
     # via
     #   httpcore2
@@ -134,13 +159,20 @@ typing-extensions==4.16.0
     #   mypy
     #   pydantic
     #   pydantic-core
+    #   selenium
     #   typing-inspection
 typing-inspection==0.4.4
     # via
     #   pydantic
     #   pydantic-settings
 urllib3==2.8.0
-    # via requests
+    # via
+    #   requests
+    #   selenium
 uv==0.12.23
+websocket-client==1.9.2
+    # via selenium
 websockets==16.1.1
     # via google-genai
+wsproto==1.3.2
+    # via trio-websocket

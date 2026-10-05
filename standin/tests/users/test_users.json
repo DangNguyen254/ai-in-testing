@@ -1,0 +1,356 @@
+{
+  "test_invite_user[viewer]": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": false,
+        "audit_log": true,
+        "beta_reports": false,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {},
+    "inputs": {
+      "email": "user-{{unique}}@example.com"
+    },
+    "expected": {
+      "backend": {
+        "users": [
+          {
+            "email": "user-{{unique}}@example.com",
+            "role": "viewer",
+            "active": true
+          }
+        ]
+      }
+    }
+  },
+  "test_invite_user[editor]": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": false,
+        "audit_log": true,
+        "beta_reports": false,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {},
+    "inputs": {
+      "email": "user-{{unique}}@example.com"
+    },
+    "expected": {
+      "backend": {
+        "users": [
+          {
+            "email": "user-{{unique}}@example.com",
+            "role": "editor",
+            "active": true
+          }
+        ]
+      }
+    }
+  },
+  "test_invite_user[admin]": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": false,
+        "audit_log": true,
+        "beta_reports": false,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {},
+    "inputs": {
+      "email": "user-{{unique}}@example.com"
+    },
+    "expected": {
+      "backend": {
+        "users": [
+          {
+            "email": "user-{{unique}}@example.com",
+            "role": "admin",
+            "active": true
+          }
+        ]
+      }
+    }
+  },
+  "test_invite_user_rejects_duplicate_email": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": false,
+        "audit_log": true,
+        "beta_reports": false,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {
+      "users": [
+        {
+          "email": "taken-{{unique}}@example.com",
+          "role": "viewer"
+        }
+      ]
+    },
+    "inputs": {
+      "email": "taken-{{unique}}@example.com",
+      "role": "editor"
+    },
+    "expected": {
+      "error": "taken-{{unique}}@example.com has already been invited",
+      "user_count": 1
+    }
+  },
+  "test_change_user_role": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": false,
+        "audit_log": true,
+        "beta_reports": false,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {
+      "users": [
+        {
+          "email": "user-{{unique}}@example.com",
+          "role": "viewer"
+        }
+      ]
+    },
+    "inputs": {
+      "email": "user-{{unique}}@example.com",
+      "new_role": "admin"
+    },
+    "expected": {
+      "backend": {
+        "users": [
+          {
+            "email": "user-{{unique}}@example.com",
+            "role": "admin"
+          }
+        ]
+      }
+    }
+  },
+  "test_deactivate_user": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": false,
+        "audit_log": true,
+        "beta_reports": false,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {
+      "users": [
+        {
+          "email": "user-{{unique}}@example.com",
+          "role": "editor"
+        }
+      ]
+    },
+    "inputs": {
+      "email": "user-{{unique}}@example.com"
+    },
+    "expected": {
+      "backend": {
+        "users": [
+          {
+            "email": "user-{{unique}}@example.com",
+            "active": false
+          }
+        ]
+      }
+    }
+  },
+  "test_sso_banner_on_user_list": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": false,
+        "audit_log": true,
+        "beta_reports": false,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {},
+    "inputs": {},
+    "expected": {
+      "banner": "Single sign-on is managed by your identity provider"
+    }
+  }
+}

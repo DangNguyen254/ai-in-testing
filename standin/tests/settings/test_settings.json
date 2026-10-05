@@ -1,0 +1,296 @@
+{
+  "test_change_timezone[UTC]": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": false,
+        "audit_log": true,
+        "beta_reports": true,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {
+      "settings": {
+        "timezone": "Asia/Tokyo"
+      }
+    },
+    "inputs": {
+      "timezone": "UTC"
+    },
+    "expected": {
+      "backend": {
+        "settings": {
+          "timezone": "UTC"
+        }
+      }
+    }
+  },
+  "test_change_timezone[Europe/Berlin]": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": false,
+        "audit_log": true,
+        "beta_reports": true,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {
+      "settings": {
+        "timezone": "Asia/Tokyo"
+      }
+    },
+    "inputs": {
+      "timezone": "Europe/Berlin"
+    },
+    "expected": {
+      "backend": {
+        "settings": {
+          "timezone": "Europe/Berlin"
+        }
+      }
+    }
+  },
+  "test_change_language": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": false,
+        "audit_log": true,
+        "beta_reports": true,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {},
+    "inputs": {
+      "language": "de"
+    },
+    "expected": {
+      "backend": {
+        "settings": {
+          "language": "de"
+        }
+      }
+    }
+  },
+  "test_disable_email_notifications": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": false,
+        "audit_log": true,
+        "beta_reports": true,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {
+      "settings": {
+        "notifications": {
+          "email": true
+        }
+      }
+    },
+    "inputs": {},
+    "expected": {
+      "backend": {
+        "settings": {
+          "notifications": {
+            "email": false
+          }
+        }
+      }
+    }
+  },
+  "test_enable_weekly_digest": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": false,
+        "audit_log": true,
+        "beta_reports": true,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {},
+    "inputs": {},
+    "expected": {
+      "backend": {
+        "settings": {
+          "notifications": {
+            "weekly_digest": true
+          }
+        }
+      }
+    },
+    "skip": {
+      "ticket": "STND-105",
+      "reason": "weekly digest choice is not saved"
+    }
+  },
+  "test_timezone_persists_after_reload": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": false,
+        "audit_log": true,
+        "beta_reports": true,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {},
+    "inputs": {
+      "timezone": "America/New_York"
+    },
+    "expected": {
+      "backend": {
+        "settings": {
+          "timezone": "America/New_York"
+        }
+      }
+    }
+  }
+}

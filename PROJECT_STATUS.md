@@ -19,7 +19,7 @@ Tracks progress, scope, and acceptance criteria for each phase. Read together wi
 | 0 | Skeleton | ✅ (models extended, see notes) | – |
 | 1 | Ticket normalizer | ✅ | 0 |
 | 2 | Draft generation | ✅ | 1 |
-| 3 | Synthetic stand-in repo | ⬜ | 0 |
+| 3 | Synthetic stand-in repo | 🟡 | 0 |
 | 4 | Indexer (Python) | ⬜ | 3 |
 | 5 | Retrieval | ⬜ | 2, 4 |
 | 6 | Code generation (code + JSON pair) | ⬜ | 5 |
@@ -167,7 +167,7 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 ---
 
 ## Phase 3: Synthetic stand-in repo
-**Status:** ⬜ Not started
+**Status:** 🟡 In progress
 
 **Goal:** A small, invented target repo that follows the target test-suite patterns (see `CLAUDE.md`), so the indexer, generator, validators, and eval can be built against the real shape without private data.
 
@@ -198,11 +198,11 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 - Minimal dependencies; anything new (e.g. a browser-automation library) needs approval first
 
 **Definition of Done:**
-- [ ] At least 4 feature areas and 20 tests, with the UI/API/hybrid mix above
-- [ ] `pytest --collect-only` on the stand-in succeeds with no browser and no network
-- [ ] Every JSON data file's keys exactly match the collected test ids (checked by a project test), including a stacked-parametrize case
-- [ ] At least one entry overrides priority and at least one is skipped by ticket id; at least one test is deployment-type skipped
-- [ ] At least 5 fake tickets mapped to tests, and the scripted git history contains a skip-removal fix
+- [x] At least 4 feature areas and 20 tests, with the UI/API/hybrid mix above
+- [x] `pytest --collect-only` on the stand-in succeeds with no browser and no network
+- [x] Every JSON data file's keys exactly match the collected test ids (checked by a project test), including a stacked-parametrize case
+- [x] At least one entry overrides priority and at least one is skipped by ticket id; at least one test is deployment-type skipped
+- [x] At least 5 fake tickets mapped to tests, and the scripted git history contains a skip-removal fix
 - [ ] Human review: all names are generic and invented
 
 **Open questions:**
@@ -210,7 +210,10 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 - Fake web app: stdlib `http.server` (no new dependency) is the proposal. OK? **Resolved 2026-10-05:** yes.
 - Can this project's own unit tests run `pytest --collect-only` on the hand-written stand-in on the host? It's trusted code, not generated. Generated tests always use the sandbox. **Resolved 2026-10-05:** yes, for the hand-written stand-in only. Generated tests always go through the sandbox.
 
-**Log:** –
+**Log:**
+- 2026-10-05: Started. `selenium` 4.50 added as a dev dependency (approved for the stand-in; Apache-2.0; transitive deps MIT/BSD/Apache, plus the already-accepted `certifi` MPL-2.0).
+- 2026-10-05: Built `standin/`: stdlib `http.server` fake app (inventory, users, orders, settings; HTML pages with stable element ids + JSON API with seed/reset); framework layer (`BaseTest` with data entry, backend reset+seed, lazy browser, failure artifacts, cleanup; page objects via `nav.<area>.<page>`; API client; `ValidationMixin`; `retry`, `skip_browser`, `cloud_only`, `on_prem_only`; `{{unique}}` placeholder + name generator; data loader keyed by pytest test name); 4 test classes with 22 functions / 31 ids (19 UI, 2 API, 1 hybrid = 86% UI), markers priority/project/component/suite, stacked parametrize; 4 JSON data files with a repeated large `config` block; `tests/conftest.py` applies per-entry priority overrides and ticket skips at collection; 6 fake tickets (`STND-101`..`106`, Jira export shape); `manifest.json` (test kinds, ticket → tests); `tools/build_history.py` (3 commits: suite with two ticket skips, then one fix commit per ticket removing its skip; fixed author/dates; final tree = `standin/`). STND-105 is a deliberate open bug, still skipped by ticket id. ruff `src` now includes `standin` for import grouping.
+- 2026-10-05: Verified. Collected 31 ids with no browser/network; stacked parametrize confirmed bottom-first (`[0-typed]`). `tests/test_standin.py` (18 tests): JSON keys == collected ids per file; four markers with config values; base class used; priority override (`test_create_item[50]` → P2); ticket skip (`STND-105`); deployment skips flip between cloud and on_prem; placeholders in unique names; repeated config block; manifest == collected functions; kind mix; API tests never touch the browser; tickets normalize with steps + expected; history fix commits remove the ticket skips (matched with `eval.ticket_id_pattern`); app state rules; only `localhost` / `example.com` hosts. ruff, mypy strict (src), non-strict mypy over `standin/` (25 files), pytest 252 passed, 7 live deselected. **Pending:** human review that all names are generic.
 
 ---
 
@@ -442,3 +445,4 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 | 2026-10-05 | all | Human approved the scope update, incl. the 3 hard-constraint wording changes and moving priority/component into `markers`. Answers: `selenium` in the stand-in; `http.server` for the fake app; host `--collect-only` only for the hand-written stand-in; httpx API drafts OK for Phase 2; generic placeholder marker values and a Jira-style ticket-id regex in config. Phase 2 resumed. |
 | 2026-10-05 | all | New Hard Constraint 9: Claude Code works only inside this repo (no reading, searching, or writing elsewhere; temp files in git-ignored `.scratch/`). |
 | 2026-10-05 | 2 | Phase 2 draft generation built and verified (offline checks, live run, human Markdown review); marked ✅ Done |
+| 2026-10-05 | 3 | Stand-in built and verified; all DoD items pass except the human name review |

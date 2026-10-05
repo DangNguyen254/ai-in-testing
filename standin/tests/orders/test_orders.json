@@ -1,0 +1,551 @@
+{
+  "test_place_order": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": false,
+        "audit_log": true,
+        "beta_reports": true,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {
+      "items": [
+        {
+          "name": "widget-{{unique}}",
+          "quantity": 10
+        }
+      ]
+    },
+    "inputs": {
+      "item": "widget-{{unique}}",
+      "quantity": 3
+    },
+    "expected": {
+      "backend": {
+        "items": [
+          {
+            "name": "widget-{{unique}}",
+            "quantity": 7
+          }
+        ]
+      }
+    }
+  },
+  "test_cancel_order": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": false,
+        "audit_log": true,
+        "beta_reports": true,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {
+      "items": [
+        {
+          "name": "widget-{{unique}}",
+          "quantity": 10
+        }
+      ],
+      "orders": [
+        {
+          "lines": [
+            {
+              "item": "widget-{{unique}}",
+              "quantity": 2
+            }
+          ]
+        }
+      ]
+    },
+    "inputs": {
+      "order_id": 1
+    },
+    "expected": {
+      "backend": {
+        "items": [
+          {
+            "name": "widget-{{unique}}",
+            "quantity": 10
+          }
+        ]
+      }
+    }
+  },
+  "test_filter_orders_by_status[open]": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": false,
+        "audit_log": true,
+        "beta_reports": true,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {
+      "items": [
+        {
+          "name": "widget-{{unique}}",
+          "quantity": 100
+        }
+      ],
+      "orders": [
+        {
+          "lines": [
+            {
+              "item": "widget-{{unique}}",
+              "quantity": 1
+            }
+          ]
+        },
+        {
+          "lines": [
+            {
+              "item": "widget-{{unique}}",
+              "quantity": 1
+            }
+          ]
+        },
+        {
+          "lines": [
+            {
+              "item": "widget-{{unique}}",
+              "quantity": 1
+            }
+          ],
+          "status": "shipped"
+        },
+        {
+          "lines": [
+            {
+              "item": "widget-{{unique}}",
+              "quantity": 1
+            }
+          ],
+          "status": "cancelled"
+        }
+      ]
+    },
+    "inputs": {
+      "status": "open"
+    },
+    "expected": {
+      "count": 2
+    }
+  },
+  "test_filter_orders_by_status[shipped]": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": false,
+        "audit_log": true,
+        "beta_reports": true,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {
+      "items": [
+        {
+          "name": "widget-{{unique}}",
+          "quantity": 100
+        }
+      ],
+      "orders": [
+        {
+          "lines": [
+            {
+              "item": "widget-{{unique}}",
+              "quantity": 1
+            }
+          ]
+        },
+        {
+          "lines": [
+            {
+              "item": "widget-{{unique}}",
+              "quantity": 1
+            }
+          ]
+        },
+        {
+          "lines": [
+            {
+              "item": "widget-{{unique}}",
+              "quantity": 1
+            }
+          ],
+          "status": "shipped"
+        },
+        {
+          "lines": [
+            {
+              "item": "widget-{{unique}}",
+              "quantity": 1
+            }
+          ],
+          "status": "cancelled"
+        }
+      ]
+    },
+    "inputs": {
+      "status": "shipped"
+    },
+    "expected": {
+      "count": 1
+    }
+  },
+  "test_filter_orders_by_status[cancelled]": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": false,
+        "audit_log": true,
+        "beta_reports": true,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {
+      "items": [
+        {
+          "name": "widget-{{unique}}",
+          "quantity": 100
+        }
+      ],
+      "orders": [
+        {
+          "lines": [
+            {
+              "item": "widget-{{unique}}",
+              "quantity": 1
+            }
+          ]
+        },
+        {
+          "lines": [
+            {
+              "item": "widget-{{unique}}",
+              "quantity": 1
+            }
+          ]
+        },
+        {
+          "lines": [
+            {
+              "item": "widget-{{unique}}",
+              "quantity": 1
+            }
+          ],
+          "status": "shipped"
+        },
+        {
+          "lines": [
+            {
+              "item": "widget-{{unique}}",
+              "quantity": 1
+            }
+          ],
+          "status": "cancelled"
+        }
+      ]
+    },
+    "inputs": {
+      "status": "cancelled"
+    },
+    "expected": {
+      "count": 1
+    }
+  },
+  "test_add_order_note": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": false,
+        "audit_log": true,
+        "beta_reports": true,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {
+      "items": [
+        {
+          "name": "widget-{{unique}}",
+          "quantity": 5
+        }
+      ],
+      "orders": [
+        {
+          "lines": [
+            {
+              "item": "widget-{{unique}}",
+              "quantity": 1
+            }
+          ]
+        }
+      ]
+    },
+    "inputs": {
+      "order_id": 1,
+      "note": "Customer asked for gift wrap"
+    },
+    "expected": {
+      "notes": [
+        "Customer asked for gift wrap"
+      ]
+    }
+  },
+  "test_order_created_via_api_shows_in_ui": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": false,
+        "audit_log": true,
+        "beta_reports": true,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {
+      "items": [
+        {
+          "name": "widget-{{unique}}",
+          "quantity": 5
+        }
+      ]
+    },
+    "inputs": {
+      "lines": [
+        {
+          "item": "widget-{{unique}}",
+          "quantity": 1
+        }
+      ]
+    },
+    "expected": {
+      "backend": {
+        "items": [
+          {
+            "name": "widget-{{unique}}",
+            "quantity": 5
+          }
+        ]
+      }
+    }
+  },
+  "test_orders_api_rejects_unknown_item": {
+    "config": {
+      "environment": {
+        "tenant": "tenant-main",
+        "region": "region-1",
+        "locale": "en",
+        "currency": "EUR",
+        "time_format": "24h"
+      },
+      "account": {
+        "plan": "standard",
+        "seats": 25,
+        "billing_cycle": "monthly",
+        "trial": false
+      },
+      "feature_flags": {
+        "new_checkout": true,
+        "bulk_edit": false,
+        "audit_log": true,
+        "beta_reports": true,
+        "sso": true
+      },
+      "browser_profile": {
+        "width": 1280,
+        "height": 900,
+        "language": "en-US",
+        "accept_cookies": true
+      },
+      "timeouts": {
+        "page_load": 15,
+        "element": 10,
+        "backend_sync": 10
+      }
+    },
+    "seed": {},
+    "inputs": {
+      "lines": [
+        {
+          "item": "missing-{{unique}}",
+          "quantity": 1
+        }
+      ]
+    },
+    "expected": {
+      "status": 422,
+      "error": "Unknown item 'missing-{{unique}}'"
+    }
+  }
+}

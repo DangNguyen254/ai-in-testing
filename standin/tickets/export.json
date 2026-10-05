@@ -1,0 +1,78 @@
+{
+  "_comment": "Hand-written FAKE tickets for the synthetic stand-in app (Jira API v2 export shape, wiki markup). Not real data.",
+  "total": 6,
+  "issues": [
+    {
+      "id": "30101",
+      "key": "STND-101",
+      "self": "https://jira.example.com/rest/api/2/issue/30101",
+      "fields": {
+        "summary": "Invited editors end up with the viewer role",
+        "labels": ["users", "regression"],
+        "components": [{ "name": "users" }],
+        "description": "When an admin invites someone as an editor, the new user shows up as a viewer.\n\nh3. Steps to Reproduce\n# Go to Users and click *Invite user*\n# Enter an email address and choose the role {{editor}}\n# Click *Send invite*\n\nh3. Expected Behavior\nThe user list shows the new user with the role editor.\n\nh3. Actual Behavior\nThe user list shows the role viewer.",
+        "comment": { "total": 1, "comments": [ { "author": { "displayName": "Alex Example" }, "created": "2026-03-02T09:00:00.000+0000", "body": "Admins are affected too." } ] }
+      }
+    },
+    {
+      "id": "30102",
+      "key": "STND-102",
+      "self": "https://jira.example.com/rest/api/2/issue/30102",
+      "fields": {
+        "summary": "Item search is case-sensitive",
+        "labels": ["inventory"],
+        "components": [{ "name": "inventory" }],
+        "description": "Searching the item list misses items whose names use different capitalization.\n\nh3. Steps to Reproduce\n# Create items named {{desk-lamp}} and {{Desk-Chair}}\n# On the Items page, search for {{desk}}\n\nh3. Expected Behavior\nBoth items are listed.\n\nh3. Actual Behavior\nOnly {{desk-lamp}} is listed.",
+        "comment": { "total": 0, "comments": [] }
+      }
+    },
+    {
+      "id": "30103",
+      "key": "STND-103",
+      "self": "https://jira.example.com/rest/api/2/issue/30103",
+      "fields": {
+        "summary": "Items can be saved with quantity 0",
+        "labels": ["inventory", "validation"],
+        "components": [{ "name": "inventory" }],
+        "description": "The item editor accepts a quantity of 0 or a negative number.\n\nh3. Steps to Reproduce\n# Open the item editor (*New item*)\n# Enter a name and set quantity to {{0}} (typing it or pasting it)\n# Click *Save*\n\nh3. Expected Behavior\nThe form shows the error \"Quantity must be at least 1\" and no item is created.\n\nh3. Actual Behavior\nThe item is created with quantity 0.",
+        "comment": { "total": 0, "comments": [] }
+      }
+    },
+    {
+      "id": "30104",
+      "key": "STND-104",
+      "self": "https://jira.example.com/rest/api/2/issue/30104",
+      "fields": {
+        "summary": "Cancelling an order leaves it open",
+        "labels": ["orders"],
+        "components": [{ "name": "orders" }],
+        "description": "Clicking *Cancel order* on an open order shows a success message, but the order stays open and the stock is not returned.\n\nh3. Steps to Reproduce\n# Place an order for 2 units of an item\n# Open the order and click *Cancel order*\n\nh3. Expected Behavior\nThe order status is cancelled and the 2 units are back in stock.\n\nh3. Actual Behavior\nThe status stays open.",
+        "comment": { "total": 0, "comments": [] }
+      }
+    },
+    {
+      "id": "30105",
+      "key": "STND-105",
+      "self": "https://jira.example.com/rest/api/2/issue/30105",
+      "fields": {
+        "summary": "Weekly digest setting is not saved",
+        "labels": ["settings", "notifications"],
+        "components": [{ "name": "settings" }],
+        "description": "Turning on the weekly digest and saving shows \"Settings saved\", but after a reload the checkbox is off again.\n\nh3. Steps to Reproduce\n# Open Settings, then Notifications\n# Tick *Weekly digest* and click *Save*\n# Reload the page\n\nh3. Expected Behavior\nThe weekly digest stays enabled.\n\nh3. Actual Behavior\nIt is disabled again.",
+        "comment": { "total": 0, "comments": [] }
+      }
+    },
+    {
+      "id": "30106",
+      "key": "STND-106",
+      "self": "https://jira.example.com/rest/api/2/issue/30106",
+      "fields": {
+        "summary": "Timezone resets after reloading general settings",
+        "labels": ["settings"],
+        "components": [{ "name": "settings" }],
+        "description": "A saved timezone is shown correctly right after saving, but the page shows UTC again after a reload.\n\nh3. Steps to Reproduce\n# Open Settings\n# Choose {{America/New_York}} and click *Save*\n# Reload the page\n\nh3. Expected Behavior\nThe timezone selector still shows America/New_York.\n\nh3. Actual Behavior\nIt shows UTC.",
+        "comment": { "total": 0, "comments": [] }
+      }
+    }
+  ]
+}
