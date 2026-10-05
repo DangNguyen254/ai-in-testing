@@ -92,6 +92,16 @@ retrieval:
 
 context:
   max_tokens: 12000
+  chars_per_token: 3.0           # token estimate = ceil(chars / 3.0); over-counts on purpose
+
+generate:
+  prompt_version: generate_v1
+  conventions_doc: null          # e.g. standin/CONVENTIONS.md; always included when set
+  unique_entry_keys: [seed, inputs, expected]   # written by the LLM; the rest is copied
+  drop_template_keys: [priority, skip]          # per-entry overrides, never inherited
+  placeholder_token: "{{unique}}"
+  max_example_tests: 4
+  deployment_decorators: {cloud: cloud_only, on_prem: on_prem_only}
 
 repair:
   max_attempts: 3

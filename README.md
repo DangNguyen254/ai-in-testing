@@ -4,7 +4,7 @@ Turns a bug ticket into **structured draft test cases**, then into **runnable te
 human QE to review. Generic and company-agnostic: ticket source, codebase, LLM endpoint, and
 conventions all sit behind adapters and config. Built and evaluated on public data only.
 
-> Status: Phase 5 (retrieval). `normalize`, `draft`, `index`, `search`, `retrieve`, and `eval --stage retrieval` work; `generate` and `validate` are placeholders. See `PROJECT_STATUS.md`.
+> Status: Phase 6 (code generation). `normalize`, `draft`, `index`, `search`, `retrieve`, `generate`, and `eval --stage retrieval` work; `validate` is a placeholder. See `PROJECT_STATUS.md`.
 
 ## Quick start
 
@@ -115,6 +115,19 @@ A deterministic reranker then re-scores candidates and keeps the top k varied (a
 per file, at least 2 tests); each hit records its `rank_features`.
 Templates are existing tests whose JSON entries can seed new ones. The LLM may request extra
 searches (own search tools only) for at most `retrieval.max_followup_rounds` rounds.
+
+### Generate a test (code + JSON data)
+
+```bash
+uv run --env-file .env ticket2test generate drafts/X.drafts.json --retrieval X.retrieval.json \
+    --conventions standin/CONVENTIONS.md --out output/generated
+```
+
+Writes `<draft id>/<path>/test_<ticket>.py`, its JSON data file, and `generated.json`
+(traceability) under the output directory, never into the target repo. The LLM writes the code
+and the unique parts of each entry; the shared blocks (e.g. `config`) are copied verbatim from
+the template entry, and the entry keys are the pytest ids computed from the code.
+Generated code is not run or validated against the catalog yet (Phase 7).
 
 ### Measure retrieval
 

@@ -22,7 +22,7 @@ Tracks progress, scope, and acceptance criteria for each phase. Read together wi
 | 3 | Synthetic stand-in repo | ✅ | 0 |
 | 4 | Indexer (Python) | ✅ | 3 |
 | 5 | Retrieval | ✅ | 2, 4 |
-| 6 | Code generation (code + JSON pair) | ⬜ | 5 |
+| 6 | Code generation (code + JSON pair) | 🟡 | 5 |
 | 7 | Validators, repair, sandbox | ⬜ | 6 |
 | 8 | Eval harness | ⬜ | 5 (minimal), 7 (full) |
 | 9 | Rust support | ⬜ | 8 |
@@ -321,7 +321,7 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 ---
 
 ## Phase 6: Code generation (code + JSON pair)
-**Status:** ⬜ Not started
+**Status:** 🟡 In progress
 
 **Goal:** Generate a test (code file + JSON data entries) from a draft, in the style of the existing tests.
 
@@ -343,14 +343,17 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 
 **Definition of Done:**
 - [ ] Generates a code + JSON pair for each of 5 stand-in drafts (live test)
-- [ ] Copied config blocks are byte-identical to the template entry (tested)
-- [ ] Context never exceeds the token budget (tested)
-- [ ] Every `GeneratedTest` has complete traceability fields, incl. `template_entry_ref`
+- [x] Copied config blocks are byte-identical to the template entry (tested)
+- [x] Context never exceeds the token budget (tested)
+- [x] Every `GeneratedTest` has complete traceability fields, incl. `template_entry_ref`
 - [ ] Generated code follows the style of retrieved examples (spot-checked by a human)
 
 **Open questions:** –
 
-**Log:** –
+**Log:**
+- 2026-10-05: Started (after the Phase 5 AST-references and reranker follow-ups).
+- 2026-10-05: Built. `generate/context.py`: pieces in priority order (conventions doc and template test + its JSON entry are required; then the base test class and its in-repo bases, similar tests from retrieval as style examples, the page-object chains and page objects those tests use, other code hits); whole pieces only, a piece that doesn't fit is skipped; tokens estimated as ceil(chars / `context.chars_per_token`, default 3.0, which over-counts); `ContextBudgetError` if the required pieces alone don't fit. `prompts/generate_v1.md`: the LLM returns the module code and, per pytest id, only the unique entry parts (`seed` / `inputs` / `expected`) as JSON text. `models/generated.py`: `GenerationResponse` validates itself (code parses, has a test, literal parametrize values, computed pytest ids == entry keys, parts are JSON objects); failures go back to the LLM through the capped retry. `generate/generator.py`: entries assembled deterministically from the template entry (shared blocks such as `config` deep-copied in the template's key order; `priority` / `skip` overrides not inherited); marker values from the draft, with component/suite mapped to values the suite already uses (else the template's); target path `<template's folder>/test_<ticket>.py`; secret scrubbing of prompt, code, and JSON parts; full traceability (`ticket_id`, `draft_ref`, `template_entry_ref`, `retrieved_chunk_ids` = chunks actually in the context, `prompt_version`, provider/model, attempts, estimated context tokens, redactions). CLI `generate <drafts.json> --retrieval <retrieval.json> [--draft-id] [--conventions] [--out]` writes the code file, the JSON data file, and `generated.json` under the output dir and refuses an output dir inside the target repo. `standin/CONVENTIONS.md` (generic conventions doc). Config `generate.*` and `context.chars_per_token`.
+- 2026-10-05: Verified offline. 21 new tests with the fake LLM: traceable pair, byte-identical `config` with the template's key order and no inherited overrides, prompt contents (conventions, template, markers, placeholder), retries with the error for id mismatch / non-literal parametrize / syntax error / no test / non-object parts, retry cap, output scrubbing (code and JSON), missing template, budget never exceeded at 3k–30k tokens with whole chunks, bigger budget includes more, CLI writes the pair outside the repo and leaves the stand-in unchanged. ruff, mypy strict (60 files), pytest 362 passed, 12 live deselected. **Pending:** the live run (`tests/test_generate_live.py`, 5 stand-in tickets, ~15–20 LLM calls; saves pairs to `output/generated/live/`) and the human style spot-check.
 
 ---
 
@@ -483,3 +486,4 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 | 2026-10-05 | 5 | Retrieval built; deterministic recall@10 baseline httpx 0.591 / stand-in 0.667; marked ✅ Done (LLM-mode baseline pending a live run) |
 | 2026-10-05 | 5 | Retrieval references moved to the syntax tree (`Chunk.refs`); LLM-on baseline measured: httpx 0.618, stand-in 1.000 recall@10 |
 | 2026-10-05 | 5 | Deterministic feature-based reranker with per-file cap and minimum tests; LLM-on recall@10 httpx 0.772, stand-in 1.000; LLM-reranker plan recorded |
+| 2026-10-05 | 6 | Code generation built and verified offline; live run and human style check pending |

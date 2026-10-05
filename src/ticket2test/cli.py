@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
@@ -318,9 +319,101 @@ def retrieve(
 
 
 @app.command()
-def generate() -> None:
-    """Generate test code + JSON data from a draft and retrieval results (Phase 6)."""
-    _not_implemented(6)
+def generate(
+    ctx: typer.Context,
+    draft_file: Annotated[Path, typer.Argument(help="Drafts JSON (from `draft`).")],
+    retrieval_file: Annotated[
+        Path, typer.Option("--retrieval", help="Retrieval JSON (from `retrieve`).")
+    ],
+    draft_id: Annotated[
+        str | None, typer.Option(help="Which draft to generate (default: the primary one).")
+    ] = None,
+    conventions: Annotated[
+        Path | None,
+        typer.Option(help="Conventions doc (Markdown); overrides generate.conventions_doc."),
+    ] = None,
+    out: Annotated[
+        Path | None, typer.Option(help="Output directory (default: <output_dir>/generated).")
+    ] = None,
+) -> None:
+    """Generate a test (code file + JSON data entries) from a draft and retrieval results."""
+    from pydantic import ValidationError
+
+    from ticket2test.generate.context import ContextBudgetError
+    from ticket2test.generate.generator import generate_test
+    from ticket2test.index.indexer import update_index
+    from ticket2test.llm.base import LLMError
+    from ticket2test.llm.factory import create_llm_client, model_name
+    from ticket2test.models import DraftResult
+    from ticket2test.models.retrieval import RetrievalResult
+    from ticket2test.prompts import PromptError
+
+    state: AppState = ctx.obj
+    settings = state.settings
+    try:
+        drafts = DraftResult.model_validate_json(draft_file.read_text(encoding="utf-8"))
+        retrieval = RetrievalResult.model_validate_json(retrieval_file.read_text(encoding="utf-8"))
+        conventions_path = conventions or settings.generate.conventions_doc
+        conventions_text = (
+            conventions_path.read_text(encoding="utf-8") if conventions_path else None
+        )
+    except (OSError, ValidationError) as exc:
+        typer.echo(f"Error: cannot read input: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    if drafts.status != "ok":
+        typer.echo(f"Error: {drafts.ticket_id} has no drafts ({drafts.status}).", err=True)
+        raise typer.Exit(code=2)
+    chosen = next(
+        (
+            d
+            for d in drafts.drafts
+            if d.id == draft_id or (draft_id is None and d.kind == "primary")
+        ),
+        None,
+    )
+    if chosen is None:
+        typer.echo(f"Error: draft {draft_id or '(primary)'} not found.", err=True)
+        raise typer.Exit(code=2)
+
+    repo_root = Path(retrieval.repo_root)
+    target_dir = (out or settings.paths.output_dir / "generated").resolve()
+    if target_dir == repo_root.resolve() or repo_root.resolve() in target_dir.parents:
+        typer.echo("Error: the output directory must be outside the target repo.", err=True)
+        raise typer.Exit(code=2)
+
+    index, _, _ = update_index(repo_root, settings)
+    try:
+        client = create_llm_client(settings, debug_log=state.debug_log)
+        generated = generate_test(
+            chosen,
+            retrieval,
+            index,
+            settings,
+            client,
+            provider=settings.llm.provider,
+            model=model_name(settings),
+            conventions=conventions_text,
+        )
+    except (PromptError, ContextBudgetError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    except LLMError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    folder = target_dir / _safe_name(chosen.id)
+    code_path = folder / generated.file_name
+    data_path = folder / generated.data_file_name
+    code_path.parent.mkdir(parents=True, exist_ok=True)
+    code_path.write_text(generated.code, encoding="utf-8")
+    data_path.write_text(json.dumps(generated.data_entries, indent=2) + "\n", encoding="utf-8")
+    (folder / "generated.json").write_text(generated.model_dump_json(indent=2), encoding="utf-8")
+    typer.echo(
+        f"{chosen.id}: {len(generated.test_ids)} test id(s), template "
+        f"{generated.template_entry_ref.entry_key if generated.template_entry_ref else '-'}, "
+        f"{generated.attempts} LLM call(s), ~{generated.context_tokens} context tokens"
+    )
+    typer.echo(f"Wrote {code_path}\nWrote {data_path}\nWrote {folder / 'generated.json'}")
 
 
 @app.command()

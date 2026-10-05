@@ -142,6 +142,25 @@ class RetrievalSettings(_Section):
 
 class ContextSettings(_Section):
     max_tokens: int = Field(default=12000, ge=1)
+    # Token estimate without a tokenizer: ceil(chars / chars_per_token). 3.0 over-counts for
+    # typical code and English, so the real count stays under the budget.
+    chars_per_token: float = Field(default=3.0, gt=0)
+
+
+class GenerateSettings(_Section):
+    prompt_version: str = "generate_v1"
+    # Team conventions for tests (Markdown). Always placed in the context when set.
+    conventions_doc: Path | None = None
+    # JSON entry keys the LLM writes; everything else is copied from the template entry.
+    unique_entry_keys: list[str] = Field(default_factory=lambda: ["seed", "inputs", "expected"])
+    # Template keys that are per-entry overrides and must not be inherited.
+    drop_template_keys: list[str] = Field(default_factory=lambda: ["priority", "skip"])
+    placeholder_token: str = "{{unique}}"
+    max_example_tests: int = Field(default=4, ge=0)  # similar tests shown as style examples
+    # Suite-specific decorator names for deployment-type skips (cloud-only / on-prem-only).
+    deployment_decorators: dict[str, str] = Field(
+        default_factory=lambda: {"cloud": "cloud_only", "on_prem": "on_prem_only"}
+    )
 
 
 class RepairSettings(_Section):
@@ -208,6 +227,7 @@ class Settings(BaseSettings):
     eval: EvalSettings = EvalSettings()
     retrieval: RetrievalSettings = RetrievalSettings()
     context: ContextSettings = ContextSettings()
+    generate: GenerateSettings = GenerateSettings()
     repair: RepairSettings = RepairSettings()
     sandbox: SandboxSettings = SandboxSettings()
     paths: PathSettings = PathSettings()
