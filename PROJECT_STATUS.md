@@ -23,7 +23,7 @@ Tracks progress, scope, and acceptance criteria for each phase. Read together wi
 | 3b | Stand-in v2/v3 (real-framework patterns) | ✅ | 3 |
 | 4 | Indexer (Python) | ✅ | 3 |
 | 5 | Retrieval | ✅ | 2, 4 |
-| 6 | Code generation (code + JSON pair) | 🟡 (v4 live run + style check pending) | 5, 3b |
+| 6 | Code generation (code + JSON pair) | 🟡 (style check of v4 pending) | 5, 3b |
 | 7 | Validators, repair, sandbox | ⬜ | 6 |
 | 8 | Eval harness | ⬜ | 5 (minimal), 7 (full) |
 | 9 | Rust support | ⬜ | 8 |
@@ -36,12 +36,12 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 
 Read this first when resuming in a new session.
 
-**Where we are:** Phase 6 is 🟡. The human's third style check (STND-106 from `live-v3/`) found semantic errors, which were traced to the stand-in's own pagination test. The stand-in, the conventions, and the prompt (`generate_v4`) are now fixed; the **v4 live run** (writes to `output/generated/live-v4/`) and a fourth style check are next. Earlier runs are in `live-v1/` to `live-v3/`.
+**Where we are:** Phase 6 is 🟡. The human's third style check (STND-106 from `live-v3/`) found semantic errors, which were traced to the stand-in's own pagination test. The stand-in, the conventions, and the prompt (`generate_v4`) are now fixed; the v4 live run is done (5/5, `output/generated/live-v4/`), and the **fourth style check** is next. Earlier runs are in `live-v1/` to `live-v3/`.
 
 **Decision (2026-10-06, human):** keep LLM use to a minimum. No LLM reviewer step: semantic gaps are handled by a stronger generation prompt and by deterministic heuristics in Phase 7 that flag for the reviewer.
 
 **Next steps, in order:**
-1. v4 live run (about 15 LLM calls; ask first) → human style check → fix and rerun if needed.
+1. Human style check of the v4 pairs → fix and rerun if needed.
 2. Close Phase 6 (the last DoD item is the human style check).
 3. Phase 7: validators, repair loop, sandbox. Use the validator list in `CLAUDE.md`, which includes rule (1) (every seed/expectation key is read or consumed; never both `targets` and `interactions`) and the name-claim heuristic. Also add:
    - names of seeded objects must use `{test_id:N}`; STND-103 used the literal `web-access`;
@@ -532,6 +532,12 @@ Read this first when resuming in a new session.
   - **Project tests:** all placeholder names fit the cap; sorting and the cap are enforced; page 1 and page 2 replayed against the app.
 
   Verified: ruff, mypy strict (64 files), pytest 433 passed, 12 live deselected; stand-in collects 36 tests.
+- 2026-10-06: Live run on `generate_v4`, run by Claude with the human's OK: 5/5 passed in 4m11s, first attempt each, context 8.7k–10.7k of 12k estimated tokens. Pairs in `output/generated/live-v4/`.
+  - **STND-106:** checks page 1 (page number, total, full page via `rules.page_size`, only allow) and page 2 (number, filter kept, exact `page_2_names`, only allow); only the `rules` gate is seeded. The review checklist and notes state that `page_2_names` assumes a page size of 5.
+  - **STND-103:** the seeded and typed name is now the placeholder (`{test_id:24}` / `self.unique_name(24)`), not the literal `web-access`; it checks the exact error and that one rule with that name is listed.
+  - **STND-102:** compares names after sorting both sides ("order isn't stated"), although the conventions now state the order. A minor point.
+  - **STND-104:** checks counts in the UI and the published policy through `targets`; it doesn't use `page_size`.
+  - **Caveat:** STND-106's linked test (the fixed pagination test) was in context again, so this run shows that the stand-in fix carries over, not that the prompt alone prevents the errors. Leave-one-out (Phase 8 idea) would test that.
 
 ---
 
