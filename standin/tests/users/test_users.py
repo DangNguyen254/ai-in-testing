@@ -1,59 +1,75 @@
 """Users: inviting users, changing roles, deactivating, and the sign-on banner."""
 
-from __future__ import annotations
-
 import pytest
 
 from framework.base_test import BaseTest
-from framework.decorators import cloud_only, on_prem_only
+from framework.decorators import browsers, cloud_only, data_driven, environments, on_prem_only
 
 
+@browsers("chrome", "firefox")
+@environments("cloud", "on_prem")
+@data_driven
 @pytest.mark.project("example-project")
 @pytest.mark.component("users")
 class TestUsers(BaseTest):
-    @pytest.mark.priority("p0")
-    @pytest.mark.suite("smoke")
-    @pytest.mark.parametrize("role", ["viewer", "editor", "admin"])
-    def test_invite_user(self, role: str) -> None:
-        self.nav.users.invite.open().invite(self.inputs["email"], role)
+   @pytest.mark.priority("p0")
+   @pytest.mark.suite("smoke")
+   @pytest.mark.parametrize("role", ["viewer", "editor", "admin"])
+   def test_users_invite_role(self, role):
+      invite = self.nav.users.invite
+      invite.open()
+      invite.email = self.params["email"]
+      invite.role = role
+      invite.send()
 
-        user_list = self.nav.users.user_list
-        assert user_list.flash_message == "Invitation sent"
-        assert user_list.role_of(self.inputs["email"]) == role
-        self.assert_backend(self.expected["backend"])
+      user_list = self.nav.users.user_list
+      self.check.equal(user_list.flash_message, "Invitation sent", "flash message")
+      self.check.equal(user_list.role_of(self.params["email"]), role, "listed role")
+      self.validate_backend()
 
-    @pytest.mark.priority("p1")
-    @pytest.mark.suite("regression")
-    def test_invite_user_rejects_duplicate_email(self) -> None:
-        invite = self.nav.users.invite.open()
-        invite.invite(self.inputs["email"], self.inputs["role"])
+   @pytest.mark.priority("p1")
+   @pytest.mark.suite("regression")
+   def test_users_invite_duplicate_email(self):
+      invite = self.nav.users.invite
+      invite.open()
+      invite.email = self.params["email"]
+      invite.role = "editor"
+      invite.send()
 
-        assert invite.error_message == self.expected["error"]
-        assert len(self.api.users()) == self.expected["user_count"]
+      self.check.equal(
+         invite.error_message, f"{self.params['email']} has already been invited", "form error"
+      )
+      self.validate_backend()
 
-    @pytest.mark.priority("p2")
-    @pytest.mark.suite("regression")
-    def test_change_user_role(self) -> None:
-        profile = self.nav.users.profile.open_for(self.inputs["email"])
-        profile.change_role(self.inputs["new_role"])
+   @pytest.mark.priority("p2")
+   @pytest.mark.suite("regression")
+   def test_users_profile_role_change(self):
+      profile = self.nav.users.profile
+      profile.open_for(self.params["email"])
+      profile.role = "admin"
+      profile.save_role()
 
-        assert profile.flash_message == "Role updated"
-        self.assert_backend(self.expected["backend"])
+      self.check.equal(profile.flash_message, "Role updated", "flash message")
+      self.validate_backend()
 
-    @pytest.mark.priority("p1")
-    @pytest.mark.suite("regression")
-    @on_prem_only
-    def test_deactivate_user(self) -> None:
-        profile = self.nav.users.profile.open_for(self.inputs["email"])
-        profile.deactivate()
+   @pytest.mark.priority("p1")
+   @pytest.mark.suite("regression")
+   @on_prem_only
+   def test_users_profile_deactivate(self):
+      profile = self.nav.users.profile
+      profile.open_for(self.params["email"])
+      profile.deactivate()
 
-        assert profile.status == "inactive"
-        self.assert_backend(self.expected["backend"])
+      self.check.equal(profile.status, "inactive", "user status")
+      self.validate_backend()
 
-    @pytest.mark.priority("p3")
-    @pytest.mark.suite("regression")
-    @cloud_only
-    def test_sso_banner_on_user_list(self) -> None:
-        banner = self.nav.users.user_list.open().sso_banner_text()
+   @pytest.mark.priority("p3")
+   @pytest.mark.suite("regression")
+   @cloud_only
+   def test_users_list_sso_banner(self):
+      user_list = self.nav.users.user_list
+      user_list.open()
 
-        assert banner == self.expected["banner"]
+      self.check.equal(
+         user_list.sso_banner, "Single sign-on is managed by your identity provider", "banner"
+      )

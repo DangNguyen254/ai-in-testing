@@ -64,6 +64,11 @@ index:
   max_chain_depth: 4
   max_chain_entries: 5000
   name_boost: 3
+  save_attempts: 5               # index file rename retries (a scanner can lock it briefly)
+
+data:                            # per-test JSON data files (reading accepts both layouts)
+  format: array                  # array: [{"id": "<pytest id>", ...}]; object: {"<pytest id>": {...}}
+  id_field: id
 
 retrieval:
   top_k: 10

@@ -106,6 +106,19 @@ class IndexSettings(_Section):
     max_chain_depth: int = Field(default=4, ge=1)
     max_chain_entries: int = Field(default=5000, ge=1)
     name_boost: int = Field(default=3, ge=1)  # symbol name repeats in the search text
+    save_attempts: int = Field(default=5, ge=1)  # index file rename retries (Windows locks)
+
+
+class DataSettings(_Section):
+    """Shape of the target suite's per-test JSON data files.
+
+    ``array``: a top-level list of entries, each naming its pytest id in ``id_field``.
+    ``object``: a top-level object keyed by pytest id. Reading accepts both; ``format`` is how
+    new data is written when no template data file says otherwise.
+    """
+
+    format: Literal["array", "object"] = "array"
+    id_field: str = "id"
 
 
 class RerankSettings(_Section):
@@ -222,6 +235,7 @@ class Settings(BaseSettings):
     tickets: TicketSettings = TicketSettings()
     normalize: NormalizeSettings = NormalizeSettings()
     index: IndexSettings = IndexSettings()
+    data: DataSettings = DataSettings()
     draft: DraftSettings = DraftSettings()
     markers: MarkerSettings = MarkerSettings()
     eval: EvalSettings = EvalSettings()

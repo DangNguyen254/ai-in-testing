@@ -5,15 +5,21 @@ from __future__ import annotations
 import ast
 import fnmatch
 from collections.abc import Callable
-from typing import Any
+from typing import Any, NamedTuple
 
 from ticket2test.config import IndexSettings
 from ticket2test.index.catalog import SymbolCatalog
 from ticket2test.index.extract import ClassInfo, FileInfo, FunctionInfo
 from ticket2test.index.pytest_ids import compute_test_ids, is_parametrize
-from ticket2test.models.chunk import Chunk, Marker, Parametrize
+from ticket2test.models.chunk import Chunk, DataFormat, Marker, Parametrize
 
-DataReader = Callable[[str], dict[str, Any] | None]
+
+class DataFile(NamedTuple):
+    format: DataFormat
+    entries: dict[str, Any]  # pytest id -> entry
+
+
+DataReader = Callable[[str], DataFile | None]
 
 
 def is_test_file(path: str, settings: IndexSettings) -> bool:
@@ -54,7 +60,7 @@ def build_chunks(
     custom_id_hook: bool = False,
 ) -> list[Chunk]:
     test_file = is_test_file(info.path, settings)
-    data: dict[str, Any] | None = None
+    data: DataFile | None = None
     data_path = data_file_for(info.path, settings)
     if test_file:
         data = read_data(data_path)
@@ -127,7 +133,7 @@ def _test_chunk(
     info: FileInfo,
     fn: FunctionInfo,
     cls: ClassInfo | None,
-    data: dict[str, Any] | None,
+    data: DataFile | None,
     data_path: str,
     parametrized_fixtures: frozenset[str],
     custom_id_hook: bool,
@@ -146,7 +152,7 @@ def _test_chunk(
     argnames = {name for info_ in ids.decorators for name in info_.argnames}
     markers = [m for d in fn.decorators if (m := parse_marker(d, "function"))]
     markers += [m for d in class_decorators if (m := parse_marker(d, "class"))]
-    entries = {name: data[name] for name in ids.names if data and name in data}
+    entries = {n: data.entries[n] for n in ids.names if data and n in data.entries}
     return Chunk(
         id=f"{info.path}::{qualname}",
         file_path=info.path,
@@ -172,4 +178,5 @@ def _test_chunk(
         test_ids_note=ids.note,
         data_file=data_path if data is not None else None,
         data_entries=entries,
+        data_format=data.format if data is not None else None,
     )

@@ -1,6 +1,7 @@
 """Symbol catalog: which names exist, incl. page-object property chains (``nav.<area>.<page>``).
 
-Types are resolved statically from annotations (``-> Navigator``, ``api: ApiClient``) and from
+Types are resolved statically from annotations (``-> Navigator``, ``api: ApiClient``), from
+``return Navigator(...)`` in unannotated code, and from
 ``self.x = Callee(...)`` assignments, following base classes. A chain step that reaches a
 type outside the repo (e.g. a library's ``WebDriver``) can't be checked further and is
 reported as ``unknown_type`` rather than as an invented name.
@@ -245,6 +246,13 @@ def _returns_self(fn: FunctionInfo, class_name: str) -> bool:
     )
 
 
+def _return_type(fn: FunctionInfo) -> str | None:
+    """The return annotation, else the callee when every ``return`` builds one thing."""
+    if fn.returns:
+        return fn.returns
+    return fn.returned_calls[0] if len(fn.returned_calls) == 1 else None
+
+
 def _assign_type(assign: Assign) -> str | None:
     return assign.annotation or assign.call
 
@@ -310,12 +318,13 @@ def _add_file(catalog: SymbolCatalog, info: FileInfo) -> None:
             if _is_fixture(fn):
                 catalog.fixtures[fn.name] = any("params=" in d for d in fn.decorators)
             member_kind: MemberKind = "property" if _is_property(fn) else "method"
+            # A property setter (``@x.setter``) has the getter's name; the getter comes first.
             members.setdefault(
                 fn.name,
                 Member(
                     name=fn.name,
                     kind=member_kind,
-                    type_text=fn.returns,
+                    type_text=_return_type(fn),
                     returns_self=_returns_self(fn, cls.name),
                     line=fn.start_line,
                 ),

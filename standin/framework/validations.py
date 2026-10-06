@@ -1,60 +1,51 @@
-"""Reusable backend checks, mixed into BaseTest."""
+"""Backend validation: replay the entry's ``interactions`` and compare responses as a subset."""
 
-from __future__ import annotations
-
-import time
-from collections.abc import Callable
-from typing import Any
-
-from framework.api_client import ApiClient
+from framework.api_client import ApiError
 
 
-def wait_until(
-    predicate: Callable[[], bool], timeout: float = 10.0, interval: float = 0.25
-) -> None:
-    """Explicit wait for backend state (the UI may update before the backend, or after)."""
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if predicate():
-            return
-        time.sleep(interval)
-    raise AssertionError(f"Condition not met within {timeout:.0f}s")
+class BackendMismatch(AssertionError):
+   pass
 
 
-def assert_subset(actual: dict[str, Any], expected: dict[str, Any], where: str = "") -> None:
-    """Every key in ``expected`` must equal the same key in ``actual`` (nested dicts too)."""
-    for key, value in expected.items():
-        path = f"{where}.{key}" if where else key
-        assert key in actual, f"missing '{path}' in {actual}"
-        if isinstance(value, dict) and isinstance(actual[key], dict):
-            assert_subset(actual[key], value, path)
-        else:
-            assert actual[key] == value, f"'{path}': expected {value!r}, got {actual[key]!r}"
+def matches_subset(actual, expected, where="body"):
+   """Every field in ``expected`` must equal the same field in ``actual``.
+
+   Dicts compare key by key (extra keys in ``actual`` are fine); lists compare item by item
+   by position (``actual`` may be longer); other values compare with ``==``.
+   """
+   if isinstance(expected, dict):
+      if not isinstance(actual, dict):
+         raise BackendMismatch(f"{where}: expected an object, got {actual!r}")
+      for key, value in expected.items():
+         if key not in actual:
+            raise BackendMismatch(f"{where}.{key}: missing")
+         matches_subset(actual[key], value, f"{where}.{key}")
+   elif isinstance(expected, list):
+      if not isinstance(actual, list) or len(actual) < len(expected):
+         count = len(expected)
+         raise BackendMismatch(f"{where}: expected at least {count} items, got {actual!r}")
+      for index, value in enumerate(expected):
+         matches_subset(actual[index], value, f"{where}[{index}]")
+   elif actual != expected:
+      raise BackendMismatch(f"{where}: expected {expected!r}, got {actual!r}")
 
 
 class ValidationMixin:
-    api: ApiClient
-
-    def assert_item(self, name: str, expected: dict[str, Any]) -> None:
-        assert_subset(self.api.item(name), expected, f"item[{name}]")
-
-    def assert_no_item(self, name: str) -> None:
-        assert name not in {i["name"] for i in self.api.items()}, f"item {name} still exists"
-
-    def assert_user(self, email: str, expected: dict[str, Any]) -> None:
-        assert_subset(self.api.user(email), expected, f"user[{email}]")
-
-    def assert_order_status(self, order_id: int, status: str) -> None:
-        wait_until(lambda: self.api.order(order_id)["status"] == status)
-
-    def assert_settings(self, expected: dict[str, Any]) -> None:
-        assert_subset(self.api.settings(), expected, "settings")
-
-    def assert_backend(self, expected: dict[str, Any]) -> None:
-        """Check an entry's ``expected.backend`` block against the API."""
-        for item in expected.get("items", []):
-            self.assert_item(item["name"], item)
-        for user in expected.get("users", []):
-            self.assert_user(user["email"], user)
-        if "settings" in expected:
-            self.assert_settings(expected["settings"])
+   def validate_backend(self, params=None):
+      """Send each request in ``interactions`` and check the response status and body."""
+      params = self.params if params is None else params
+      for number, interaction in enumerate(params.get("interactions", []), start=1):
+         request = interaction["request"]
+         expected = interaction["response"]
+         try:
+            status, body = (
+               200,
+               self.api.request(request["method"], request["endpoint"], request.get("body")),
+            )
+         except ApiError as error:
+            status, body = error.status, {"error": error.message}
+         where = f"interaction {number} ({request['method']} {request['endpoint']})"
+         if status != expected.get("status", 200):
+            raise BackendMismatch(f"{where}: status {status}, expected {expected['status']}")
+         if "body" in expected:
+            matches_subset(body, expected["body"], f"{where} body")

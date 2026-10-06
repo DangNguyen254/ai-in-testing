@@ -1,47 +1,121 @@
 {
   "_comment": "Ground truth for the synthetic stand-in: what kind each test is, and which tests each fake ticket maps to. Used by this project's tests and the eval harness.",
   "tests": {
-    "tests/inventory/test_inventory.py::TestInventory::test_create_item": { "kind": "ui" },
-    "tests/inventory/test_inventory.py::TestInventory::test_create_item_rejects_invalid_quantity": { "kind": "ui" },
-    "tests/inventory/test_inventory.py::TestInventory::test_search_items_by_name": { "kind": "ui" },
-    "tests/inventory/test_inventory.py::TestInventory::test_edit_item_category": { "kind": "ui" },
-    "tests/inventory/test_inventory.py::TestInventory::test_delete_item": { "kind": "ui" },
-    "tests/inventory/test_inventory.py::TestInventory::test_items_api_lists_seeded_items": { "kind": "api" },
-    "tests/users/test_users.py::TestUsers::test_invite_user": { "kind": "ui" },
-    "tests/users/test_users.py::TestUsers::test_invite_user_rejects_duplicate_email": { "kind": "ui" },
-    "tests/users/test_users.py::TestUsers::test_change_user_role": { "kind": "ui" },
-    "tests/users/test_users.py::TestUsers::test_deactivate_user": { "kind": "ui" },
-    "tests/users/test_users.py::TestUsers::test_sso_banner_on_user_list": { "kind": "ui" },
-    "tests/orders/test_orders.py::TestOrders::test_place_order": { "kind": "ui" },
-    "tests/orders/test_orders.py::TestOrders::test_cancel_order": { "kind": "ui" },
-    "tests/orders/test_orders.py::TestOrders::test_filter_orders_by_status": { "kind": "ui" },
-    "tests/orders/test_orders.py::TestOrders::test_add_order_note": { "kind": "ui" },
-    "tests/orders/test_orders.py::TestOrders::test_order_created_via_api_shows_in_ui": { "kind": "hybrid" },
-    "tests/orders/test_orders.py::TestOrders::test_orders_api_rejects_unknown_item": { "kind": "api" },
-    "tests/settings/test_settings.py::TestSettings::test_change_timezone": { "kind": "ui" },
-    "tests/settings/test_settings.py::TestSettings::test_change_language": { "kind": "ui" },
-    "tests/settings/test_settings.py::TestSettings::test_disable_email_notifications": { "kind": "ui" },
-    "tests/settings/test_settings.py::TestSettings::test_enable_weekly_digest": { "kind": "ui" },
-    "tests/settings/test_settings.py::TestSettings::test_timezone_persists_after_reload": { "kind": "ui" }
+    "tests/inventory/test_inventory.py::TestInventoryItems::test_inventory_item_create": {
+      "kind": "ui"
+    },
+    "tests/inventory/test_inventory.py::TestInventoryItems::test_inventory_item_create_invalid_quantity": {
+      "kind": "ui"
+    },
+    "tests/inventory/test_inventory.py::TestInventoryItems::test_inventory_item_create_category_not_allowed": {
+      "kind": "ui"
+    },
+    "tests/inventory/test_inventory.py::TestInventoryItems::test_inventory_items_search_by_name": {
+      "kind": "ui"
+    },
+    "tests/inventory/test_inventory.py::TestInventoryItems::test_inventory_item_edit_category": {
+      "kind": "ui"
+    },
+    "tests/inventory/test_inventory.py::TestInventoryItems::test_inventory_item_delete": {
+      "kind": "ui"
+    },
+    "tests/inventory/test_inventory.py::TestInventoryItems::test_inventory_items_list_empty": {
+      "kind": "ui"
+    },
+    "tests/inventory/test_inventory.py::TestInventoryItems::test_inventory_items_api_list": {
+      "kind": "api"
+    },
+    "tests/orders/test_orders.py::TestOrders::test_orders_checkout_place": {
+      "kind": "ui"
+    },
+    "tests/orders/test_orders.py::TestOrders::test_orders_checkout_policy_limit": {
+      "kind": "ui"
+    },
+    "tests/orders/test_orders.py::TestOrders::test_orders_detail_cancel": {
+      "kind": "ui"
+    },
+    "tests/orders/test_orders.py::TestOrders::test_orders_list_filter_status": {
+      "kind": "ui"
+    },
+    "tests/orders/test_orders.py::TestOrders::test_orders_detail_add_note": {
+      "kind": "ui"
+    },
+    "tests/orders/test_orders.py::TestOrders::test_orders_api_create_cancel_in_ui": {
+      "kind": "hybrid"
+    },
+    "tests/orders/test_orders.py::TestOrders::test_orders_api_create_unknown_item": {
+      "kind": "api"
+    },
+    "tests/settings/test_settings.py::TestSettings::test_settings_general_timezone_change": {
+      "kind": "ui"
+    },
+    "tests/settings/test_settings.py::TestSettings::test_settings_general_language_change": {
+      "kind": "ui"
+    },
+    "tests/settings/test_settings.py::TestSettings::test_settings_general_timezone_reload": {
+      "kind": "ui"
+    },
+    "tests/settings/test_settings.py::TestSettings::test_settings_notifications_email_disable": {
+      "kind": "ui"
+    },
+    "tests/settings/test_settings.py::TestSettings::test_settings_notifications_digest_enable": {
+      "kind": "ui"
+    },
+    "tests/users/test_users.py::TestUsers::test_users_invite_role": {
+      "kind": "ui"
+    },
+    "tests/users/test_users.py::TestUsers::test_users_invite_duplicate_email": {
+      "kind": "ui"
+    },
+    "tests/users/test_users.py::TestUsers::test_users_profile_role_change": {
+      "kind": "ui"
+    },
+    "tests/users/test_users.py::TestUsers::test_users_profile_deactivate": {
+      "kind": "ui"
+    },
+    "tests/users/test_users.py::TestUsers::test_users_list_sso_banner": {
+      "kind": "ui"
+    }
   },
   "tickets": {
-    "STND-101": { "status": "fixed", "tests": ["tests/users/test_users.py::TestUsers::test_invite_user"] },
-    "STND-102": { "status": "fixed", "tests": ["tests/inventory/test_inventory.py::TestInventory::test_search_items_by_name"] },
+    "STND-101": {
+      "status": "fixed",
+      "tests": [
+        "tests/users/test_users.py::TestUsers::test_users_invite_role"
+      ]
+    },
+    "STND-102": {
+      "status": "fixed",
+      "tests": [
+        "tests/inventory/test_inventory.py::TestInventoryItems::test_inventory_items_search_by_name"
+      ]
+    },
     "STND-103": {
       "status": "fixed",
-      "tests": ["tests/inventory/test_inventory.py::TestInventory::test_create_item_rejects_invalid_quantity"],
+      "tests": [
+        "tests/inventory/test_inventory.py::TestInventoryItems::test_inventory_item_create_invalid_quantity"
+      ],
       "history": "code skip citing the ticket, removed by the fix commit"
     },
     "STND-104": {
       "status": "fixed",
-      "tests": ["tests/orders/test_orders.py::TestOrders::test_cancel_order"],
+      "tests": [
+        "tests/orders/test_orders.py::TestOrders::test_orders_detail_cancel"
+      ],
       "history": "JSON entry skip citing the ticket, removed by the fix commit"
     },
     "STND-105": {
       "status": "open",
-      "tests": ["tests/settings/test_settings.py::TestSettings::test_enable_weekly_digest"],
+      "tests": [
+        "tests/settings/test_settings.py::TestSettings::test_settings_notifications_digest_enable"
+      ],
       "history": "still skipped by ticket id in the JSON entry"
     },
-    "STND-106": { "status": "fixed", "tests": ["tests/settings/test_settings.py::TestSettings::test_timezone_persists_after_reload"] }
+    "STND-106": {
+      "status": "fixed",
+      "tests": [
+        "tests/settings/test_settings.py::TestSettings::test_settings_general_timezone_reload"
+      ]
+    }
   }
 }

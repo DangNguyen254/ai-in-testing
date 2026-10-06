@@ -1,0 +1,14 @@
+# Style rules of the synthetic stand-in suite (mirrors the target framework's conventions):
+# 3-space indent, LF line endings, alphabetical imports. Overrides the project's root config.
+line-length = 100
+indent-width = 3
+target-version = "py311"
+
+[format]
+line-ending = "lf"
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+
+[lint.isort]
+known-first-party = ["app", "framework"]

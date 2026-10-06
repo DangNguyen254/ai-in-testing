@@ -1,67 +1,72 @@
 """Settings area: general settings and notification settings."""
 
-from __future__ import annotations
-
 from selenium.webdriver.common.by import By
-from selenium.webdriver.remote.webdriver import WebDriver
 
-from framework.pages.base_page import BasePage, Locator
+from framework.pages.base_page import BasePage
 
 
 class GeneralSettingsPage(BasePage):
-    path = "/settings/general"
+   path = "/settings/general"
 
-    TIMEZONE: Locator = (By.ID, "timezone")
-    LANGUAGE: Locator = (By.ID, "language")
-    SAVE: Locator = (By.ID, "save-general")
+   TIMEZONE = (By.ID, "timezone")
+   LANGUAGE = (By.ID, "language")
+   SAVE = (By.ID, "save-general")
 
-    def set_timezone(self, timezone: str) -> GeneralSettingsPage:
-        self.select(self.TIMEZONE, timezone)
-        return self
+   @property
+   def timezone(self):
+      return self.value_of(self.TIMEZONE)
 
-    def set_language(self, language: str) -> GeneralSettingsPage:
-        self.select(self.LANGUAGE, language)
-        return self
+   @timezone.setter
+   def timezone(self, value):
+      self.select(self.TIMEZONE, value)
 
-    def save(self) -> None:
-        self.click(self.SAVE)
+   @property
+   def language(self):
+      return self.value_of(self.LANGUAGE)
 
-    def selected_timezone(self) -> str:
-        return str(self.find(self.TIMEZONE).get_attribute("value"))
+   @language.setter
+   def language(self, value):
+      self.select(self.LANGUAGE, value)
+
+   def save(self):
+      self.click(self.SAVE)
 
 
 class NotificationSettingsPage(BasePage):
-    path = "/settings/notifications"
+   path = "/settings/notifications"
 
-    EMAIL: Locator = (By.ID, "email-toggle")
-    DIGEST: Locator = (By.ID, "digest-toggle")
-    SAVE: Locator = (By.ID, "save-notifications")
+   EMAIL = (By.ID, "email-toggle")
+   DIGEST = (By.ID, "digest-toggle")
+   SAVE = (By.ID, "save-notifications")
 
-    def set_email(self, enabled: bool) -> NotificationSettingsPage:
-        self._set_checkbox(self.EMAIL, enabled)
-        return self
+   @property
+   def email_enabled(self):
+      return self.find(self.EMAIL).is_selected()
 
-    def set_weekly_digest(self, enabled: bool) -> NotificationSettingsPage:
-        self._set_checkbox(self.DIGEST, enabled)
-        return self
+   @email_enabled.setter
+   def email_enabled(self, enabled):
+      self.set_checkbox(self.EMAIL, enabled)
 
-    def save(self) -> None:
-        self.click(self.SAVE)
+   @property
+   def weekly_digest(self):
+      return self.find(self.DIGEST).is_selected()
 
-    def _set_checkbox(self, locator: tuple[str, str], enabled: bool) -> None:
-        box = self.find(locator)
-        if box.is_selected() != enabled:
-            box.click()
+   @weekly_digest.setter
+   def weekly_digest(self, enabled):
+      self.set_checkbox(self.DIGEST, enabled)
+
+   def save(self):
+      self.click(self.SAVE)
 
 
 class SettingsArea:
-    def __init__(self, driver: WebDriver, base_url: str, timeout: float) -> None:
-        self._args = (driver, base_url, timeout)
+   def __init__(self, driver, base_url, timeout):
+      self._args = (driver, base_url, timeout)
 
-    @property
-    def general(self) -> GeneralSettingsPage:
-        return GeneralSettingsPage(*self._args)
+   @property
+   def general(self):
+      return GeneralSettingsPage(*self._args)
 
-    @property
-    def notifications(self) -> NotificationSettingsPage:
-        return NotificationSettingsPage(*self._args)
+   @property
+   def notifications(self):
+      return NotificationSettingsPage(*self._args)

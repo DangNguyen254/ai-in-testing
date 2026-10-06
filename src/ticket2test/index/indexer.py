@@ -20,7 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from ticket2test.adapters.repo.local_path import LocalPathRepoSource, RepoReadError
 from ticket2test.config import Settings
 from ticket2test.index.catalog import SymbolCatalog, build_catalog
-from ticket2test.index.chunks import build_chunks, is_test_file
+from ticket2test.index.chunks import DataFile, build_chunks, is_test_file
 from ticket2test.index.extract import FileInfo, ParseError, extract_file, sha256_of
 from ticket2test.index.search import SearchIndex, chunk_search_text
 from ticket2test.index.tokens import tokenize
@@ -28,7 +28,7 @@ from ticket2test.models.chunk import Chunk
 
 log = logging.getLogger(__name__)
 
-INDEX_VERSION = 2  # 2: chunks carry syntax-tree refs
+INDEX_VERSION = 3  # 2: chunks carry syntax-tree refs; 3: array data files, returned calls
 INDEX_FILE = "index.json"
 
 
@@ -77,7 +77,8 @@ class BuildStats(BaseModel):
 
 
 def settings_fingerprint(settings: Settings) -> str:
-    dump = json.dumps(settings.index.model_dump(mode="json"), sort_keys=True)
+    sections = {"index": settings.index.model_dump(mode="json"), "data": settings.data.model_dump()}
+    dump = json.dumps(sections, sort_keys=True)
     return hashlib.sha256(f"{INDEX_VERSION}:{dump}".encode()).hexdigest()[:16]
 
 
@@ -102,12 +103,21 @@ def load_index(directory: Path, settings: Settings) -> IndexData | None:
     return data
 
 
-def save_index(data: IndexData, directory: Path) -> Path:
+def save_index(data: IndexData, directory: Path, attempts: int = 5) -> Path:
+    """Write atomically (temp file + rename). On Windows a scanner can briefly lock the new
+    file, so the rename is retried, up to ``attempts`` times."""
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / INDEX_FILE
     tmp = path.with_suffix(".tmp")
     tmp.write_text(data.model_dump_json(), encoding="utf-8")
-    tmp.replace(path)
+    for attempt in range(1, attempts + 1):
+        try:
+            tmp.replace(path)
+            break
+        except PermissionError:
+            if attempt == attempts:
+                raise
+            time.sleep(0.05 * attempt)
     return path
 
 
@@ -165,7 +175,7 @@ def build_index(
                 info,
                 catalog,
                 index_settings,
-                lambda p: _read_json(repo, p),
+                lambda p: _read_data_file(repo, p, settings.data.id_field),
                 custom_id_hook,
             )
         )
@@ -206,7 +216,7 @@ def update_index(
     directory = index_dir(repo_root, settings)
     previous = None if force else load_index(directory, settings)
     data, stats = build_index(repo, settings, previous)
-    return data, stats, save_index(data, directory)
+    return data, stats, save_index(data, directory, settings.index.save_attempts)
 
 
 def _skip(stats: BuildStats, path: str, digest: str, reason: str) -> FileRecord:
@@ -215,7 +225,8 @@ def _skip(stats: BuildStats, path: str, digest: str, reason: str) -> FileRecord:
     return FileRecord(sha256=digest, error=reason)
 
 
-def _read_json(repo: LocalPathRepoSource, path: str) -> dict[str, Any] | None:
+def _read_data_file(repo: LocalPathRepoSource, path: str, id_field: str) -> DataFile | None:
+    """Entries by pytest id, from an array of entries (each with ``id_field``) or an object."""
     rel = PurePosixPath(path)
     if not repo.exists(rel):
         return None
@@ -224,7 +235,19 @@ def _read_json(repo: LocalPathRepoSource, path: str) -> dict[str, Any] | None:
     except (OSError, RepoReadError, ValueError) as exc:
         log.warning("Skipping data file %s: %s", path, exc)
         return None
-    return data if isinstance(data, dict) else None
+    if isinstance(data, dict):
+        return DataFile(format="object", entries=data)
+    if not isinstance(data, list):
+        return None
+    entries: dict[str, Any] = {}
+    for entry in data:
+        if isinstance(entry, dict) and isinstance(entry.get(id_field), str):
+            entries[entry[id_field]] = entry
+    if len(entries) < len(data):
+        log.warning(
+            "Data file %s: %d entries without a unique %r", path, len(data) - len(entries), id_field
+        )
+    return DataFile(format="array", entries=entries)
 
 
 __all__ = [

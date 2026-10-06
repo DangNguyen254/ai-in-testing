@@ -1,551 +1,998 @@
-{
-  "test_place_order": {
-    "config": {
-      "environment": {
-        "tenant": "tenant-main",
-        "region": "region-1",
-        "locale": "en",
-        "currency": "EUR",
-        "time_format": "24h"
+[
+   {
+      "id":"test_orders_checkout_place",
+      "settings":{
+         "timezone":"UTC",
+         "language":"en",
+         "notifications":{
+            "email":true,
+            "weekly_digest":false
+         }
       },
-      "account": {
-        "plan": "standard",
-        "seats": 25,
-        "billing_cycle": "monthly",
-        "trial": false
+      "policy":{
+         "name":"policy-orders-checkout-place",
+         "max_order_quantity":100,
+         "allowed_categories":[
+            "general",
+            "hardware",
+            "software",
+            "office"
+         ],
+         "rules":[
+            {
+               "id":"rule-1",
+               "kind":"quantity",
+               "scope":"order",
+               "action":"block",
+               "enabled":true,
+               "threshold":100
+            },
+            {
+               "id":"rule-2",
+               "kind":"category",
+               "scope":"item",
+               "action":"block",
+               "enabled":true,
+               "threshold":0
+            },
+            {
+               "id":"rule-3",
+               "kind":"stock",
+               "scope":"order",
+               "action":"warn",
+               "enabled":true,
+               "threshold":5
+            },
+            {
+               "id":"rule-4",
+               "kind":"audit",
+               "scope":"item",
+               "action":"log",
+               "enabled":false,
+               "threshold":0
+            },
+            {
+               "id":"rule-5",
+               "kind":"approval",
+               "scope":"order",
+               "action":"review",
+               "enabled":false,
+               "threshold":50
+            }
+         ],
+         "approvals":{
+            "required":false,
+            "approver_role":"admin",
+            "escalate_after_hours":24
+         },
+         "retention":{
+            "orders_days":365,
+            "notes_days":90,
+            "audit_days":30
+         }
       },
-      "feature_flags": {
-        "new_checkout": true,
-        "bulk_edit": false,
-        "audit_log": true,
-        "beta_reports": true,
-        "sso": true
+      "targets":{
+         "items":[
+            {
+               "name":"widget-{{unique}}",
+               "quantity":10
+            }
+         ]
       },
-      "browser_profile": {
-        "width": 1280,
-        "height": 900,
-        "language": "en-US",
-        "accept_cookies": true
-      },
-      "timeouts": {
-        "page_load": 15,
-        "element": 10,
-        "backend_sync": 10
-      }
-    },
-    "seed": {
-      "items": [
-        {
-          "name": "widget-{{unique}}",
-          "quantity": 10
-        }
+      "item_name":"widget-{{unique}}",
+      "interactions":[
+         {
+            "request":{
+               "method":"GET",
+               "endpoint":"/items/widget-{{unique}}"
+            },
+            "response":{
+               "status":200,
+               "body":{
+                  "quantity":7
+               }
+            }
+         },
+         {
+            "request":{
+               "method":"GET",
+               "endpoint":"/orders/1"
+            },
+            "response":{
+               "status":200,
+               "body":{
+                  "status":"open",
+                  "lines":[
+                     {
+                        "item":"widget-{{unique}}",
+                        "quantity":3
+                     }
+                  ]
+               }
+            }
+         }
       ]
-    },
-    "inputs": {
-      "item": "widget-{{unique}}",
-      "quantity": 3
-    },
-    "expected": {
-      "backend": {
-        "items": [
-          {
-            "name": "widget-{{unique}}",
-            "quantity": 7
-          }
-        ]
-      }
-    }
-  },
-  "test_cancel_order": {
-    "config": {
-      "environment": {
-        "tenant": "tenant-main",
-        "region": "region-1",
-        "locale": "en",
-        "currency": "EUR",
-        "time_format": "24h"
+   },
+   {
+      "id":"test_orders_checkout_policy_limit",
+      "settings":{
+         "timezone":"UTC",
+         "language":"en",
+         "notifications":{
+            "email":true,
+            "weekly_digest":false
+         }
       },
-      "account": {
-        "plan": "standard",
-        "seats": 25,
-        "billing_cycle": "monthly",
-        "trial": false
-      },
-      "feature_flags": {
-        "new_checkout": true,
-        "bulk_edit": false,
-        "audit_log": true,
-        "beta_reports": true,
-        "sso": true
-      },
-      "browser_profile": {
-        "width": 1280,
-        "height": 900,
-        "language": "en-US",
-        "accept_cookies": true
-      },
-      "timeouts": {
-        "page_load": 15,
-        "element": 10,
-        "backend_sync": 10
-      }
-    },
-    "seed": {
-      "items": [
-        {
-          "name": "widget-{{unique}}",
-          "quantity": 10
-        }
-      ],
-      "orders": [
-        {
-          "lines": [
+      "policy":{
+         "name":"policy-orders-checkout-policy-limit",
+         "max_order_quantity":5,
+         "allowed_categories":[
+            "general",
+            "hardware",
+            "software",
+            "office"
+         ],
+         "rules":[
             {
-              "item": "widget-{{unique}}",
-              "quantity": 2
+               "id":"rule-1",
+               "kind":"quantity",
+               "scope":"order",
+               "action":"block",
+               "enabled":true,
+               "threshold":100
+            },
+            {
+               "id":"rule-2",
+               "kind":"category",
+               "scope":"item",
+               "action":"block",
+               "enabled":true,
+               "threshold":0
+            },
+            {
+               "id":"rule-3",
+               "kind":"stock",
+               "scope":"order",
+               "action":"warn",
+               "enabled":true,
+               "threshold":5
+            },
+            {
+               "id":"rule-4",
+               "kind":"audit",
+               "scope":"item",
+               "action":"log",
+               "enabled":false,
+               "threshold":0
+            },
+            {
+               "id":"rule-5",
+               "kind":"approval",
+               "scope":"order",
+               "action":"review",
+               "enabled":false,
+               "threshold":50
             }
-          ]
-        }
+         ],
+         "approvals":{
+            "required":false,
+            "approver_role":"admin",
+            "escalate_after_hours":24
+         },
+         "retention":{
+            "orders_days":365,
+            "notes_days":90,
+            "audit_days":30
+         }
+      },
+      "targets":{
+         "items":[
+            {
+               "name":"widget-{{unique}}",
+               "quantity":50
+            }
+         ]
+      },
+      "item_name":"widget-{{unique}}",
+      "quantity":6,
+      "error":"Policy allows at most 5 per order",
+      "interactions":[
+         {
+            "request":{
+               "method":"GET",
+               "endpoint":"/items/widget-{{unique}}"
+            },
+            "response":{
+               "status":200,
+               "body":{
+                  "quantity":50
+               }
+            }
+         },
+         {
+            "request":{
+               "method":"GET",
+               "endpoint":"/orders/1"
+            },
+            "response":{
+               "status":404
+            }
+         }
       ]
-    },
-    "inputs": {
-      "order_id": 1
-    },
-    "expected": {
-      "backend": {
-        "items": [
-          {
-            "name": "widget-{{unique}}",
-            "quantity": 10
-          }
-        ]
-      }
-    }
-  },
-  "test_filter_orders_by_status[open]": {
-    "config": {
-      "environment": {
-        "tenant": "tenant-main",
-        "region": "region-1",
-        "locale": "en",
-        "currency": "EUR",
-        "time_format": "24h"
+   },
+   {
+      "id":"test_orders_detail_cancel",
+      "settings":{
+         "timezone":"UTC",
+         "language":"en",
+         "notifications":{
+            "email":true,
+            "weekly_digest":false
+         }
       },
-      "account": {
-        "plan": "standard",
-        "seats": 25,
-        "billing_cycle": "monthly",
-        "trial": false
+      "policy":{
+         "name":"policy-orders-detail-cancel",
+         "max_order_quantity":100,
+         "allowed_categories":[
+            "general",
+            "hardware",
+            "software",
+            "office"
+         ],
+         "rules":[
+            {
+               "id":"rule-1",
+               "kind":"quantity",
+               "scope":"order",
+               "action":"block",
+               "enabled":true,
+               "threshold":100
+            },
+            {
+               "id":"rule-2",
+               "kind":"category",
+               "scope":"item",
+               "action":"block",
+               "enabled":true,
+               "threshold":0
+            },
+            {
+               "id":"rule-3",
+               "kind":"stock",
+               "scope":"order",
+               "action":"warn",
+               "enabled":true,
+               "threshold":5
+            },
+            {
+               "id":"rule-4",
+               "kind":"audit",
+               "scope":"item",
+               "action":"log",
+               "enabled":false,
+               "threshold":0
+            },
+            {
+               "id":"rule-5",
+               "kind":"approval",
+               "scope":"order",
+               "action":"review",
+               "enabled":false,
+               "threshold":50
+            }
+         ],
+         "approvals":{
+            "required":false,
+            "approver_role":"admin",
+            "escalate_after_hours":24
+         },
+         "retention":{
+            "orders_days":365,
+            "notes_days":90,
+            "audit_days":30
+         }
       },
-      "feature_flags": {
-        "new_checkout": true,
-        "bulk_edit": false,
-        "audit_log": true,
-        "beta_reports": true,
-        "sso": true
+      "targets":{
+         "items":[
+            {
+               "name":"widget-{{unique}}",
+               "quantity":10
+            }
+         ],
+         "orders":[
+            {
+               "lines":[
+                  {
+                     "item":"widget-{{unique}}",
+                     "quantity":2
+                  }
+               ]
+            }
+         ]
       },
-      "browser_profile": {
-        "width": 1280,
-        "height": 900,
-        "language": "en-US",
-        "accept_cookies": true
-      },
-      "timeouts": {
-        "page_load": 15,
-        "element": 10,
-        "backend_sync": 10
-      }
-    },
-    "seed": {
-      "items": [
-        {
-          "name": "widget-{{unique}}",
-          "quantity": 100
-        }
-      ],
-      "orders": [
-        {
-          "lines": [
-            {
-              "item": "widget-{{unique}}",
-              "quantity": 1
+      "interactions":[
+         {
+            "request":{
+               "method":"GET",
+               "endpoint":"/orders/1"
+            },
+            "response":{
+               "status":200,
+               "body":{
+                  "status":"cancelled"
+               }
             }
-          ]
-        },
-        {
-          "lines": [
-            {
-              "item": "widget-{{unique}}",
-              "quantity": 1
+         },
+         {
+            "request":{
+               "method":"GET",
+               "endpoint":"/items/widget-{{unique}}"
+            },
+            "response":{
+               "status":200,
+               "body":{
+                  "quantity":10
+               }
             }
-          ]
-        },
-        {
-          "lines": [
-            {
-              "item": "widget-{{unique}}",
-              "quantity": 1
-            }
-          ],
-          "status": "shipped"
-        },
-        {
-          "lines": [
-            {
-              "item": "widget-{{unique}}",
-              "quantity": 1
-            }
-          ],
-          "status": "cancelled"
-        }
+         }
       ]
-    },
-    "inputs": {
-      "status": "open"
-    },
-    "expected": {
-      "count": 2
-    }
-  },
-  "test_filter_orders_by_status[shipped]": {
-    "config": {
-      "environment": {
-        "tenant": "tenant-main",
-        "region": "region-1",
-        "locale": "en",
-        "currency": "EUR",
-        "time_format": "24h"
+   },
+   {
+      "id":"test_orders_list_filter_status[open]",
+      "settings":{
+         "timezone":"UTC",
+         "language":"en",
+         "notifications":{
+            "email":true,
+            "weekly_digest":false
+         }
       },
-      "account": {
-        "plan": "standard",
-        "seats": 25,
-        "billing_cycle": "monthly",
-        "trial": false
+      "policy":{
+         "name":"policy-orders-list-filter-status",
+         "max_order_quantity":100,
+         "allowed_categories":[
+            "general",
+            "hardware",
+            "software",
+            "office"
+         ],
+         "rules":[
+            {
+               "id":"rule-1",
+               "kind":"quantity",
+               "scope":"order",
+               "action":"block",
+               "enabled":true,
+               "threshold":100
+            },
+            {
+               "id":"rule-2",
+               "kind":"category",
+               "scope":"item",
+               "action":"block",
+               "enabled":true,
+               "threshold":0
+            },
+            {
+               "id":"rule-3",
+               "kind":"stock",
+               "scope":"order",
+               "action":"warn",
+               "enabled":true,
+               "threshold":5
+            },
+            {
+               "id":"rule-4",
+               "kind":"audit",
+               "scope":"item",
+               "action":"log",
+               "enabled":false,
+               "threshold":0
+            },
+            {
+               "id":"rule-5",
+               "kind":"approval",
+               "scope":"order",
+               "action":"review",
+               "enabled":false,
+               "threshold":50
+            }
+         ],
+         "approvals":{
+            "required":false,
+            "approver_role":"admin",
+            "escalate_after_hours":24
+         },
+         "retention":{
+            "orders_days":365,
+            "notes_days":90,
+            "audit_days":30
+         }
       },
-      "feature_flags": {
-        "new_checkout": true,
-        "bulk_edit": false,
-        "audit_log": true,
-        "beta_reports": true,
-        "sso": true
+      "targets":{
+         "items":[
+            {
+               "name":"widget-{{unique}}",
+               "quantity":100
+            }
+         ],
+         "orders":[
+            {
+               "lines":[
+                  {
+                     "item":"widget-{{unique}}",
+                     "quantity":1
+                  }
+               ]
+            },
+            {
+               "lines":[
+                  {
+                     "item":"widget-{{unique}}",
+                     "quantity":1
+                  }
+               ]
+            },
+            {
+               "lines":[
+                  {
+                     "item":"widget-{{unique}}",
+                     "quantity":1
+                  }
+               ],
+               "status":"shipped"
+            },
+            {
+               "lines":[
+                  {
+                     "item":"widget-{{unique}}",
+                     "quantity":1
+                  }
+               ],
+               "status":"cancelled"
+            }
+         ]
       },
-      "browser_profile": {
-        "width": 1280,
-        "height": 900,
-        "language": "en-US",
-        "accept_cookies": true
+      "count":2
+   },
+   {
+      "id":"test_orders_list_filter_status[shipped]",
+      "settings":{
+         "timezone":"UTC",
+         "language":"en",
+         "notifications":{
+            "email":true,
+            "weekly_digest":false
+         }
       },
-      "timeouts": {
-        "page_load": 15,
-        "element": 10,
-        "backend_sync": 10
+      "policy":{
+         "name":"policy-orders-list-filter-status",
+         "max_order_quantity":100,
+         "allowed_categories":[
+            "general",
+            "hardware",
+            "software",
+            "office"
+         ],
+         "rules":[
+            {
+               "id":"rule-1",
+               "kind":"quantity",
+               "scope":"order",
+               "action":"block",
+               "enabled":true,
+               "threshold":100
+            },
+            {
+               "id":"rule-2",
+               "kind":"category",
+               "scope":"item",
+               "action":"block",
+               "enabled":true,
+               "threshold":0
+            },
+            {
+               "id":"rule-3",
+               "kind":"stock",
+               "scope":"order",
+               "action":"warn",
+               "enabled":true,
+               "threshold":5
+            },
+            {
+               "id":"rule-4",
+               "kind":"audit",
+               "scope":"item",
+               "action":"log",
+               "enabled":false,
+               "threshold":0
+            },
+            {
+               "id":"rule-5",
+               "kind":"approval",
+               "scope":"order",
+               "action":"review",
+               "enabled":false,
+               "threshold":50
+            }
+         ],
+         "approvals":{
+            "required":false,
+            "approver_role":"admin",
+            "escalate_after_hours":24
+         },
+         "retention":{
+            "orders_days":365,
+            "notes_days":90,
+            "audit_days":30
+         }
+      },
+      "targets":{
+         "items":[
+            {
+               "name":"widget-{{unique}}",
+               "quantity":100
+            }
+         ],
+         "orders":[
+            {
+               "lines":[
+                  {
+                     "item":"widget-{{unique}}",
+                     "quantity":1
+                  }
+               ]
+            },
+            {
+               "lines":[
+                  {
+                     "item":"widget-{{unique}}",
+                     "quantity":1
+                  }
+               ]
+            },
+            {
+               "lines":[
+                  {
+                     "item":"widget-{{unique}}",
+                     "quantity":1
+                  }
+               ],
+               "status":"shipped"
+            },
+            {
+               "lines":[
+                  {
+                     "item":"widget-{{unique}}",
+                     "quantity":1
+                  }
+               ],
+               "status":"cancelled"
+            }
+         ]
+      },
+      "count":1
+   },
+   {
+      "id":"test_orders_list_filter_status[cancelled]",
+      "settings":{
+         "timezone":"UTC",
+         "language":"en",
+         "notifications":{
+            "email":true,
+            "weekly_digest":false
+         }
+      },
+      "policy":{
+         "name":"policy-orders-list-filter-status",
+         "max_order_quantity":100,
+         "allowed_categories":[
+            "general",
+            "hardware",
+            "software",
+            "office"
+         ],
+         "rules":[
+            {
+               "id":"rule-1",
+               "kind":"quantity",
+               "scope":"order",
+               "action":"block",
+               "enabled":true,
+               "threshold":100
+            },
+            {
+               "id":"rule-2",
+               "kind":"category",
+               "scope":"item",
+               "action":"block",
+               "enabled":true,
+               "threshold":0
+            },
+            {
+               "id":"rule-3",
+               "kind":"stock",
+               "scope":"order",
+               "action":"warn",
+               "enabled":true,
+               "threshold":5
+            },
+            {
+               "id":"rule-4",
+               "kind":"audit",
+               "scope":"item",
+               "action":"log",
+               "enabled":false,
+               "threshold":0
+            },
+            {
+               "id":"rule-5",
+               "kind":"approval",
+               "scope":"order",
+               "action":"review",
+               "enabled":false,
+               "threshold":50
+            }
+         ],
+         "approvals":{
+            "required":false,
+            "approver_role":"admin",
+            "escalate_after_hours":24
+         },
+         "retention":{
+            "orders_days":365,
+            "notes_days":90,
+            "audit_days":30
+         }
+      },
+      "targets":{
+         "items":[
+            {
+               "name":"widget-{{unique}}",
+               "quantity":100
+            }
+         ],
+         "orders":[
+            {
+               "lines":[
+                  {
+                     "item":"widget-{{unique}}",
+                     "quantity":1
+                  }
+               ]
+            },
+            {
+               "lines":[
+                  {
+                     "item":"widget-{{unique}}",
+                     "quantity":1
+                  }
+               ]
+            },
+            {
+               "lines":[
+                  {
+                     "item":"widget-{{unique}}",
+                     "quantity":1
+                  }
+               ],
+               "status":"shipped"
+            },
+            {
+               "lines":[
+                  {
+                     "item":"widget-{{unique}}",
+                     "quantity":1
+                  }
+               ],
+               "status":"cancelled"
+            }
+         ]
+      },
+      "count":1
+   },
+   {
+      "id":"test_orders_detail_add_note",
+      "settings":{
+         "timezone":"UTC",
+         "language":"en",
+         "notifications":{
+            "email":true,
+            "weekly_digest":false
+         }
+      },
+      "policy":{
+         "name":"policy-orders-detail-add-note",
+         "max_order_quantity":100,
+         "allowed_categories":[
+            "general",
+            "hardware",
+            "software",
+            "office"
+         ],
+         "rules":[
+            {
+               "id":"rule-1",
+               "kind":"quantity",
+               "scope":"order",
+               "action":"block",
+               "enabled":true,
+               "threshold":100
+            },
+            {
+               "id":"rule-2",
+               "kind":"category",
+               "scope":"item",
+               "action":"block",
+               "enabled":true,
+               "threshold":0
+            },
+            {
+               "id":"rule-3",
+               "kind":"stock",
+               "scope":"order",
+               "action":"warn",
+               "enabled":true,
+               "threshold":5
+            },
+            {
+               "id":"rule-4",
+               "kind":"audit",
+               "scope":"item",
+               "action":"log",
+               "enabled":false,
+               "threshold":0
+            },
+            {
+               "id":"rule-5",
+               "kind":"approval",
+               "scope":"order",
+               "action":"review",
+               "enabled":false,
+               "threshold":50
+            }
+         ],
+         "approvals":{
+            "required":false,
+            "approver_role":"admin",
+            "escalate_after_hours":24
+         },
+         "retention":{
+            "orders_days":365,
+            "notes_days":90,
+            "audit_days":30
+         }
+      },
+      "targets":{
+         "items":[
+            {
+               "name":"widget-{{unique}}",
+               "quantity":5
+            }
+         ],
+         "orders":[
+            {
+               "lines":[
+                  {
+                     "item":"widget-{{unique}}",
+                     "quantity":1
+                  }
+               ]
+            }
+         ]
       }
-    },
-    "seed": {
-      "items": [
-        {
-          "name": "widget-{{unique}}",
-          "quantity": 100
-        }
-      ],
-      "orders": [
-        {
-          "lines": [
+   },
+   {
+      "id":"test_orders_api_create_cancel_in_ui",
+      "settings":{
+         "timezone":"UTC",
+         "language":"en",
+         "notifications":{
+            "email":true,
+            "weekly_digest":false
+         }
+      },
+      "policy":{
+         "name":"policy-orders-api-create-cancel-in-ui",
+         "max_order_quantity":100,
+         "allowed_categories":[
+            "general",
+            "hardware",
+            "software",
+            "office"
+         ],
+         "rules":[
             {
-              "item": "widget-{{unique}}",
-              "quantity": 1
-            }
-          ]
-        },
-        {
-          "lines": [
+               "id":"rule-1",
+               "kind":"quantity",
+               "scope":"order",
+               "action":"block",
+               "enabled":true,
+               "threshold":100
+            },
             {
-              "item": "widget-{{unique}}",
-              "quantity": 1
-            }
-          ]
-        },
-        {
-          "lines": [
+               "id":"rule-2",
+               "kind":"category",
+               "scope":"item",
+               "action":"block",
+               "enabled":true,
+               "threshold":0
+            },
             {
-              "item": "widget-{{unique}}",
-              "quantity": 1
-            }
-          ],
-          "status": "shipped"
-        },
-        {
-          "lines": [
+               "id":"rule-3",
+               "kind":"stock",
+               "scope":"order",
+               "action":"warn",
+               "enabled":true,
+               "threshold":5
+            },
             {
-              "item": "widget-{{unique}}",
-              "quantity": 1
+               "id":"rule-4",
+               "kind":"audit",
+               "scope":"item",
+               "action":"log",
+               "enabled":false,
+               "threshold":0
+            },
+            {
+               "id":"rule-5",
+               "kind":"approval",
+               "scope":"order",
+               "action":"review",
+               "enabled":false,
+               "threshold":50
             }
-          ],
-          "status": "cancelled"
-        }
+         ],
+         "approvals":{
+            "required":false,
+            "approver_role":"admin",
+            "escalate_after_hours":24
+         },
+         "retention":{
+            "orders_days":365,
+            "notes_days":90,
+            "audit_days":30
+         }
+      },
+      "targets":{
+         "items":[
+            {
+               "name":"widget-{{unique}}",
+               "quantity":5
+            }
+         ]
+      },
+      "item_name":"widget-{{unique}}",
+      "interactions":[
+         {
+            "request":{
+               "method":"GET",
+               "endpoint":"/items/widget-{{unique}}"
+            },
+            "response":{
+               "status":200,
+               "body":{
+                  "quantity":5
+               }
+            }
+         },
+         {
+            "request":{
+               "method":"GET",
+               "endpoint":"/orders/1"
+            },
+            "response":{
+               "status":200,
+               "body":{
+                  "status":"cancelled"
+               }
+            }
+         }
       ]
-    },
-    "inputs": {
-      "status": "shipped"
-    },
-    "expected": {
-      "count": 1
-    }
-  },
-  "test_filter_orders_by_status[cancelled]": {
-    "config": {
-      "environment": {
-        "tenant": "tenant-main",
-        "region": "region-1",
-        "locale": "en",
-        "currency": "EUR",
-        "time_format": "24h"
+   },
+   {
+      "id":"test_orders_api_create_unknown_item",
+      "settings":{
+         "timezone":"UTC",
+         "language":"en",
+         "notifications":{
+            "email":true,
+            "weekly_digest":false
+         }
       },
-      "account": {
-        "plan": "standard",
-        "seats": 25,
-        "billing_cycle": "monthly",
-        "trial": false
-      },
-      "feature_flags": {
-        "new_checkout": true,
-        "bulk_edit": false,
-        "audit_log": true,
-        "beta_reports": true,
-        "sso": true
-      },
-      "browser_profile": {
-        "width": 1280,
-        "height": 900,
-        "language": "en-US",
-        "accept_cookies": true
-      },
-      "timeouts": {
-        "page_load": 15,
-        "element": 10,
-        "backend_sync": 10
-      }
-    },
-    "seed": {
-      "items": [
-        {
-          "name": "widget-{{unique}}",
-          "quantity": 100
-        }
-      ],
-      "orders": [
-        {
-          "lines": [
+      "policy":{
+         "name":"policy-orders-api-create-unknown-item",
+         "max_order_quantity":100,
+         "allowed_categories":[
+            "general",
+            "hardware",
+            "software",
+            "office"
+         ],
+         "rules":[
             {
-              "item": "widget-{{unique}}",
-              "quantity": 1
-            }
-          ]
-        },
-        {
-          "lines": [
+               "id":"rule-1",
+               "kind":"quantity",
+               "scope":"order",
+               "action":"block",
+               "enabled":true,
+               "threshold":100
+            },
             {
-              "item": "widget-{{unique}}",
-              "quantity": 1
-            }
-          ]
-        },
-        {
-          "lines": [
+               "id":"rule-2",
+               "kind":"category",
+               "scope":"item",
+               "action":"block",
+               "enabled":true,
+               "threshold":0
+            },
             {
-              "item": "widget-{{unique}}",
-              "quantity": 1
-            }
-          ],
-          "status": "shipped"
-        },
-        {
-          "lines": [
+               "id":"rule-3",
+               "kind":"stock",
+               "scope":"order",
+               "action":"warn",
+               "enabled":true,
+               "threshold":5
+            },
             {
-              "item": "widget-{{unique}}",
-              "quantity": 1
-            }
-          ],
-          "status": "cancelled"
-        }
-      ]
-    },
-    "inputs": {
-      "status": "cancelled"
-    },
-    "expected": {
-      "count": 1
-    }
-  },
-  "test_add_order_note": {
-    "config": {
-      "environment": {
-        "tenant": "tenant-main",
-        "region": "region-1",
-        "locale": "en",
-        "currency": "EUR",
-        "time_format": "24h"
-      },
-      "account": {
-        "plan": "standard",
-        "seats": 25,
-        "billing_cycle": "monthly",
-        "trial": false
-      },
-      "feature_flags": {
-        "new_checkout": true,
-        "bulk_edit": false,
-        "audit_log": true,
-        "beta_reports": true,
-        "sso": true
-      },
-      "browser_profile": {
-        "width": 1280,
-        "height": 900,
-        "language": "en-US",
-        "accept_cookies": true
-      },
-      "timeouts": {
-        "page_load": 15,
-        "element": 10,
-        "backend_sync": 10
-      }
-    },
-    "seed": {
-      "items": [
-        {
-          "name": "widget-{{unique}}",
-          "quantity": 5
-        }
-      ],
-      "orders": [
-        {
-          "lines": [
+               "id":"rule-4",
+               "kind":"audit",
+               "scope":"item",
+               "action":"log",
+               "enabled":false,
+               "threshold":0
+            },
             {
-              "item": "widget-{{unique}}",
-              "quantity": 1
+               "id":"rule-5",
+               "kind":"approval",
+               "scope":"order",
+               "action":"review",
+               "enabled":false,
+               "threshold":50
             }
-          ]
-        }
+         ],
+         "approvals":{
+            "required":false,
+            "approver_role":"admin",
+            "escalate_after_hours":24
+         },
+         "retention":{
+            "orders_days":365,
+            "notes_days":90,
+            "audit_days":30
+         }
+      },
+      "interactions":[
+         {
+            "request":{
+               "method":"POST",
+               "endpoint":"/orders",
+               "body":{
+                  "lines":[
+                     {
+                        "item":"missing-{{unique}}",
+                        "quantity":1
+                     }
+                  ]
+               }
+            },
+            "response":{
+               "status":422,
+               "body":{
+                  "error":"Unknown item 'missing-{{unique}}'"
+               }
+            }
+         },
+         {
+            "request":{
+               "method":"GET",
+               "endpoint":"/orders"
+            },
+            "response":{
+               "status":200,
+               "body":[]
+            }
+         }
       ]
-    },
-    "inputs": {
-      "order_id": 1,
-      "note": "Customer asked for gift wrap"
-    },
-    "expected": {
-      "notes": [
-        "Customer asked for gift wrap"
-      ]
-    }
-  },
-  "test_order_created_via_api_shows_in_ui": {
-    "config": {
-      "environment": {
-        "tenant": "tenant-main",
-        "region": "region-1",
-        "locale": "en",
-        "currency": "EUR",
-        "time_format": "24h"
-      },
-      "account": {
-        "plan": "standard",
-        "seats": 25,
-        "billing_cycle": "monthly",
-        "trial": false
-      },
-      "feature_flags": {
-        "new_checkout": true,
-        "bulk_edit": false,
-        "audit_log": true,
-        "beta_reports": true,
-        "sso": true
-      },
-      "browser_profile": {
-        "width": 1280,
-        "height": 900,
-        "language": "en-US",
-        "accept_cookies": true
-      },
-      "timeouts": {
-        "page_load": 15,
-        "element": 10,
-        "backend_sync": 10
-      }
-    },
-    "seed": {
-      "items": [
-        {
-          "name": "widget-{{unique}}",
-          "quantity": 5
-        }
-      ]
-    },
-    "inputs": {
-      "lines": [
-        {
-          "item": "widget-{{unique}}",
-          "quantity": 1
-        }
-      ]
-    },
-    "expected": {
-      "backend": {
-        "items": [
-          {
-            "name": "widget-{{unique}}",
-            "quantity": 5
-          }
-        ]
-      }
-    }
-  },
-  "test_orders_api_rejects_unknown_item": {
-    "config": {
-      "environment": {
-        "tenant": "tenant-main",
-        "region": "region-1",
-        "locale": "en",
-        "currency": "EUR",
-        "time_format": "24h"
-      },
-      "account": {
-        "plan": "standard",
-        "seats": 25,
-        "billing_cycle": "monthly",
-        "trial": false
-      },
-      "feature_flags": {
-        "new_checkout": true,
-        "bulk_edit": false,
-        "audit_log": true,
-        "beta_reports": true,
-        "sso": true
-      },
-      "browser_profile": {
-        "width": 1280,
-        "height": 900,
-        "language": "en-US",
-        "accept_cookies": true
-      },
-      "timeouts": {
-        "page_load": 15,
-        "element": 10,
-        "backend_sync": 10
-      }
-    },
-    "seed": {},
-    "inputs": {
-      "lines": [
-        {
-          "item": "missing-{{unique}}",
-          "quantity": 1
-        }
-      ]
-    },
-    "expected": {
-      "status": 422,
-      "error": "Unknown item 'missing-{{unique}}'"
-    }
-  }
-}
+   }
+]

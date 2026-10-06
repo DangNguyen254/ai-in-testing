@@ -1,296 +1,160 @@
-{
-  "test_change_timezone[UTC]": {
-    "config": {
-      "environment": {
-        "tenant": "tenant-main",
-        "region": "region-1",
-        "locale": "en",
-        "currency": "EUR",
-        "time_format": "24h"
+[
+   {
+      "id":"test_settings_general_timezone_change[UTC]",
+      "settings":{
+         "timezone":"UTC",
+         "language":"en",
+         "notifications":{
+            "email":true,
+            "weekly_digest":false
+         }
       },
-      "account": {
-        "plan": "standard",
-        "seats": 25,
-        "billing_cycle": "monthly",
-        "trial": false
+      "interactions":[
+         {
+            "request":{
+               "method":"GET",
+               "endpoint":"/settings"
+            },
+            "response":{
+               "status":200,
+               "body":{
+                  "timezone":"UTC"
+               }
+            }
+         }
+      ]
+   },
+   {
+      "id":"test_settings_general_timezone_change[Europe/Berlin]",
+      "settings":{
+         "timezone":"UTC",
+         "language":"en",
+         "notifications":{
+            "email":true,
+            "weekly_digest":false
+         }
       },
-      "feature_flags": {
-        "new_checkout": true,
-        "bulk_edit": false,
-        "audit_log": true,
-        "beta_reports": true,
-        "sso": true
+      "interactions":[
+         {
+            "request":{
+               "method":"GET",
+               "endpoint":"/settings"
+            },
+            "response":{
+               "status":200,
+               "body":{
+                  "timezone":"Europe/Berlin"
+               }
+            }
+         }
+      ]
+   },
+   {
+      "id":"test_settings_general_language_change",
+      "settings":{
+         "timezone":"UTC",
+         "language":"en",
+         "notifications":{
+            "email":true,
+            "weekly_digest":false
+         }
       },
-      "browser_profile": {
-        "width": 1280,
-        "height": 900,
-        "language": "en-US",
-        "accept_cookies": true
+      "interactions":[
+         {
+            "request":{
+               "method":"GET",
+               "endpoint":"/settings"
+            },
+            "response":{
+               "status":200,
+               "body":{
+                  "language":"de"
+               }
+            }
+         }
+      ]
+   },
+   {
+      "id":"test_settings_general_timezone_reload",
+      "settings":{
+         "timezone":"UTC",
+         "language":"en",
+         "notifications":{
+            "email":true,
+            "weekly_digest":false
+         }
       },
-      "timeouts": {
-        "page_load": 15,
-        "element": 10,
-        "backend_sync": 10
+      "interactions":[
+         {
+            "request":{
+               "method":"GET",
+               "endpoint":"/settings"
+            },
+            "response":{
+               "status":200,
+               "body":{
+                  "timezone":"America/New_York"
+               }
+            }
+         }
+      ]
+   },
+   {
+      "id":"test_settings_notifications_email_disable",
+      "settings":{
+         "timezone":"UTC",
+         "language":"en",
+         "notifications":{
+            "email":true,
+            "weekly_digest":false
+         }
+      },
+      "interactions":[
+         {
+            "request":{
+               "method":"GET",
+               "endpoint":"/settings"
+            },
+            "response":{
+               "status":200,
+               "body":{
+                  "notifications":{
+                     "email":false
+                  }
+               }
+            }
+         }
+      ]
+   },
+   {
+      "id":"test_settings_notifications_digest_enable",
+      "settings":{
+         "timezone":"UTC",
+         "language":"en",
+         "notifications":{
+            "email":true,
+            "weekly_digest":false
+         }
+      },
+      "interactions":[
+         {
+            "request":{
+               "method":"GET",
+               "endpoint":"/settings"
+            },
+            "response":{
+               "status":200,
+               "body":{
+                  "notifications":{
+                     "weekly_digest":true
+                  }
+               }
+            }
+         }
+      ],
+      "skip":{
+         "ticket":"STND-105",
+         "reason":"the weekly digest setting is not saved"
       }
-    },
-    "seed": {
-      "settings": {
-        "timezone": "Asia/Tokyo"
-      }
-    },
-    "inputs": {
-      "timezone": "UTC"
-    },
-    "expected": {
-      "backend": {
-        "settings": {
-          "timezone": "UTC"
-        }
-      }
-    }
-  },
-  "test_change_timezone[Europe/Berlin]": {
-    "config": {
-      "environment": {
-        "tenant": "tenant-main",
-        "region": "region-1",
-        "locale": "en",
-        "currency": "EUR",
-        "time_format": "24h"
-      },
-      "account": {
-        "plan": "standard",
-        "seats": 25,
-        "billing_cycle": "monthly",
-        "trial": false
-      },
-      "feature_flags": {
-        "new_checkout": true,
-        "bulk_edit": false,
-        "audit_log": true,
-        "beta_reports": true,
-        "sso": true
-      },
-      "browser_profile": {
-        "width": 1280,
-        "height": 900,
-        "language": "en-US",
-        "accept_cookies": true
-      },
-      "timeouts": {
-        "page_load": 15,
-        "element": 10,
-        "backend_sync": 10
-      }
-    },
-    "seed": {
-      "settings": {
-        "timezone": "Asia/Tokyo"
-      }
-    },
-    "inputs": {
-      "timezone": "Europe/Berlin"
-    },
-    "expected": {
-      "backend": {
-        "settings": {
-          "timezone": "Europe/Berlin"
-        }
-      }
-    }
-  },
-  "test_change_language": {
-    "config": {
-      "environment": {
-        "tenant": "tenant-main",
-        "region": "region-1",
-        "locale": "en",
-        "currency": "EUR",
-        "time_format": "24h"
-      },
-      "account": {
-        "plan": "standard",
-        "seats": 25,
-        "billing_cycle": "monthly",
-        "trial": false
-      },
-      "feature_flags": {
-        "new_checkout": true,
-        "bulk_edit": false,
-        "audit_log": true,
-        "beta_reports": true,
-        "sso": true
-      },
-      "browser_profile": {
-        "width": 1280,
-        "height": 900,
-        "language": "en-US",
-        "accept_cookies": true
-      },
-      "timeouts": {
-        "page_load": 15,
-        "element": 10,
-        "backend_sync": 10
-      }
-    },
-    "seed": {},
-    "inputs": {
-      "language": "de"
-    },
-    "expected": {
-      "backend": {
-        "settings": {
-          "language": "de"
-        }
-      }
-    }
-  },
-  "test_disable_email_notifications": {
-    "config": {
-      "environment": {
-        "tenant": "tenant-main",
-        "region": "region-1",
-        "locale": "en",
-        "currency": "EUR",
-        "time_format": "24h"
-      },
-      "account": {
-        "plan": "standard",
-        "seats": 25,
-        "billing_cycle": "monthly",
-        "trial": false
-      },
-      "feature_flags": {
-        "new_checkout": true,
-        "bulk_edit": false,
-        "audit_log": true,
-        "beta_reports": true,
-        "sso": true
-      },
-      "browser_profile": {
-        "width": 1280,
-        "height": 900,
-        "language": "en-US",
-        "accept_cookies": true
-      },
-      "timeouts": {
-        "page_load": 15,
-        "element": 10,
-        "backend_sync": 10
-      }
-    },
-    "seed": {
-      "settings": {
-        "notifications": {
-          "email": true
-        }
-      }
-    },
-    "inputs": {},
-    "expected": {
-      "backend": {
-        "settings": {
-          "notifications": {
-            "email": false
-          }
-        }
-      }
-    }
-  },
-  "test_enable_weekly_digest": {
-    "config": {
-      "environment": {
-        "tenant": "tenant-main",
-        "region": "region-1",
-        "locale": "en",
-        "currency": "EUR",
-        "time_format": "24h"
-      },
-      "account": {
-        "plan": "standard",
-        "seats": 25,
-        "billing_cycle": "monthly",
-        "trial": false
-      },
-      "feature_flags": {
-        "new_checkout": true,
-        "bulk_edit": false,
-        "audit_log": true,
-        "beta_reports": true,
-        "sso": true
-      },
-      "browser_profile": {
-        "width": 1280,
-        "height": 900,
-        "language": "en-US",
-        "accept_cookies": true
-      },
-      "timeouts": {
-        "page_load": 15,
-        "element": 10,
-        "backend_sync": 10
-      }
-    },
-    "seed": {},
-    "inputs": {},
-    "expected": {
-      "backend": {
-        "settings": {
-          "notifications": {
-            "weekly_digest": true
-          }
-        }
-      }
-    },
-    "skip": {
-      "ticket": "STND-105",
-      "reason": "weekly digest choice is not saved"
-    }
-  },
-  "test_timezone_persists_after_reload": {
-    "config": {
-      "environment": {
-        "tenant": "tenant-main",
-        "region": "region-1",
-        "locale": "en",
-        "currency": "EUR",
-        "time_format": "24h"
-      },
-      "account": {
-        "plan": "standard",
-        "seats": 25,
-        "billing_cycle": "monthly",
-        "trial": false
-      },
-      "feature_flags": {
-        "new_checkout": true,
-        "bulk_edit": false,
-        "audit_log": true,
-        "beta_reports": true,
-        "sso": true
-      },
-      "browser_profile": {
-        "width": 1280,
-        "height": 900,
-        "language": "en-US",
-        "accept_cookies": true
-      },
-      "timeouts": {
-        "page_load": 15,
-        "element": 10,
-        "backend_sync": 10
-      }
-    },
-    "seed": {},
-    "inputs": {
-      "timezone": "America/New_York"
-    },
-    "expected": {
-      "backend": {
-        "settings": {
-          "timezone": "America/New_York"
-        }
-      }
-    }
-  }
-}
+   }
+]

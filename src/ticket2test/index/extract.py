@@ -48,6 +48,7 @@ class FunctionInfo(BaseModel):
     decorators: list[str] = Field(default_factory=list)  # source text without "@"
     params: list[Param] = Field(default_factory=list)
     returns: str | None = None
+    returned_calls: list[str] = Field(default_factory=list)  # callees of `return Callee(...)`
     docstring: str | None = None
     code: str
     self_assignments: list[Assign] = Field(default_factory=list)
@@ -325,6 +326,28 @@ def _self_assignments(body: Node | None) -> list[Assign]:
     return found
 
 
+def _returned_calls(body: Node | None) -> list[str]:
+    """Callees of ``return Callee(...)`` in this function (not in nested defs), in order.
+
+    Unannotated code (``return ItemsPage(*self._args)``) gets its types from these.
+    """
+    found: list[str] = []
+    stack = [body] if body is not None else []
+    while stack:
+        node = stack.pop()
+        if node.type == "return_statement":
+            value = next((c for c in node.named_children), None)
+            if value is not None and value.type == "call":
+                callee = _text(value.child_by_field_name("function"))
+                if callee and callee not in found:
+                    found.append(callee)
+            continue
+        if node.type in ("function_definition", "class_definition", "lambda", "string"):
+            continue
+        stack.extend(reversed(node.children))
+    return found
+
+
 def _function(definition: Node, outer: Node, decorators: list[str]) -> FunctionInfo:
     body = definition.child_by_field_name("body")
     return FunctionInfo(
@@ -334,6 +357,7 @@ def _function(definition: Node, outer: Node, decorators: list[str]) -> FunctionI
         decorators=decorators,
         params=_params(definition.child_by_field_name("parameters")),
         returns=_text(definition.child_by_field_name("return_type")) or None,
+        returned_calls=_returned_calls(body),
         docstring=_docstring(body),
         code=_text(outer),
         self_assignments=_self_assignments(body),

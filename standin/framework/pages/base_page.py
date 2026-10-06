@@ -1,61 +1,69 @@
-"""Shared page-object behavior: navigation and explicit waits (no implicit waits, no sleeps)."""
+"""Shared page-object behavior: navigation and explicit waits (no implicit waits, no sleeps).
 
-from __future__ import annotations
-
-from typing import TypeVar
+Page-object style: value fields are properties (assign to set, read to get); actions are plain
+methods that return nothing. No fluent chaining.
+"""
 
 from selenium.webdriver.common.by import By
-from selenium.webdriver.remote.webdriver import WebDriver
-from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.support.ui import Select, WebDriverWait
 
-Locator = tuple[str, str]
-P = TypeVar("P", bound="BasePage")
-
-FLASH: Locator = (By.ID, "flash")
-FORM_ERROR: Locator = (By.ID, "form-error")
+FLASH = (By.ID, "flash")
+FORM_ERROR = (By.ID, "form-error")
 
 
 class BasePage:
-    path = "/"
+   path = "/"
 
-    def __init__(self, driver: WebDriver, base_url: str, timeout: float = 10.0) -> None:
-        self.driver = driver
-        self.base_url = base_url.rstrip("/")
-        self.timeout = timeout
+   def __init__(self, driver, base_url, timeout=10.0):
+      self.driver = driver
+      self.base_url = base_url.rstrip("/")
+      self.timeout = timeout
 
-    def open(self: P, path: str | None = None) -> P:
-        self.driver.get(self.base_url + (path or self.path))
-        return self
+   def open(self, path=None):
+      self.driver.get(self.base_url + (path or self.path))
 
-    def wait(self) -> WebDriverWait[WebDriver]:
-        return WebDriverWait(self.driver, self.timeout)
+   def refresh(self):
+      self.driver.refresh()
 
-    def find(self, locator: Locator) -> WebElement:
-        return self.wait().until(ec.visibility_of_element_located(locator))
+   def wait(self):
+      return WebDriverWait(self.driver, self.timeout)
 
-    def find_all(self, locator: Locator) -> list[WebElement]:
-        return self.driver.find_elements(*locator)
+   def find(self, locator):
+      return self.wait().until(ec.visibility_of_element_located(locator))
 
-    def click(self, locator: Locator) -> None:
-        self.wait().until(ec.element_to_be_clickable(locator)).click()
+   def find_all(self, locator):
+      return self.driver.find_elements(*locator)
 
-    def type(self, locator: Locator, text: str) -> None:
-        element = self.find(locator)
-        element.clear()
-        element.send_keys(text)
+   def click(self, locator):
+      self.wait().until(ec.element_to_be_clickable(locator)).click()
 
-    def select(self, locator: Locator, value: str) -> None:
-        Select(self.find(locator)).select_by_value(value)
+   def type(self, locator, text):
+      element = self.find(locator)
+      element.clear()
+      element.send_keys(text)
 
-    def text_of(self, locator: Locator) -> str:
-        return self.find(locator).text
+   def select(self, locator, value):
+      Select(self.find(locator)).select_by_value(value)
 
-    @property
-    def flash_message(self) -> str:
-        return self.text_of(FLASH)
+   def value_of(self, locator):
+      return str(self.find(locator).get_attribute("value"))
 
-    @property
-    def error_message(self) -> str:
-        return self.text_of(FORM_ERROR)
+   def text_of(self, locator):
+      return self.find(locator).text
+
+   def texts_of(self, locator):
+      return [element.text for element in self.find_all(locator)]
+
+   def set_checkbox(self, locator, enabled):
+      box = self.find(locator)
+      if box.is_selected() != enabled:
+         box.click()
+
+   @property
+   def flash_message(self):
+      return self.text_of(FLASH)
+
+   @property
+   def error_message(self):
+      return self.text_of(FORM_ERROR)

@@ -7,6 +7,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 ChunkKind = Literal["test", "function", "class", "page_object"]
+DataFormat = Literal["array", "object"]  # list of entries with an id field, or id -> entry
 
 
 class Refs(BaseModel):
@@ -68,3 +69,4 @@ class Chunk(BaseModel):
     test_ids_note: str | None = None
     data_file: str | None = None
     data_entries: dict[str, Any] = Field(default_factory=dict)  # test id -> JSON entry
+    data_format: DataFormat | None = None  # layout of data_file

@@ -1,56 +1,69 @@
 """Settings: timezone, language, and notification preferences."""
 
-from __future__ import annotations
-
 import pytest
 
 from framework.base_test import BaseTest
+from framework.decorators import browsers, data_driven, environments
 
 
+@browsers("chrome", "firefox")
+@environments("cloud", "on_prem")
+@data_driven
 @pytest.mark.project("example-project")
 @pytest.mark.component("settings")
 class TestSettings(BaseTest):
-    @pytest.mark.priority("p2")
-    @pytest.mark.suite("regression")
-    @pytest.mark.parametrize("timezone", ["UTC", "Europe/Berlin"])
-    def test_change_timezone(self, timezone: str) -> None:
-        general = self.nav.settings.general.open()
-        general.set_timezone(timezone).save()
+   @pytest.mark.priority("p2")
+   @pytest.mark.suite("regression")
+   @pytest.mark.parametrize("timezone", ["UTC", "Europe/Berlin"])
+   def test_settings_general_timezone_change(self, timezone):
+      general = self.nav.settings.general
+      general.open()
+      general.timezone = timezone
+      general.save()
 
-        assert general.flash_message == "Settings saved"
-        self.assert_backend(self.expected["backend"])
+      self.check.equal(general.flash_message, "Settings saved", "flash message")
+      self.validate_backend()
 
-    @pytest.mark.priority("p3")
-    @pytest.mark.suite("regression")
-    def test_change_language(self) -> None:
-        general = self.nav.settings.general.open()
-        general.set_language(self.inputs["language"]).save()
+   @pytest.mark.priority("p3")
+   @pytest.mark.suite("regression")
+   def test_settings_general_language_change(self):
+      general = self.nav.settings.general
+      general.open()
+      general.language = "de"
+      general.save()
 
-        self.assert_backend(self.expected["backend"])
+      self.validate_backend()
 
-    @pytest.mark.priority("p2")
-    @pytest.mark.suite("regression")
-    def test_disable_email_notifications(self) -> None:
-        notifications = self.nav.settings.notifications.open()
-        notifications.set_email(False).save()
+   @pytest.mark.priority("p1")
+   @pytest.mark.suite("smoke")
+   def test_settings_general_timezone_reload(self):
+      """1. Save a timezone. 2. Reload the page. 3. The saved timezone is still selected."""
+      general = self.nav.settings.general
+      general.open()
+      general.timezone = "America/New_York"
+      general.save()
+      general.refresh()
 
-        assert notifications.flash_message == "Settings saved"
-        self.assert_backend(self.expected["backend"])
+      self.check.equal(general.timezone, "America/New_York", "selected timezone")
+      self.validate_backend()
 
-    @pytest.mark.priority("p3")
-    @pytest.mark.suite("regression")
-    def test_enable_weekly_digest(self) -> None:
-        notifications = self.nav.settings.notifications.open()
-        notifications.set_weekly_digest(True).save()
+   @pytest.mark.priority("p2")
+   @pytest.mark.suite("regression")
+   def test_settings_notifications_email_disable(self):
+      notifications = self.nav.settings.notifications
+      notifications.open()
+      notifications.email_enabled = False
+      notifications.save()
 
-        self.assert_backend(self.expected["backend"])
+      self.check.equal(notifications.flash_message, "Settings saved", "flash message")
+      self.validate_backend()
 
-    @pytest.mark.priority("p1")
-    @pytest.mark.suite("smoke")
-    def test_timezone_persists_after_reload(self) -> None:
-        general = self.nav.settings.general.open()
-        general.set_timezone(self.inputs["timezone"]).save()
-        general.open()
+   @pytest.mark.priority("p3")
+   @pytest.mark.suite("regression")
+   def test_settings_notifications_digest_enable(self):
+      notifications = self.nav.settings.notifications
+      notifications.open()
+      notifications.weekly_digest = True
+      notifications.save()
 
-        assert general.selected_timezone() == self.inputs["timezone"]
-        self.assert_backend(self.expected["backend"])
+      self.validate_backend()

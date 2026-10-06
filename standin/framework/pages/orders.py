@@ -1,87 +1,114 @@
 """Orders area: order list, checkout, and order detail."""
 
-from __future__ import annotations
-
 from selenium.webdriver.common.by import By
-from selenium.webdriver.remote.webdriver import WebDriver
 
-from framework.pages.base_page import BasePage, Locator
+from framework.pages.base_page import BasePage
 
 
 class OrderListPage(BasePage):
-    path = "/orders"
+   path = "/orders"
 
-    STATUS_FILTER: Locator = (By.ID, "status-filter")
-    APPLY: Locator = (By.ID, "apply-filter")
-    STATUSES: Locator = (By.CSS_SELECTOR, "#orders-table .order-status")
-    IDS: Locator = (By.CSS_SELECTOR, "#orders-table .order-id")
+   STATUS_FILTER = (By.ID, "status-filter")
+   APPLY = (By.ID, "apply-filter")
+   STATUSES = (By.CSS_SELECTOR, "#orders-table .order-status")
+   IDS = (By.CSS_SELECTOR, "#orders-table .order-id")
 
-    def filter_by(self, status: str) -> OrderListPage:
-        self.select(self.STATUS_FILTER, status)
-        self.click(self.APPLY)
-        return self
+   @property
+   def status_filter(self):
+      return self.value_of(self.STATUS_FILTER)
 
-    def statuses(self) -> list[str]:
-        return [cell.text for cell in self.find_all(self.STATUSES)]
+   @status_filter.setter
+   def status_filter(self, status):
+      self.select(self.STATUS_FILTER, status)
 
-    def order_ids(self) -> list[int]:
-        return [int(cell.text) for cell in self.find_all(self.IDS)]
+   @property
+   def statuses(self):
+      return self.texts_of(self.STATUSES)
+
+   @property
+   def order_ids(self):
+      return [int(text) for text in self.texts_of(self.IDS)]
+
+   def apply_filter(self):
+      self.click(self.APPLY)
 
 
 class CheckoutPage(BasePage):
-    path = "/orders/new"
+   path = "/orders/new"
 
-    ITEM: Locator = (By.ID, "checkout-item")
-    QUANTITY: Locator = (By.ID, "checkout-quantity")
-    PLACE: Locator = (By.ID, "place-order")
+   ITEM = (By.ID, "checkout-item")
+   QUANTITY = (By.ID, "checkout-quantity")
+   PLACE = (By.ID, "place-order")
 
-    def place_order(self, item: str, quantity: int) -> None:
-        self.select(self.ITEM, item)
-        self.type(self.QUANTITY, str(quantity))
-        self.click(self.PLACE)
+   @property
+   def item(self):
+      return self.value_of(self.ITEM)
+
+   @item.setter
+   def item(self, name):
+      self.select(self.ITEM, name)
+
+   @property
+   def quantity(self):
+      return self.value_of(self.QUANTITY)
+
+   @quantity.setter
+   def quantity(self, value):
+      self.type(self.QUANTITY, str(value))
+
+   def place_order(self):
+      self.click(self.PLACE)
 
 
 class OrderDetailPage(BasePage):
-    STATUS: Locator = (By.ID, "order-status")
-    CANCEL: Locator = (By.ID, "cancel-order")
-    NOTE_TEXT: Locator = (By.ID, "note-text")
-    ADD_NOTE: Locator = (By.ID, "add-note")
-    NOTES: Locator = (By.CSS_SELECTOR, "#notes .note")
+   STATUS = (By.ID, "order-status")
+   CANCEL = (By.ID, "cancel-order")
+   NOTE_TEXT = (By.ID, "note-text")
+   ADD_NOTE = (By.ID, "add-note")
+   NOTES = (By.CSS_SELECTOR, "#notes .note")
 
-    def open_for(self, order_id: int) -> OrderDetailPage:
-        return self.open(f"/orders/{order_id}")
+   def open_for(self, order_id):
+      self.open(f"/orders/{order_id}")
 
-    @property
-    def status(self) -> str:
-        return self.text_of(self.STATUS)
+   @property
+   def status(self):
+      return self.text_of(self.STATUS)
 
-    @property
-    def order_id(self) -> int:
-        return int(self.driver.current_url.rstrip("/").split("/")[-1].split("?")[0])
+   @property
+   def order_id(self):
+      return int(self.driver.current_url.rstrip("/").split("/")[-1].split("?")[0])
 
-    def cancel(self) -> None:
-        self.click(self.CANCEL)
+   @property
+   def note_text(self):
+      return self.value_of(self.NOTE_TEXT)
 
-    def add_note(self, text: str) -> None:
-        self.type(self.NOTE_TEXT, text)
-        self.click(self.ADD_NOTE)
+   @note_text.setter
+   def note_text(self, text):
+      self.type(self.NOTE_TEXT, text)
 
-    def notes(self) -> list[str]:
-        return [li.text for li in self.find_all(self.NOTES)]
+   @property
+   def notes(self):
+      return self.texts_of(self.NOTES)
+
+   def cancel(self):
+      self.click(self.CANCEL)
+
+   def add_note(self):
+      self.click(self.ADD_NOTE)
 
 
 class OrdersArea:
-    def __init__(self, driver: WebDriver, base_url: str, timeout: float) -> None:
-        self._args = (driver, base_url, timeout)
+   def __init__(self, driver, base_url, timeout):
+      self._args = (driver, base_url, timeout)
 
-    @property
-    def order_list(self) -> OrderListPage:
-        return OrderListPage(*self._args)
+   @property
+   def order_list(self):
+      return OrderListPage(*self._args)
 
-    @property
-    def checkout(self) -> CheckoutPage:
-        return CheckoutPage(*self._args)
+   @property
+   def checkout(self):
+      return CheckoutPage(*self._args)
 
-    @property
-    def order_detail(self) -> OrderDetailPage:
-        return OrderDetailPage(*self._args)
+   @property
+   def order_detail(self):
+      return OrderDetailPage(*self._args)

@@ -20,7 +20,7 @@ Tracks progress, scope, and acceptance criteria for each phase. Read together wi
 | 1 | Ticket normalizer | ✅ | 0 |
 | 2 | Draft generation | ✅ | 1 |
 | 3 | Synthetic stand-in repo | ✅ | 0 |
-| 3b | Stand-in v2 (real-framework patterns) | 🟡 | 3 |
+| 3b | Stand-in v2 (real-framework patterns) | ✅ | 3 |
 | 4 | Indexer (Python) | ✅ | 3 |
 | 5 | Retrieval | ✅ | 2, 4 |
 | 6 | Code generation (code + JSON pair) | 🟡 (rework after 3b) | 5, 3b |
@@ -220,7 +220,7 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 ---
 
 ## Phase 3b: Stand-in v2 (real-framework patterns)
-**Status:** 🟡 In progress
+**Status:** ✅ Done
 
 **Why:** the human compared a Phase 6 generated pair with the real framework (2026-10-06) and listed ten generic structural differences: class scaffold, data loading, page-object style, assertion style, data-file shape and content, expectation format, marker values, style rules, and "needs a real run" behaviours. Several came from the v1 stand-in itself, which the generator copied faithfully. The updated patterns are in `CLAUDE.md` → "Target test-suite patterns".
 
@@ -239,17 +239,29 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 **Constraints:** generic, invented names only (as Phase 3); collectable without a browser or network; host `--collect-only` allowed for the hand-written stand-in only.
 
 **Definition of Done:**
-- [ ] Every updated pattern above is present and checked by a project test
-- [ ] `pytest --collect-only` on the stand-in succeeds with no browser and no network
-- [ ] Every entry `id` equals a collected test id; every test that reads `params` has an entry; tests without data are allowed
-- [ ] Every data key a test reads exists in its entries
-- [ ] Stand-in code and JSON pass the `style` rules
-- [ ] Fake tickets, manifest, eval pairs, and history builder updated; indexer and retrieval tests pass on v2
+- [x] Every updated pattern above is present and checked by a project test (`tests/test_standin.py`, 35 checks, `ast`-based)
+- [x] `pytest --collect-only` on the stand-in succeeds with no browser and no network (35 tests)
+- [x] Every entry `id` equals a collected test id; every test that reads `params` has an entry; tests without data are allowed (2 such tests)
+- [x] Every data key a test reads exists in its entries
+- [x] Stand-in code and JSON pass the style rules (`ruff format --check` / `ruff check` with `standin/ruff.toml`; JSON re-serialized byte-identical). The `style` config section that the generator will use lands in step C
+- [x] Fake tickets, manifest, eval pairs, and history builder updated; indexer and retrieval tests pass on v2
 
 **Open questions:** –
 
 **Log:**
 - 2026-10-06: Started after the human approved the plan (docs → Phase 3b → pipeline changes → Phase 6 live rerun → human style check → close Phase 6 → Phase 7), the model changes (`GeneratedTest` writes entries as an array and gets a new wire model with `generate_v2`; `Chunk` records its data-file format; new config `style` and `data` sections; `TestCaseDraft` / `Ticket` unchanged), and `ruff` as a runtime dependency for formatting generated code. Human's answers: repeated blocks are real (identical seeds, one-value variants, self-referencing names, no templating seen) → the 5-step entry rule; style values as above (they may differ per repo, so config); data access as a dict (`self.params` or a `params` argument), entry `id` = pytest id, entries optional.
+- 2026-10-06: Built. Stand-in v2:
+  - **Scaffold:** every class has `@browsers` / `@environments` / `@data_driven` / project / component. `BaseTest.setup_method` / `teardown_method`.
+  - **Data access:** conftest fixtures `load_params` (sets `self.params`) and `params` (an argument; `TestOrders` uses it). Both resolve `{{unique}}` and apply the seed sections.
+  - **Page objects and checks:** value fields are properties with setters, actions return `None`. `self.check` is the assertion object. `validate_backend()` replays `interactions` and compares responses as a subset.
+  - **Data and names:** array data files with `id`, a large pasted `policy` block named after the test, custom keys. Names are area_action_subarea (25 test functions, 35 ids). 3-space indent, no annotations.
+  - **App:** gained a policy (allowed categories, max order quantity) and `/api/policy`; unknown ids return 404.
+- 2026-10-06: Project tests check every pattern with `ast`, including: no bare `assert`, no chaining, setters present, keys read exist, policy names derived from the test name, variants differing by one value, and the platform / deployment / ticket skips. `interactions` are replayed in-process against the app's API router, with the backend effect of each UI flow simulated, so expectations are checked without a browser or server.
+- 2026-10-06: The indexer needed two changes for v2:
+  - **Array data files:** read via the new config section `data` (`format`, `id_field`). `Chunk.data_format` records the layout (approved model change).
+  - **Return-type inference:** types are now inferred from `return Callee(...)` when there is no annotation, so property chains still resolve without annotations. `INDEX_VERSION` is now 3.
+  - **Retry on save:** the index save retries the rename up to `index.save_attempts` (a Windows lock made one test flaky).
+- 2026-10-06: Stand-in v2 retrieval baseline (deterministic, no LLM): recall@10 0.833, MRR 0.367 (v1: 0.833 / 0.376). The v1 generator tests (`test_generate.py`, `test_generate_live.py`) are skipped until `generate_v2` (step C): they build entries in the v1 shape, which no longer exists.
 
 ---
 
@@ -536,3 +548,4 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 | 2026-10-05 | all | Priority marker values changed to lowercase `p0`–`p3` (human request) in config, the stand-in suite and its data, and tests. Earlier log entries keep the values as written then. |
 | 2026-10-06 | – | Pushed the repo to github.com/DangNguyen254/ai-in-testing (human's request): merged GitHub's initial commit (LICENSE only) instead of force-pushing; kept the LICENSE holder DangNguyen254 |
 | 2026-10-06 | all | Target patterns updated from the human's real-framework comparison (CLAUDE.md patterns, guardrails, data models, phases). New Phase 3b (stand-in v2); Phase 6 to be reworked after it; Phase 7 validator list extended |
+| 2026-10-06 | 3b | Stand-in v2 built and verified (patterns checked by project tests; indexer reads array data and infers unannotated types; config `data`; `Chunk.data_format`); marked ✅ Done. v1 generator tests skipped until `generate_v2` |

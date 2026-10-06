@@ -1,48 +1,61 @@
-"""Decorators shared by tests: retry for known-flaky steps, browser and deployment skips."""
+"""The standard decorator stack and shared method decorators.
 
-from __future__ import annotations
+Class decorators: platform selection (``browsers``), environment gating (``environments``),
+data loading (``data_driven``). Method decorators: ``retry``, ``skip_browser``,
+``cloud_only`` / ``on_prem_only``.
+"""
 
 import functools
 import time
-from collections.abc import Callable
-from typing import Any, TypeVar
 
 import pytest
 from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
 
 from framework.config import CONFIG
 
-F = TypeVar("F", bound=Callable[..., Any])
-
-RETRYABLE: tuple[type[BaseException], ...] = (
-    AssertionError,
-    TimeoutException,
-    StaleElementReferenceException,
-)
+RETRYABLE = (AssertionError, TimeoutException, StaleElementReferenceException)
 
 
-def retry(times: int = 2, delay: float = 1.0) -> Callable[[F], F]:
-    """Re-run a flaky test body up to ``times`` extra times. Flakiness is handled in code."""
-
-    def decorate(func: F) -> F:
-        @functools.wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            for attempt in range(times + 1):
-                try:
-                    return func(*args, **kwargs)
-                except RETRYABLE:
-                    if attempt == times:
-                        raise
-                    time.sleep(delay)
-            return None  # unreachable
-
-        return wrapper  # type: ignore[return-value]
-
-    return decorate
+def browsers(*names):
+   """Platform selection: run the class only on these browsers."""
+   return pytest.mark.skipif(CONFIG.browser not in names, reason=f"runs only on {', '.join(names)}")
 
 
-def skip_browser(*browsers: str, reason: str) -> pytest.MarkDecorator:
-    return pytest.mark.skipif(CONFIG.browser in browsers, reason=f"{CONFIG.browser}: {reason}")
+def environments(*deployments):
+   """Environment gating: run the class only on these deployment types."""
+   return pytest.mark.skipif(
+      CONFIG.deployment not in deployments, reason=f"runs only on {', '.join(deployments)}"
+   )
+
+
+def data_driven(cls):
+   """Data loading: each test gets its matched data entry as ``self.params``."""
+   cls.data_driven = True
+   return pytest.mark.usefixtures("load_params")(cls)
+
+
+def retry(times=2, delay=1.0):
+   """Re-run a flaky test body up to ``times`` extra times. Flakiness is handled in code."""
+
+   def decorate(func):
+      @functools.wraps(func)
+      def wrapper(*args, **kwargs):
+         for attempt in range(times + 1):
+            try:
+               return func(*args, **kwargs)
+            except RETRYABLE:
+               if attempt == times:
+                  raise
+               time.sleep(delay)
+         return None
+
+      return wrapper
+
+   return decorate
+
+
+def skip_browser(*names, reason):
+   return pytest.mark.skipif(CONFIG.browser in names, reason=f"{CONFIG.browser}: {reason}")
 
 
 cloud_only = pytest.mark.skipif(CONFIG.deployment != "cloud", reason="cloud-only test")
