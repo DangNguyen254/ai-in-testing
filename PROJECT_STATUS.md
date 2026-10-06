@@ -23,12 +23,47 @@ Tracks progress, scope, and acceptance criteria for each phase. Read together wi
 | 3b | Stand-in v2/v3 (real-framework patterns) | ✅ | 3 |
 | 4 | Indexer (Python) | ✅ | 3 |
 | 5 | Retrieval | ✅ | 2, 4 |
-| 6 | Code generation (code + JSON pair) | 🟡 (rework after 3b) | 5, 3b |
+| 6 | Code generation (code + JSON pair) | 🟡 (style check of v3 pending) | 5, 3b |
 | 7 | Validators, repair, sandbox | ⬜ | 6 |
 | 8 | Eval harness | ⬜ | 5 (minimal), 7 (full) |
 | 9 | Rust support | ⬜ | 8 |
 
 Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the synthetic stand-in became Phase 3; former Phases 3–8 are now 4–9.
+
+---
+
+## Current state (handoff, 2026-10-06)
+
+Read this first when resuming in a new session.
+
+**Where we are:** Phase 6 is 🟡, waiting for the human's **third style check**. The pairs from the latest live run (stand-in v3, prompt `generate_v3`, 5/5 passed) are in `output/generated/live-v3/`. The fair comparisons are **STND-106** (`tests/rules/test_rules_list_filter.*`) and **STND-103** (`tests/rules/test_rules_add_duplicate.*`). 101, 102, and 104 used their own linked test as the base entry, so they would just mirror it. Earlier runs are in `live-v1/` and `live-v2/`.
+
+**Next steps, in order:**
+1. Human style check of the v3 pairs → fix what it finds (stand-in, prompt, or generator), then rerun the live test if needed.
+2. Close Phase 6 (the last DoD item is the human style check).
+3. Phase 7: validators, repair loop, sandbox. Use the validator list in `CLAUDE.md`, which includes rule (1) (every seed/expectation key is read or consumed; never both `targets` and `interactions`) and the name-claim heuristic. Also add:
+   - names of seeded objects must use `{test_id:N}`; STND-103 used the literal `web-access`.
+
+**Known open points (not blocking):**
+- Template choice: STND-106 used `test_rules_add_basic[allow]` as the base instead of a list or pagination test. Ranking is same component first, then the retrieval score.
+- Retrieval without the LLM misses STND-104 (recall@10 0.833 on the stand-in); with the LLM it was found before.
+- Phase 8 idea: leave-one-out evaluation (exclude each ticket's own linked test from the index), so style comparisons aren't circular.
+
+**How to run (Windows, from the repo root):**
+- Checks: `.venv/Scripts/ruff.exe check .`, `.venv/Scripts/python.exe -m mypy src`, `.venv/Scripts/python.exe -m pytest -q` (basetemp is `.scratch/pytest`, set in `pyproject.toml`).
+- Live generation (real LLM calls via the Claude Code CLI, about 15 calls, about 2.5 minutes): `.venv/Scripts/uv.exe run --env-file .env pytest -m live tests/test_generate_live.py -q`. It writes to `output/generated/live-<prompt version>/`.
+- Stand-in: `cd standin && ../.venv/Scripts/python.exe -m pytest --collect-only -q`; history: `python standin/tools/build_history.py --out .scratch/standin-history --force`.
+- `uv` is installed in the venv (`.venv/Scripts/uv.exe`).
+
+**Working notes for Claude Code:**
+- **Rules:**
+  - Never read `.env`; `uv run --env-file .env` loads it. It holds the `claude` CLI path (forward slashes).
+  - Commit locally with the repo-local identity (DangNguyen254). Never `git push` without the human's explicit OK. There are local commits not yet pushed.
+  - No Claude co-author trailers or "Generated with Claude Code" lines (CLAUDE.md).
+- **Tooling pitfalls:**
+  - Bash heredocs mangle `\n` and `\b` in Python snippets: write scripts to `.scratch/*.py` with the editor tools instead.
+  - Git object files are read-only on Windows (`build_history.py` handles this).
+- **Stand-in conventions:** the stand-in has its own `standin/ruff.toml` (3-space indent). Its JSON data is written with indent 3 and `"key":value`; the throwaway builders in `.scratch/` are not part of the repo.
 
 ---
 
@@ -613,5 +648,6 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 | 2026-10-05 | all | Priority marker values changed to lowercase `p0`–`p3` (human request) in config, the stand-in suite and its data, and tests. Earlier log entries keep the values as written then. |
 | 2026-10-06 | – | Pushed the repo to github.com/DangNguyen254/ai-in-testing (human's request): merged GitHub's initial commit (LICENSE only) instead of force-pushing; kept the LICENSE holder DangNguyen254 |
 | 2026-10-06 | all | Target patterns updated from the human's real-framework comparison (CLAUDE.md patterns, guardrails, data models, phases). New Phase 3b (stand-in v2); Phase 6 to be reworked after it; Phase 7 validator list extended |
+| 2026-10-06 | – | Handoff section added (session moves to Claude Code desktop) |
 | 2026-10-06 | 3b | Stand-in v3 built and verified (policy app with top bar, four test shapes, targets/interactions replayed, rule (1) checked on the stand-in); generate_v3 prompt and self-checks |
 | 2026-10-06 | 3b | Stand-in v2 built and verified (patterns checked by project tests; indexer reads array data and infers unannotated types; config `data`; `Chunk.data_format`); marked ✅ Done. v1 generator tests skipped until `generate_v2` |
