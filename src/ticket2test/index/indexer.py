@@ -28,7 +28,7 @@ from ticket2test.models.chunk import Chunk
 
 log = logging.getLogger(__name__)
 
-INDEX_VERSION = 3  # 2: chunks carry syntax-tree refs; 3: array data files, returned calls
+INDEX_VERSION = 4  # 2: syntax-tree refs; 3: array data files, returned calls; 4: imports
 INDEX_FILE = "index.json"
 
 

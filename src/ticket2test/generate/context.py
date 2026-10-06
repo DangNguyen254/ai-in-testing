@@ -90,7 +90,10 @@ def template_piece(
     sections = ", ".join(chunk.data_entries[entry_key])
     body = ""
     if scaffold:
-        body += f"Class scaffold (copy unchanged; new class name):\n```python\n{scaffold}\n```\n"
+        body += (
+            "Module imports and class scaffold (copy unchanged; new class name):\n"
+            f"```python\n{scaffold}\n```\n"
+        )
     body += (
         f"```python\n{chunk.code}\n```\n"
         f"Base entry `{entry_key}` (from {chunk.data_file}; top-level sections: {sections}):\n"

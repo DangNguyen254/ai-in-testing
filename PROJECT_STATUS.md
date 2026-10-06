@@ -394,7 +394,7 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 - [x] Context never exceeds the token budget (tested)
 - [x] Every `GeneratedTest` has complete traceability fields, incl. `template_entry_ref`
 - [x] Output is formatted to the `style` rules (tested; stand-in files are a fixed point)
-- [ ] Live run on v2 (5 stand-in tickets)
+- [x] Live run on v2 (5 stand-in tickets; 5/5, first attempt)
 - [ ] Generated code follows the real framework's style (spot-checked by a human)
 
 **Open questions:** –
@@ -417,6 +417,14 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
   - **Output:** `GeneratedTest.data_entries` is now an array with `data_format`, `review_checklist` (config defaults + the LLM's items) and `entry_plans` (approved model change). The context shows the class scaffold and the base entry in the suite's JSON style. Prompt `generate_v2.md`. Config `data.access` / `reading_helpers` / `per_entry_keys`; `generate.unique_entry_keys` / `drop_template_keys` removed.
   - **Dependency:** `ruff` is now a runtime dependency (approved).
 - 2026-10-06: Verified offline: `test_generate.py` rewritten (35 tests, incl. 13 retry cases) and the new `test_style.py` (10). The stand-in's test files are a fixed point of the formatter with the default config. ruff, mypy strict (64 files), pytest 402 passed, 12 live deselected. Observed: without the LLM, retrieval's first template for STND-104 is a sibling (`test_orders_list_filter_status[open]`), not `test_orders_detail_cancel`. The live run will show whether LLM-on retrieval picks better before any change.
+- 2026-10-06: Live run on v2 (`tests/test_generate_live.py`, run by Claude): 5/5 passed, every generation accepted on the first attempt.
+  - **First run:** all five models said the template's imports weren't shown, and guessed the decorator import path.
+  - **Fix:** the indexer now records each module's top-level imports (`FileInfo.imports`, `INDEX_VERSION` 4), and the scaffold piece shows them.
+  - **Rerun:** 5/5 passed in 2m16s, context 4.2k–7.7k of 12k estimated tokens. The imports are now copied, and unused ones are dropped by the formatter. The v1 outputs are kept in `output/generated/live-v1/`; the v2 pairs in `output/generated/live/` are ready for the human style check.
+  - **Claude's read:** the class scaffold is copied, property assignments are used, no chaining, `self.check` / `validate_backend`, 3-space indent, array entries built from the base entry with the policy name re-labelled, and no ticket ids in names.
+  - **Open points for the human:**
+    1. Several plans leave out the repeated `settings` / `policy` blocks (STND-103 kept only `item_name` and `interactions`). The 5-step rule says to strip what the test doesn't use, but the real suite pastes these blocks into every entry. Which should win?
+    2. STND-104's base entry is still a sibling (`test_orders_list_filter_status[open]`), not `test_orders_detail_cancel`. The output is fine, but the template choice could prefer tests that share the draft's page and action.
 
 ---
 

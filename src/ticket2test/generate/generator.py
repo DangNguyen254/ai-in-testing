@@ -180,7 +180,7 @@ def first_party(index: IndexData, settings: Settings) -> list[str]:
 
 
 def class_scaffold(chunk: Chunk, index: IndexData) -> str | None:
-    """The template class's decorators and class line, as written."""
+    """The template module's imports, then its class decorators and class line, as written."""
     record = index.files.get(chunk.file_path)
     if record is None or record.info is None or chunk.class_name is None:
         return None
@@ -188,7 +188,9 @@ def class_scaffold(chunk: Chunk, index: IndexData) -> str | None:
     if cls is None:
         return None
     bases = f"({', '.join(cls.bases)})" if cls.bases else ""
-    return "\n".join([*(f"@{d}" for d in cls.decorators), f"class {cls.name}{bases}:"])
+    header = [*(f"@{d}" for d in cls.decorators), f"class {cls.name}{bases}:"]
+    imports = [*record.info.imports, ""] if record.info.imports else []
+    return "\n".join([*imports, *header])
 
 
 def build_generation_context(

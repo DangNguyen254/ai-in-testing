@@ -81,6 +81,7 @@ class FileInfo(BaseModel):
     functions: list[FunctionInfo] = Field(default_factory=list)
     classes: list[ClassInfo] = Field(default_factory=list)
     assignments: list[Assign] = Field(default_factory=list)  # module-level
+    imports: list[str] = Field(default_factory=list)  # top-level import statements, as written
 
 
 @cache
@@ -109,7 +110,11 @@ def extract_file(path: str, source: bytes) -> FileInfo:
     functions: list[FunctionInfo] = []
     classes: list[ClassInfo] = []
     assignments: list[Assign] = []
+    imports: list[str] = []
     for node in root.named_children:
+        if node.type in ("import_statement", "import_from_statement"):
+            imports.append(_text(node))
+            continue
         definition, decorators = _unwrap(node)
         if definition.type == "function_definition":
             functions.append(_function(definition, node, decorators))
@@ -124,6 +129,7 @@ def extract_file(path: str, source: bytes) -> FileInfo:
         functions=functions,
         classes=classes,
         assignments=assignments,
+        imports=imports,
     )
 
 

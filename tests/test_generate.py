@@ -245,7 +245,8 @@ def test_prompt_contains_conventions_scaffold_base_entry_and_markers(
     _generate(index, retrieval, tmp_path, fake)
     user = fake.requests[0].messages[1].content
     assert "Team conventions for tests" in user and "No chaining" in user
-    assert "Class scaffold (copy unchanged; new class name):" in user
+    assert "Module imports and class scaffold (copy unchanged; new class name):" in user
+    assert "from framework.decorators import browsers, environments, skip_browser" in user
     assert '@browsers("chrome", "firefox")\n@environments("cloud", "on_prem")' in user
     assert "class TestOrders(BaseTest):" in user
     assert "top-level sections: id, settings, policy, targets, interactions" in user
@@ -258,6 +259,10 @@ def test_prompt_contains_conventions_scaffold_base_entry_and_markers(
 def test_class_scaffold_is_the_template_class_header(index: IndexData) -> None:
     chunk = next(c for c in index.chunks if c.id == TEMPLATE_CHUNK)
     assert class_scaffold(chunk, index) == (
+        "import pytest\n"
+        "from framework.base_test import BaseTest\n"
+        "from framework.decorators import browsers, environments, skip_browser\n"
+        "\n"
         '@browsers("chrome", "firefox")\n'
         '@environments("cloud", "on_prem")\n'
         '@pytest.mark.project("example-project")\n'
