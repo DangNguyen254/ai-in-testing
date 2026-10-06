@@ -643,7 +643,7 @@ def mine(
         "pairs": pairs,
     }
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(pair_set, indent=2) + "\n", encoding="utf-8")
+    out.write_text(json.dumps(pair_set, indent=2) + "\n", encoding="utf-8", newline="\n")
     for m in mined:
         typer.echo(f"{m.ticket}: {m.test} ({m.kind}, {m.commit[:10]})")
     typer.echo(f"{len(mined)} pair(s) -> {out}")
