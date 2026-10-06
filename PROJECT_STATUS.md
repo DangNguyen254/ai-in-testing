@@ -20,9 +20,10 @@ Tracks progress, scope, and acceptance criteria for each phase. Read together wi
 | 1 | Ticket normalizer | ✅ | 0 |
 | 2 | Draft generation | ✅ | 1 |
 | 3 | Synthetic stand-in repo | ✅ | 0 |
+| 3b | Stand-in v2 (real-framework patterns) | 🟡 | 3 |
 | 4 | Indexer (Python) | ✅ | 3 |
 | 5 | Retrieval | ✅ | 2, 4 |
-| 6 | Code generation (code + JSON pair) | 🟡 | 5 |
+| 6 | Code generation (code + JSON pair) | 🟡 (rework after 3b) | 5, 3b |
 | 7 | Validators, repair, sandbox | ⬜ | 6 |
 | 8 | Eval harness | ⬜ | 5 (minimal), 7 (full) |
 | 9 | Rust support | ⬜ | 8 |
@@ -218,6 +219,40 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 
 ---
 
+## Phase 3b: Stand-in v2 (real-framework patterns)
+**Status:** 🟡 In progress
+
+**Why:** the human compared a Phase 6 generated pair with the real framework (2026-10-06) and listed ten generic structural differences: class scaffold, data loading, page-object style, assertion style, data-file shape and content, expectation format, marker values, style rules, and "needs a real run" behaviours. Several came from the v1 stand-in itself, which the generator copied faithfully. The updated patterns are in `CLAUDE.md` → "Target test-suite patterns".
+
+**Goal:** make `standin/` mirror the real patterns, so the indexer, generator, and validators target the real shape.
+
+**Outputs:**
+- Class scaffold: base class with setup/teardown methods; class decorator stack for platform selection, environment gating, data loading, and markers
+- Page objects: value fields as properties (assign/read), actions as methods, no fluent chaining
+- Framework assertion object for UI checks; validation helper that replays each `interactions` request against the fake app and compares responses as a subset
+- Data files: top-level array of entries with `id` = pytest id; framework keys (`settings`, `policy`, `tenants`, `targets`, `interactions`, `priority`, `skip`) plus custom keys; a large `policy`/`settings` seed repeated across many entries; variants differing by one value; self-referencing names derived from the test name; some tests with no entry
+- Data access: `self.params` via the class-level data fixture, and a `params` argument in a few classes
+- Simple UI inputs inline in tests; names summarize area/action/sub-area, no ticket numbers
+- Style: 3-space indent, LF, final newline, alphabetical imports, no type annotations; JSON indent 3 with `"key":value` (config `style`, these defaults)
+- Updated fake tickets, manifest, eval pairs, history builder, and project tests
+
+**Constraints:** generic, invented names only (as Phase 3); collectable without a browser or network; host `--collect-only` allowed for the hand-written stand-in only.
+
+**Definition of Done:**
+- [ ] Every updated pattern above is present and checked by a project test
+- [ ] `pytest --collect-only` on the stand-in succeeds with no browser and no network
+- [ ] Every entry `id` equals a collected test id; every test that reads `params` has an entry; tests without data are allowed
+- [ ] Every data key a test reads exists in its entries
+- [ ] Stand-in code and JSON pass the `style` rules
+- [ ] Fake tickets, manifest, eval pairs, and history builder updated; indexer and retrieval tests pass on v2
+
+**Open questions:** –
+
+**Log:**
+- 2026-10-06: Started after the human approved the plan (docs → Phase 3b → pipeline changes → Phase 6 live rerun → human style check → close Phase 6 → Phase 7), the model changes (`GeneratedTest` writes entries as an array and gets a new wire model with `generate_v2`; `Chunk` records its data-file format; new config `style` and `data` sections; `TestCaseDraft` / `Ticket` unchanged), and `ruff` as a runtime dependency for formatting generated code. Human's answers: repeated blocks are real (identical seeds, one-value variants, self-referencing names, no templating seen) → the 5-step entry rule; style values as above (they may differ per repo, so config); data access as a dict (`self.params` or a `params` argument), entry `id` = pytest id, entries optional.
+
+---
+
 ## Phase 4: Indexer (Python)
 **Status:** ✅ Done (2026-10-05)
 
@@ -355,6 +390,7 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 - 2026-10-05: Built. `generate/context.py`: pieces in priority order (conventions doc and template test + its JSON entry are required; then the base test class and its in-repo bases, similar tests from retrieval as style examples, the page-object chains and page objects those tests use, other code hits); whole pieces only, a piece that doesn't fit is skipped; tokens estimated as ceil(chars / `context.chars_per_token`, default 3.0, which over-counts); `ContextBudgetError` if the required pieces alone don't fit. `prompts/generate_v1.md`: the LLM returns the module code and, per pytest id, only the unique entry parts (`seed` / `inputs` / `expected`) as JSON text. `models/generated.py`: `GenerationResponse` validates itself (code parses, has a test, literal parametrize values, computed pytest ids == entry keys, parts are JSON objects); failures go back to the LLM through the capped retry. `generate/generator.py`: entries assembled deterministically from the template entry (shared blocks such as `config` deep-copied in the template's key order; `priority` / `skip` overrides not inherited); marker values from the draft, with component/suite mapped to values the suite already uses (else the template's); target path `<template's folder>/test_<ticket>.py`; secret scrubbing of prompt, code, and JSON parts; full traceability (`ticket_id`, `draft_ref`, `template_entry_ref`, `retrieved_chunk_ids` = chunks actually in the context, `prompt_version`, provider/model, attempts, estimated context tokens, redactions). CLI `generate <drafts.json> --retrieval <retrieval.json> [--draft-id] [--conventions] [--out]` writes the code file, the JSON data file, and `generated.json` under the output dir and refuses an output dir inside the target repo. `standin/CONVENTIONS.md` (generic conventions doc). Config `generate.*` and `context.chars_per_token`.
 - 2026-10-05: Verified offline. 21 new tests with the fake LLM: traceable pair, byte-identical `config` with the template's key order and no inherited overrides, prompt contents (conventions, template, markers, placeholder), retries with the error for id mismatch / non-literal parametrize / syntax error / no test / non-object parts, retry cap, output scrubbing (code and JSON), missing template, budget never exceeded at 3k–30k tokens with whole chunks, bigger budget includes more, CLI writes the pair outside the repo and leaves the stand-in unchanged. ruff, mypy strict (60 files), pytest 362 passed, 12 live deselected. **Pending:** the live run (`tests/test_generate_live.py`, 5 stand-in tickets, ~15–20 LLM calls; saves pairs to `output/generated/live/`) and the human style spot-check.
 - 2026-10-05: Live run (`tests/test_generate_live.py`, run by Claude with the human's OK): 5/5 passed in 1m53s for STND-101, -102, -103, -104, -106 (draft -> retrieve -> generate, about 15 LLM calls; every generation accepted on the first attempt; context 4.4k-7.0k of 12k estimated tokens). Pairs saved to `output/generated/live/` for the human style check. Claude's own read: STND-103 and STND-101 follow the template closely (base class, markers, `self.nav...` chains, data via `self.inputs` / `self.expected`, backend checks via helpers). **Defect found in STND-104:** the code reads `self.data["seed_check"]`, but the entry has no `seed_check` key, so the test would fail with a KeyError (the model flagged it in its notes). No planned Phase 7 validator catches this; proposed addition: a validator that every `self.inputs[...]` / `self.expected[...]` / `self.data[...]` key used in the code exists in every entry.
+- 2026-10-06: Human style review against the real framework → ten generic differences (see Phase 3b). Phase 6 stays 🟡: after Phase 3b, generation moves to `generate_v2` (base entry + per-variant changes per the 5-step rule, sections chosen by the LLM and copied deterministically, self-referencing names re-labeled, names without ticket numbers, entries written as an array with `id`), output is formatted to `style` (ruff for code, own JSON writer), and the live run and style check are repeated.
 
 ---
 
@@ -375,6 +411,14 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
   - Required markers are present, with known values
   - The base test class is used
   - Naming conventions (configurable patterns)
+  - Page-object usage: properties assigned/read, actions called; no fluent chaining
+  - UI checks use the framework assertion object, not bare asserts; backend checks use the validation helper
+  - Every data key the test reads (`params[...]`, `.get(...)`) exists in each of its entries; every test that reads data has an entry
+  - Data file: array shape, entry `id` = collected id, formatting per `style`
+  - Approved marker values (casing included)
+  - Style rules (indent, line endings, final newline, import order, no annotations)
+  - No ticket numbers in file, class, or test names
+  - "Needs a real run" checklist attached to every generated test (refresh before re-read, save flow, capabilities, captured responses)
 - Repair loop: validator errors → LLM fix → re-validate, capped
 - Sandbox runner: `pytest --collect-only` in a container (Podman or Docker) as the primary execution check (imports resolve, ids match, no browser needed). Running tests is optional and later (API tests first).
 - `validation_report` and `collect_report` attached to each `GeneratedTest`
@@ -490,3 +534,5 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 | 2026-10-05 | 6 | Code generation built and verified offline; live run and human style check pending |
 | 2026-10-05 | 6 | Live generation run: 5/5 pairs; STND-104 reads a data key its entry lacks (proposed Phase 7 data-key validator) |
 | 2026-10-05 | all | Priority marker values changed to lowercase `p0`–`p3` (human request) in config, the stand-in suite and its data, and tests. Earlier log entries keep the values as written then. |
+| 2026-10-06 | – | Pushed the repo to github.com/DangNguyen254/ai-in-testing (human's request): merged GitHub's initial commit (LICENSE only) instead of force-pushing; kept the LICENSE holder DangNguyen254 |
+| 2026-10-06 | all | Target patterns updated from the human's real-framework comparison (CLAUDE.md patterns, guardrails, data models, phases). New Phase 3b (stand-in v2); Phase 6 to be reworked after it; Phase 7 validator list extended |

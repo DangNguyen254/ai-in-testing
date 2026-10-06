@@ -43,8 +43,9 @@ This is a **fixed workflow**, not an autonomous agent. LLM-driven tool use is al
 - **Insufficient info is a valid output.** If a ticket lacks steps to reproduce or expected behavior, return `status: "insufficient_info"` with a list of what's missing. Never guess to fill the gaps.
 - **Component inference.** The LLM infers the component from the ticket text, using labels as hints. If it cannot, it sets `component: "unknown"` and lowers `confidence`. An unknown component alone is never a reason for `insufficient_info`.
 - **No invented names.** Generated code may reference only symbols that exist in the symbol catalog (built by AST) or that are defined within the generated test itself. This includes **page-object property chains** (e.g. `nav.<area>.<page>.<member>`): every attribute/property step must resolve through the catalog. Markers must use values known to the catalog or config. The validator enforces this.
-- **Code and data stay consistent.** Every generated test comes with its JSON data entries. Entry keys must exactly match the pytest-generated test ids (stacked parametrize decorators: bottom decorator first), with one entry per variant. The validator enforces this, and `pytest --collect-only` in the sandbox confirms it.
-- **Reuse, don't regenerate.** Large repeated config blocks in JSON entries are copied verbatim from the nearest similar existing entry. The LLM fills in only the unique parts (inputs, seed state, expected backend results). Unique names use the suite's placeholder token and name-generator helper, never hardcoded literals.
+- **Code and data stay consistent.** Every generated test that reads its data entry comes with JSON entries. Each entry's `id` must exactly equal a pytest-generated test id (stacked parametrize decorators: bottom decorator first), with one entry per variant; every key the test body reads (`params[...]`, `params.get(...)`) must exist in its entries. Tests that read no data may have no entry. The validator enforces this, and `pytest --collect-only` in the sandbox confirms the ids.
+- **Build entries from the nearest existing entry.** Real data files are copy-paste heavy: identical seed blocks across many entries, and variants that differ by one or two values. So: (1) pick the nearest existing entry as the base; (2) copy only the sections the new test depends on (seed sections, expected interactions); (3) strip everything the new test doesn't read or assert; (4) for variants, clone the base once per parametrize value and change only the varying field; (5) re-label names that embed the source test's name, and keep the entry count equal to the variant count. The LLM chooses the sections and the changes; the copying is deterministic. Unique names use the suite's placeholder token.
+- **Generated output follows the suite's style rules** (from config `style`: indent, line endings, final newline, import order, annotations, JSON formatting). A deterministic formatter applies them; the validator checks them instead of trusting neighbouring files.
 - **Structured output only.** Every LLM step returns JSON validated by a Pydantic model. On a parse or validation failure, retry with the error message included (max retries from config), then fail cleanly.
 - **Token budget.** Context building enforces a max token budget from config. Trim by relevance rank, never truncate mid-function.
 - **Secret scrubbing.** Before anything is placed in a prompt, run a basic secret scanner (regexes for keys, tokens, passwords, connection strings) and redact matches. The same scrubber runs on generated output.
@@ -64,16 +65,23 @@ This is a **fixed workflow**, not an autonomous agent. LLM-driven tool use is al
 ---
 
 ## Target test-suite patterns (generic)
-The generator and validators are built for suites shaped like this. The synthetic `standin/` repo reproduces these patterns with invented names.
+The generator and validators are built for suites shaped like this. The synthetic `standin/` repo reproduces these patterns with invented names. (Updated 2026-10-06 from the human's comparison with the real framework; names and values withheld.)
 
-- **Framework:** pytest with a custom layer on top. Tests are organized by feature area, one class/file per area, and tagged with markers for priority, project, component, and suite. Tests are selected by markers and run in parallel.
+- **Framework:** pytest with a custom layer on top. Tests are organized by feature area, one class/file per area, selected by markers and run in parallel.
 - **Test kinds:** most tests (~85–90%) are browser UI tests using a page-object hierarchy reached through property chains (`nav.<area>.<page>`), followed by checks on backend state. A minority are pure API tests; a few are hybrid.
-- **Shared layer:** a base test class handles setup/teardown (driver, config, cleanup, failure artifacts). Tests reuse shared helpers, validation methods, mixins, and decorators (retry, per-browser skip).
-- **Data files:** every test file has a matching JSON data file, keyed by the pytest-generated test id (including parametrize values). Stacked parametrize decorators set the id order (bottom decorator first). One JSON entry per variant.
-- **Entry contents:** seed state, expected backend results, and test-specific inputs. Large config blocks repeat across entries. Unique names use a placeholder token plus a name-generator helper. An entry can override priority, or skip by ticket id.
-- **Deployment types:** tests can be skipped by deployment type (cloud-only / on-prem-only).
+- **Class scaffold:** every test class inherits the framework's base class and carries a standard decorator stack: platform selection, environment gating (incl. cloud-only / on-prem-only), data loading, and project/component markers. The base class has setup/teardown methods (driver, config, seed application, cleanup, failure artifacts). New tests copy the scaffold from a neighbouring test in the same area, unchanged.
+- **Page objects:** value fields are properties (assign to set, read to get); actions (open, save, next, ...) are plain methods. No fluent chaining.
+- **Assertions:** UI checks go through the framework's test-case assertion object; backend checks go through a validation helper that compares backend state to the data entry's expectations. No redundant negative assertions after an equality check.
+- **Data files:** every test file has a matching JSON data file: a top-level **array** of entries, each with an explicit `id` equal to the pytest id (incl. the parametrize suffix; stacked decorators bottom-first). Tests that read no data may have no entry.
+- **Data access:** the matched entry arrives as a dict, through a class-level data fixture (`self.params`, the common case) or a `params` argument. Tests index it (`params["key"]`, `params.get("key", default)`, nested keys); no attribute access. Placeholders (users, tenant ids, a unique-name token) are resolved before tests see them.
+- **Entry contents:** framework keys (`settings`, `policy`, `tenants`, `targets`, `interactions`, `priority`, `skip`) plus free-form custom keys the test body reads (URLs, labels, timeouts). The framework's setup applies the seed sections; shared helpers read `interactions`; the test body reads only its custom keys. Simple UI inputs stay in the test code unless several variants need them.
+- **Expectations:** `interactions` is a list of requests (method, endpoint, optional body) with expected responses (status, body), compared as a subset, so only asserted fields are listed. UI-level expectations belong in the test code.
+- **Repetition:** identical seed blocks (settings/policy) are pasted into every variant; variants differ by one or two values; some seed values embed a name derived from the test name. No templating or includes.
+- **Markers:** priority, project, component, and suite, with values from approved sets only (casing included).
+- **Style:** a fixed indent width, LF line endings, a final newline, alphabetical imports, no type annotations; JSON via a formatter with its own indent and key spacing. Names summarize area, action, and sub-area, and never contain ticket numbers. Docstrings optional (sometimes a short numbered list of what the test does).
 - **Flakiness:** handled in code (retry decorators, explicit waits), not by quarantine.
 - **Ticket links:** skip reasons reference ticket ids, so ticket ↔ test pairs can be mined from git history (for example, a skip removed in a fix commit).
+- **Needs a real run:** whether a page needs a refresh before re-reading a field, which save flow it uses, whether a capability must be enabled, and whether expected responses match a real capture can't be known statically; generated output always lists these for the reviewer.
 
 ## Tech stack
 - Python 3.11+, managed with `uv`
@@ -83,7 +91,7 @@ The generator and validators are built for suites shaped like this. The syntheti
 - `anthropic` and `google-genai` SDKs, imported only in `llm/`; the default provider shells out to the Claude Code CLI
 - `tree-sitter` + `tree-sitter-python` (+ `tree-sitter-rust` in a later phase)
 - `rank_bm25` for keyword search
-- `pytest`, `ruff` (lint + format), `mypy` (strict on `src/`)
+- `pytest`, `ruff` (lint + format; also a runtime dependency that formats generated test code to the target suite's style), `mypy` (strict on `src/`)
 
 ## Repository layout
 ```
@@ -98,7 +106,8 @@ src/ticket2test/
   index/         # tree-sitter parsing, chunking (test + markers + JSON entries), symbol catalog
                  # (incl. page-object property chains), pytest-id computation, BM25 index
   retrieve/      # query rewrite, BM25, grep, AST expansion, follow-up rounds
-  generate/      # few-shot code generation + JSON entry assembly (copy config blocks, fill unique parts)
+  generate/      # few-shot code generation + JSON entry assembly (base entry, per-variant changes)
+  style/         # deterministic formatting of generated code and JSON to the suite's style rules
   validate/      # deterministic validators + repair loop
   sandbox/       # containerized runner (`pytest --collect-only`; optional test execution)
   eval/          # eval harness and metrics
@@ -116,9 +125,9 @@ config.yaml
 ## Core data models (starting point; refine as needed)
 - **Ticket**: `id`, `title`, `description`, `steps_to_reproduce`, `expected`, `actual`, `components`, `labels`, `comments`, `links`, `source`
 - **TestCaseDraft**: `intent`, `markers` (`priority`, `component`, `suite`), `test_kind` (`ui` | `api` | `hybrid`), `deployment_type` (`cloud` | `on_prem` | `both`), `preconditions[]`, `steps[]`, `expected_outcome`, `variants[]` (parametrized cases), `confidence`, `status` (`ok` | `insufficient_info`), `missing_info[]`
-- **Chunk**: `id`, `file_path`, `symbol_name`, `kind` (test | function | class | page_object), `language`, `code`, `start_line`, `end_line`; for tests also `class_name`, `decorators[]` (in source order), `markers[]`, `parametrize[]` (stacked, in source order), `test_ids[]` (pytest-generated), `data_file`, `data_entries` (test id → JSON entry)
+- **Chunk**: `id`, `file_path`, `symbol_name`, `kind` (test | function | class | page_object), `language`, `code`, `start_line`, `end_line`; for tests also `class_name`, `decorators[]` (in source order), `markers[]`, `parametrize[]` (stacked, in source order), `test_ids[]` (pytest-generated), `data_file`, `data_entries` (test id → JSON entry; read from the suite's data-file format, e.g. an array of entries with `id`)
 - **Symbol catalog**: functions, classes, methods, modules, fixtures, markers seen, and **page-object property chains** (each attribute/property step from a root such as `nav`, with the type it resolves to)
-- **GeneratedTest**: a **pair**. `code`, `file_name`, `data_file_name`, `data_entries` (test id → entry), `template_entry_ref` (existing entry whose config blocks were copied), `draft_ref`, `retrieved_chunk_ids[]`, `prompt_version`, `validation_report`, `collect_report`
+- **GeneratedTest**: a **pair**. `code`, `file_name`, `data_file_name`, `data_entries` (written in the suite's data-file format, e.g. an array with `id`), `template_entry_ref` (the base entry), `draft_ref`, `retrieved_chunk_ids[]`, `prompt_version`, `validation_report`, `collect_report`, `review_checklist` ("needs a real run" items)
 
 ---
 
@@ -137,15 +146,18 @@ Complete each phase fully, with passing tests, before starting the next. At the 
 **Phase 3: Synthetic stand-in repo.** Build `standin/`: a tiny fake web app, a generic page-object hierarchy, a base test class, shared helpers/decorators, and tests with matching JSON data files that follow the target patterns above. Includes fake tickets and a scripted git history (a ticket-id skip removed by a fix) for eval mining.
 *Done when:* `pytest --collect-only` on the stand-in succeeds with no browser and no network, and every JSON key matches a collected test id.
 
+**Phase 3b: Stand-in v2.** Rework `standin/` to the updated patterns above: class scaffold with decorator stack and setup methods, property-style page objects without chaining, the assertion object and interaction validation helper, array data files with `id`, real repeated seed sections, self-referencing names, tests without entries, the style rules, and names without ticket numbers.
+*Done when:* the stand-in follows every updated pattern (checked by tests), collects with no browser and no network, and every entry `id` matches a collected test id.
+
 **Phase 4: Indexer (Python).** Parse with tree-sitter. Chunk unit = test function + its decorators/markers + its JSON entries; also chunk page objects, helpers, functions, and classes. Compute pytest ids statically (stacked parametrize, bottom first). Build the symbol catalog (incl. page-object property chains) and a BM25 index with identifier splitting (`snake_case` / `CamelCase` → words). Persist the index to disk.
 *Done when:* indexing the stand-in and `httpx` works, chunks carry their JSON entries, and a search for a known function or page returns its tests in the top 5.
 
 **Phase 5: Retrieval.** LLM query rewrite (ticket → likely code terms), then BM25 + grep, merged and de-duplicated, then AST expansion (callers, callees, related tests, page objects used), then capped follow-up rounds. Also returns the nearest similar JSON entries as templates.
 *Done when:* retrieval recall@10 is measured on the eval set (see Phase 8; build a minimal version early if needed).
 
-**Phase 6: Code generation.** Few-shot generation of the code + JSON pair, using the nearest retrieved tests as style templates, within the token budget. Large config blocks are copied from the nearest existing entry; the LLM fills only the unique parts.
+**Phase 6: Code generation.** Few-shot generation of the code + JSON pair, using the nearest retrieved tests as style templates, within the token budget. Entries are built from the nearest existing entry (see the guardrail), and the output is formatted to the suite's style rules.
 
-**Phase 7: Validators, repair, and sandbox.** Validators: syntax parses; every referenced name and page-object property chain exists in the catalog; imports resolve; JSON keys exactly match the pytest-generated ids (stacked decorator order); every parametrize variant has a JSON entry; required markers present; base class used; naming conventions (configurable). The repair loop feeds validator errors back to the LLM, capped. The sandbox runs `pytest --collect-only` in a container (see Hard Constraint 3); executing tests is optional and later.
+**Phase 7: Validators, repair, and sandbox.** Validators: syntax parses; every referenced name and page-object property chain exists in the catalog; imports resolve; JSON keys exactly match the pytest-generated ids (stacked decorator order); every parametrize variant has a JSON entry; required markers present; base class used; naming conventions (configurable); page-object properties assigned/read and actions called (no chaining); the framework assertion object instead of bare asserts; every data key the test reads exists in its entries, and every test that reads data has an entry; JSON shape and formatting; approved marker values; the style rules; no ticket numbers in names. The repair loop feeds validator errors back to the LLM, capped. The sandbox runs `pytest --collect-only` in a container (see Hard Constraint 3); executing tests is optional and later.
 
 **Phase 8: Eval harness.** For public issue ↔ fix-PR pairs and mined ticket ↔ test pairs, measure:
 - Retrieval: recall@k and MRR against the files changed in the fix (or the test linked to the ticket)
