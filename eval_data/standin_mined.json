@@ -1,0 +1,26 @@
+{
+  "name": "standin-mined",
+  "description": "Ticket <-> test pairs mined from .scratch/standin-history: commits that remove a skip citing the ticket id. Ground truth: the re-enabled test.",
+  "repo_path": "standin",
+  "ticket_source": "jira_export",
+  "jira_export": "standin/tickets/export.json",
+  "ground_truth": "tests",
+  "pairs": [
+    {
+      "id": "mined-STND-103",
+      "ticket": "STND-103",
+      "tests": [
+        "tests/rules/test_rules.py::TestRules::test_rules_add_duplicate_name"
+      ],
+      "source": "mined: cf970e38d4 code_skip (Fix STND-103: reject duplicate rule names)"
+    },
+    {
+      "id": "mined-STND-104",
+      "ticket": "STND-104",
+      "tests": [
+        "tests/rules/test_rules.py::TestRules::test_rules_delete_single"
+      ],
+      "source": "mined: 79e97a9bca data_skip (Fix STND-104: deleted rules stay deleted after publishing)"
+    }
+  ]
+}

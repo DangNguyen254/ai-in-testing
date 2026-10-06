@@ -125,6 +125,42 @@
       "tests": [
         "tests/rules/test_rules.py::TestRules::test_rules_list_pagination"
       ]
+    },
+    "STND-107": {
+      "status": "fixed",
+      "tests": [
+        "tests/profiles/test_profiles.py::TestProfiles::test_profiles_edit_level"
+      ]
+    },
+    "STND-108": {
+      "status": "fixed",
+      "tests": [
+        "tests/settings/test_settings.py::TestSettingsCapabilities::test_settings_capabilities_enable_bulk"
+      ]
+    },
+    "STND-109": {
+      "status": "fixed",
+      "tests": [
+        "tests/tenants/test_tenants.py::TestTenantsSecondary::test_tenants_secondary_rules_add"
+      ]
+    },
+    "STND-110": {
+      "status": "fixed",
+      "tests": [
+        "tests/api/test_policy_api.py::TestPolicyApi::test_policy_api_rules_update_forbidden"
+      ]
+    },
+    "STND-111": {
+      "status": "fixed",
+      "tests": [
+        "tests/rules/test_rules.py::TestRules::test_rules_edit_action"
+      ]
+    },
+    "STND-112": {
+      "status": "fixed",
+      "tests": [
+        "tests/rules/test_rules.py::TestRules::test_rules_import_file"
+      ]
     }
   }
 }

@@ -531,40 +531,119 @@ def sandbox(
 @app.command(name="eval")
 def eval_(
     ctx: typer.Context,
-    pair_set: Annotated[Path, typer.Option("--set", help="Eval pair set JSON in eval_data/.")],
-    stage: Annotated[
-        str, typer.Option(help="Stage to evaluate (retrieval for now).")
-    ] = "retrieval",
+    pair_set: Annotated[
+        Path, typer.Option("--set", help="A pair-set JSON file, or a folder of them (eval_data/).")
+    ],
+    stage: Annotated[str, typer.Option(help="retrieval, generation, or all.")] = "retrieval",
+    runs: Annotated[
+        int, typer.Option(help="Retrieval runs per set (variance of the LLM steps).", min=1, max=10)
+    ] = 1,
     k: Annotated[int | None, typer.Option(help="Cut-off for recall@k (default: top_k).")] = None,
     no_llm: Annotated[bool, typer.Option("--no-llm", help="Deterministic retrieval only.")] = False,
+    judge: Annotated[
+        bool, typer.Option("--judge", help="LLM judge: draft vs. ticket (unvalidated; +1 call).")
+    ] = False,
+    no_collect: Annotated[
+        bool, typer.Option("--no-collect", help="Skip `pytest --collect-only` in the sandbox.")
+    ] = False,
+    no_leave_one_out: Annotated[
+        bool,
+        typer.Option("--no-leave-one-out", help="Keep each ticket's linked test in the index."),
+    ] = False,
+    fresh_drafts: Annotated[
+        bool, typer.Option("--fresh-drafts", help="Don't reuse cached drafts.")
+    ] = False,
     out: Annotated[
         Path | None, typer.Option(help="Report directory (default: <output_dir>/reports).")
     ] = None,
 ) -> None:
-    """Run the eval harness. Phase 5 supports the retrieval stage (recall@k, MRR)."""
+    """Run the eval harness: retrieval (recall@k, MRR), generation (validators, sandbox)."""
     from datetime import UTC, datetime
 
-    from ticket2test.eval.pairs import load_pair_set
-    from ticket2test.eval.retrieval import evaluate_retrieval, render_markdown
+    from ticket2test.eval.report import render_markdown
+    from ticket2test.eval.run import load_pair_sets, run_eval
     from ticket2test.llm.base import LLMError
     from ticket2test.llm.factory import create_llm_client
 
     state: AppState = ctx.obj
-    if stage != "retrieval":
-        typer.echo(f"Stage {stage!r} is planned for Phase 8; only 'retrieval' works now.", err=True)
-        raise typer.Exit(code=1)
+    settings = state.settings
+    folder = out or settings.paths.output_dir / "reports"
+    stem = f"eval-{datetime.now(UTC):%Y%m%dT%H%M%S}"
     try:
-        pairs = load_pair_set(pair_set)
-        client = None if no_llm else create_llm_client(state.settings, debug_log=state.debug_log)
-        report = evaluate_retrieval(pairs, Path.cwd(), state.settings, client, k=k)
+        sets = load_pair_sets(pair_set)
+        client = None if no_llm else create_llm_client(settings, debug_log=state.debug_log)
+        report = run_eval(
+            sets,
+            Path.cwd(),
+            settings,
+            client,
+            stage=stage,
+            runs=runs,
+            k=k,
+            leave_one_out=not no_leave_one_out,
+            collect=not no_collect,
+            judge=judge,
+            reuse_drafts=not fresh_drafts,
+            keep_dir=folder / stem / "generated",
+        )
     except (OSError, ValueError, LLMError) as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
-    folder = out or state.settings.paths.output_dir / "reports"
     folder.mkdir(parents=True, exist_ok=True)
-    stem = f"{report.set_name}-{datetime.now(UTC):%Y%m%dT%H%M%S}"
+    markdown = render_markdown(report)
     (folder / f"{stem}.json").write_text(report.model_dump_json(indent=2), encoding="utf-8")
-    (folder / f"{stem}.md").write_text(render_markdown(report), encoding="utf-8")
-    typer.echo(render_markdown(report))
+    (folder / f"{stem}.md").write_text(markdown, encoding="utf-8")
+    typer.echo(markdown)
     typer.echo(f"Wrote {folder / stem}.json and .md")
+
+
+@app.command()
+def mine(
+    ctx: typer.Context,
+    repo: Annotated[Path, typer.Argument(help="A git repo (read only) to mine.")],
+    out: Annotated[Path, typer.Option(help="Pair-set JSON to write (e.g. eval_data/x.json).")],
+    name: Annotated[str, typer.Option(help="Pair-set name.")] = "mined",
+    repo_path: Annotated[
+        str, typer.Option(help="Indexed checkout for retrieval, relative to the project root.")
+    ] = "",
+    jira_export: Annotated[
+        str | None, typer.Option(help="Jira export with the tickets, relative to the project root.")
+    ] = None,
+) -> None:
+    """Mine ticket <-> test pairs from commits that remove a ticket-id skip."""
+    import json
+
+    from ticket2test.adapters.repo.git_history import GitHistoryError, GitHistoryReader
+    from ticket2test.eval.mining import mine_skip_removals
+
+    state: AppState = ctx.obj
+    try:
+        mined = mine_skip_removals(GitHistoryReader(repo), state.settings)
+    except GitHistoryError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    pairs = [
+        {
+            "id": f"mined-{m.ticket}",
+            "ticket": m.ticket,
+            "tests": [m.test],
+            "source": f"mined: {m.commit[:10]} {m.kind} ({m.subject})",
+        }
+        for m in mined
+    ]
+    pair_set = {
+        "name": name,
+        "description": f"Ticket <-> test pairs mined from {repo.as_posix()}: commits that remove "
+        "a skip citing the ticket id. Ground truth: the re-enabled test.",
+        "repo_path": repo_path or repo.as_posix(),
+        "ticket_source": "jira_export",
+        "jira_export": jira_export,
+        "ground_truth": "tests",
+        "pairs": pairs,
+    }
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(pair_set, indent=2) + "\n", encoding="utf-8")
+    for m in mined:
+        typer.echo(f"{m.ticket}: {m.test} ({m.kind}, {m.commit[:10]})")
+    typer.echo(f"{len(mined)} pair(s) -> {out}")

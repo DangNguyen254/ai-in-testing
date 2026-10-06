@@ -4,13 +4,21 @@
   "repo_path": "standin",
   "ticket_source": "jira_export",
   "jira_export": "standin/tickets/export.json",
+  "conventions_doc": "standin/CONVENTIONS.md",
   "ground_truth": "tests",
+  "generation": true,
   "pairs": [
     {"id": "standin-101", "ticket": "STND-101", "tests": ["tests/rules/test_rules.py::TestRules::test_rules_add_basic"]},
     {"id": "standin-102", "ticket": "STND-102", "tests": ["tests/rules/test_rules.py::TestRules::test_rules_list_search"]},
     {"id": "standin-103", "ticket": "STND-103", "tests": ["tests/rules/test_rules.py::TestRules::test_rules_add_duplicate_name"]},
     {"id": "standin-104", "ticket": "STND-104", "tests": ["tests/rules/test_rules.py::TestRules::test_rules_delete_single"]},
     {"id": "standin-105", "ticket": "STND-105", "tests": ["tests/profiles/test_profiles.py::TestProfiles::test_profiles_edit_reset"]},
-    {"id": "standin-106", "ticket": "STND-106", "tests": ["tests/rules/test_rules.py::TestRules::test_rules_list_pagination"]}
+    {"id": "standin-106", "ticket": "STND-106", "tests": ["tests/rules/test_rules.py::TestRules::test_rules_list_pagination"]},
+    {"id": "standin-107", "ticket": "STND-107", "tests": ["tests/profiles/test_profiles.py::TestProfiles::test_profiles_edit_level"]},
+    {"id": "standin-108", "ticket": "STND-108", "tests": ["tests/settings/test_settings.py::TestSettingsCapabilities::test_settings_capabilities_enable_bulk"]},
+    {"id": "standin-109", "ticket": "STND-109", "tests": ["tests/tenants/test_tenants.py::TestTenantsSecondary::test_tenants_secondary_rules_add"]},
+    {"id": "standin-110", "ticket": "STND-110", "tests": ["tests/api/test_policy_api.py::TestPolicyApi::test_policy_api_rules_update_forbidden"]},
+    {"id": "standin-111", "ticket": "STND-111", "tests": ["tests/rules/test_rules.py::TestRules::test_rules_edit_action"]},
+    {"id": "standin-112", "ticket": "STND-112", "tests": ["tests/rules/test_rules.py::TestRules::test_rules_import_file"]}
   ]
 }

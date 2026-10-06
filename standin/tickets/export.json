@@ -1,6 +1,6 @@
 {
   "_comment": "Hand-written FAKE tickets for the synthetic stand-in app (Jira API v2 export shape, wiki markup). Not real data.",
-  "total": 6,
+  "total": 12,
   "issues": [
     {
       "id": "30101",
@@ -132,6 +132,135 @@
           }
         ],
         "description": "With an action filter applied, going to the next page of the rule list shows rules of all actions again.\n\nh3. Steps to Reproduce\n# Have more than five rules with the action {{allow}}\n# Filter the rule list by {{allow}}\n# Click *Next*\n\nh3. Expected Behavior\nPage 2 still shows only allow rules and the filter stays selected.\n\nh3. Actual Behavior\nThe filter is cleared and rules of every action are listed.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30107",
+      "key": "STND-107",
+      "self": "https://jira.example.com/rest/api/2/issue/30107",
+      "fields": {
+        "summary": "A profile's new level is not in the published policy",
+        "labels": [
+          "profiles"
+        ],
+        "components": [
+          {
+            "name": "profiles"
+          }
+        ],
+        "description": "After changing a profile's level and publishing, the published policy still shows the old level.\n\nh3. Steps to Reproduce\n# Open Profiles and open an existing profile\n# Change the level to {{high}} and click *Save profile*\n# In the top bar click *Save*, then *Publish*\n\nh3. Expected Behavior\nThe profile list shows the new level, and the published policy has the profile with the new level.\n\nh3. Actual Behavior\nThe published policy keeps the old level.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30108",
+      "key": "STND-108",
+      "self": "https://jira.example.com/rest/api/2/issue/30108",
+      "fields": {
+        "summary": "Enabling bulk delete is not applied",
+        "labels": [
+          "settings"
+        ],
+        "components": [
+          {
+            "name": "settings"
+          }
+        ],
+        "description": "Turning on the bulk delete capability and applying the settings shows a success toast, but the setting stays off.\n\nh3. Steps to Reproduce\n# Open Settings, Capabilities\n# Turn on *Bulk delete*\n# In the top bar click *Save* (settings)\n\nh3. Expected Behavior\nThe toast says the settings were applied and the tenant's settings have bulk delete enabled.\n\nh3. Actual Behavior\nBulk delete is still off.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30109",
+      "key": "STND-109",
+      "self": "https://jira.example.com/rest/api/2/issue/30109",
+      "fields": {
+        "summary": "A rule added by a secondary tenant shows up in the primary tenant's policy",
+        "labels": [
+          "tenants",
+          "rules"
+        ],
+        "components": [
+          {
+            "name": "tenants"
+          }
+        ],
+        "description": "When a user of a secondary tenant adds a rule and publishes, the rule is also published in the primary tenant's policy.\n\nh3. Steps to Reproduce\n# Log in as a user of the secondary tenant\n# Open Rules and add a rule with the action {{deny}}\n# In the top bar click *Save*, then *Publish*\n\nh3. Expected Behavior\nOnly the secondary tenant's published policy has the new rule; the primary tenant's policy is unchanged.\n\nh3. Actual Behavior\nBoth tenants' policies have the rule.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30110",
+      "key": "STND-110",
+      "self": "https://jira.example.com/rest/api/2/issue/30110",
+      "fields": {
+        "summary": "Viewers can replace the rules through the policy API",
+        "labels": [
+          "api",
+          "permissions"
+        ],
+        "components": [
+          {
+            "name": "api"
+          }
+        ],
+        "description": "A user with the viewer role can replace or clear a tenant's rules with a PUT to the rules endpoint, and a new revision is published.\n\nh3. Steps to Reproduce\n# As a user with the role {{viewer}}, send PUT /api/policy/v1/rules/<tenant> with a new rule list\n# Read the policy revision\n\nh3. Expected Behavior\nThe API answers 403 for viewers and editors, and no new revision is published.\n\nh3. Actual Behavior\nThe API answers 200 and the rules are replaced.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30111",
+      "key": "STND-111",
+      "self": "https://jira.example.com/rest/api/2/issue/30111",
+      "fields": {
+        "summary": "Changing a rule's action in the editor is lost on publish",
+        "labels": [
+          "rules"
+        ],
+        "components": [
+          {
+            "name": "rules"
+          }
+        ],
+        "description": "Editing an existing rule's action and publishing keeps the old action in the published policy.\n\nh3. Steps to Reproduce\n# Open Rules and open an existing rule with the action {{allow}}\n# Change the action to {{deny}} and click *Save rule*\n# In the top bar click *Save*, then *Publish*\n\nh3. Expected Behavior\nThe published policy has the rule with the action deny.\n\nh3. Actual Behavior\nThe published rule still has the action allow.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30112",
+      "key": "STND-112",
+      "self": "https://jira.example.com/rest/api/2/issue/30112",
+      "fields": {
+        "summary": "Importing a rules file drops the last rule",
+        "labels": [
+          "rules",
+          "import"
+        ],
+        "components": [
+          {
+            "name": "rules"
+          }
+        ],
+        "description": "Importing a JSON file of rules reports every rule as imported, but the last rule of the file is missing after publishing.\n\nh3. Steps to Reproduce\n# Open Rules and click *Import*\n# Load a file with two rules and start the import\n# In the top bar click *Save*, then *Publish*\n\nh3. Expected Behavior\nThe toast says 2 rules were imported and the published policy has both rules.\n\nh3. Actual Behavior\nOnly the first rule is published.",
         "comment": {
           "total": 0,
           "comments": []

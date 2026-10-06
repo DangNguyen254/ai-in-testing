@@ -14,6 +14,7 @@ from ticket2test.models import Ticket
 
 SUBCOMMANDS = [
     "normalize", "draft", "index", "search", "retrieve", "generate", "validate", "sandbox", "eval",
+    "mine",
 ]  # fmt: skip
 
 runner = CliRunner()

@@ -29,6 +29,7 @@ class EvalPair(BaseModel):
     fix_pr: int | None = None
     fix_pr_url: str | None = None
     tests: list[str] = Field(default_factory=list)  # for ground_truth "tests": test function ids
+    source: str | None = None  # provenance, e.g. "mined: <commit> code_skip"
 
 
 class PairSet(BaseModel):
@@ -42,6 +43,8 @@ class PairSet(BaseModel):
     ticket_source: Literal["github", "jira_export"]
     jira_export: str | None = None  # relative to the project root
     ground_truth: Literal["fix_pr_files", "tests"]
+    conventions_doc: str | None = None  # relative to the project root; used by generation evals
+    generation: bool = False  # also run the generation eval on this set (linked-test sets only)
     pairs: list[EvalPair]
 
 

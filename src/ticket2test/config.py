@@ -84,6 +84,7 @@ class MarkerSettings(_Section):
 class EvalSettings(_Section):
     # Ticket ids in skip reasons (used to mine ticket <-> test pairs from git history).
     ticket_id_pattern: str = r"\b[A-Z][A-Z0-9]+-\d+\b"
+    max_commits: int = Field(default=5000, ge=1)  # git history mining: newest commits read
 
 
 class DraftSettings(_Section):

@@ -230,7 +230,7 @@ def test_manifest_ids_map_to_chunk_ids() -> None:
 def test_eval_standin_tests_ground_truth(tmp_path: Path) -> None:
     pair_set = load_pair_set(REPO_ROOT / "eval_data" / "standin_retrieval.json")
     report = evaluate_retrieval(pair_set, REPO_ROOT, _settings(tmp_path), client=None)
-    assert len(report.pairs) == 6 and not report.skipped
+    assert len(report.pairs) == len(pair_set.pairs) >= 12 and not report.skipped
     assert report.mean_recall is not None and 0.0 <= report.mean_recall <= 1.0
     assert report.mean_recall >= 0.5  # regression guard for the deterministic baseline
     assert "Mean recall@10" in render_markdown(report)
@@ -320,13 +320,13 @@ def test_cli_retrieve_and_eval(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
         ["eval", "--set", "eval_data/standin_retrieval.json", "--no-llm", "--out", str(report_dir)],
     )
     assert result.exit_code == 0, result.output
-    assert len(list(report_dir.glob("standin-retrieval-*.json"))) == 1
-    assert len(list(report_dir.glob("standin-retrieval-*.md"))) == 1
+    assert len(list(report_dir.glob("eval-*.json"))) == 1
+    assert len(list(report_dir.glob("eval-*.md"))) == 1
 
     other = runner.invoke(
         app, ["eval", "--set", "eval_data/standin_retrieval.json", "--stage", "e2e"]
     )
-    assert other.exit_code == 1 and "Phase 8" in other.output
+    assert other.exit_code == 1 and "unknown stage" in other.output
 
 
 # --- reranking -------------------------------------------------------------------------------

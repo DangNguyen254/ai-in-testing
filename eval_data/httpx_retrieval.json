@@ -7,7 +7,13 @@
   "ticket_source": "github",
   "ground_truth": "fix_pr_files",
   "pairs": [
+    { "id": "httpx-3411", "ticket": "encode/httpx#3411", "ticket_url": "https://github.com/encode/httpx/issues/3411", "fix_pr": 3412, "fix_pr_url": "https://github.com/encode/httpx/pull/3412" },
+    { "id": "httpx-3140", "ticket": "encode/httpx#3140", "ticket_url": "https://github.com/encode/httpx/issues/3140", "fix_pr": 3187, "fix_pr_url": "https://github.com/encode/httpx/pull/3187" },
+    { "id": "httpx-3111", "ticket": "encode/httpx#3111", "ticket_url": "https://github.com/encode/httpx/issues/3111", "fix_pr": 3109, "fix_pr_url": "https://github.com/encode/httpx/pull/3109" },
+    { "id": "httpx-2883", "ticket": "encode/httpx#2883", "ticket_url": "https://github.com/encode/httpx/issues/2883", "fix_pr": 2990, "fix_pr_url": "https://github.com/encode/httpx/pull/2990" },
+    { "id": "httpx-2810", "ticket": "encode/httpx#2810", "ticket_url": "https://github.com/encode/httpx/issues/2810", "fix_pr": 2999, "fix_pr_url": "https://github.com/encode/httpx/pull/2999" },
     { "id": "httpx-2985", "ticket": "encode/httpx#2985", "ticket_url": "https://github.com/encode/httpx/issues/2985", "fix_pr": 2986, "fix_pr_url": "https://github.com/encode/httpx/pull/2986" },
+    { "id": "httpx-2694", "ticket": "encode/httpx#2694", "ticket_url": "https://github.com/encode/httpx/issues/2694", "fix_pr": 2701, "fix_pr_url": "https://github.com/encode/httpx/pull/2701" },
     { "id": "httpx-2532", "ticket": "encode/httpx#2532", "ticket_url": "https://github.com/encode/httpx/issues/2532", "fix_pr": 2535, "fix_pr_url": "https://github.com/encode/httpx/pull/2535" },
     { "id": "httpx-2139", "ticket": "encode/httpx#2139", "ticket_url": "https://github.com/encode/httpx/issues/2139", "fix_pr": 2156, "fix_pr_url": "https://github.com/encode/httpx/pull/2156" },
     { "id": "httpx-1498", "ticket": "encode/httpx#1498", "ticket_url": "https://github.com/encode/httpx/issues/1498", "fix_pr": 1532, "fix_pr_url": "https://github.com/encode/httpx/pull/1532" },
