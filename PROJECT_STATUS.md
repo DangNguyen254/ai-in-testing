@@ -20,7 +20,7 @@ Tracks progress, scope, and acceptance criteria for each phase. Read together wi
 | 1 | Ticket normalizer | ✅ | 0 |
 | 2 | Draft generation | ✅ | 1 |
 | 3 | Synthetic stand-in repo | ✅ | 0 |
-| 3b | Stand-in v2 (real-framework patterns) | ✅ | 3 |
+| 3b | Stand-in v2/v3 (real-framework patterns) | 🟡 (v3) | 3 |
 | 4 | Indexer (Python) | ✅ | 3 |
 | 5 | Retrieval | ✅ | 2, 4 |
 | 6 | Code generation (code + JSON pair) | 🟡 (rework after 3b) | 5, 3b |
@@ -219,8 +219,8 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 
 ---
 
-## Phase 3b: Stand-in v2 (real-framework patterns)
-**Status:** ✅ Done
+## Phase 3b: Stand-in v2/v3 (real-framework patterns)
+**Status:** 🟡 v2 done; v3 in progress
 
 **Why:** the human compared a Phase 6 generated pair with the real framework (2026-10-06) and listed ten generic structural differences: class scaffold, data loading, page-object style, assertion style, data-file shape and content, expectation format, marker values, style rules, and "needs a real run" behaviours. Several came from the v1 stand-in itself, which the generator copied faithfully. The updated patterns are in `CLAUDE.md` → "Target test-suite patterns".
 
@@ -237,6 +237,25 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 - Updated fake tickets, manifest, eval pairs, history builder, and project tests
 
 **Constraints:** generic, invented names only (as Phase 3); collectable without a browser or network; host `--collect-only` allowed for the hand-written stand-in only.
+
+**v3 (2026-10-06, after the second style check):** the human's review of the v2 STND-104 pair found that the remaining gaps came mostly from the stand-in's data roles and mechanics. Their answers (summarized in `CLAUDE.md` → "Target test-suite patterns"):
+- seed state lives in `settings` (capability gates, roles) and `policy` (the object the UI edits), and `tenants` holds per-tenant blocks;
+- `targets` is a list of flat `{method, path, payload?, status_code?, response}` expectations, and `interactions` is a nested alternative, each read by its own helper (never both in one entry);
+- paths use `:tid` / `:rev_id`, and data uses `{tenant_id1}` / `{user_1}` / `{test_id:N}`;
+- the identifier key is configurable (stand-in: `test_id`);
+- the assertion object is a `unittest.TestCase`, with argument order not to be relied on;
+- per-class `setup` calls the base setup with options;
+- an object-level save comes first, then a shared top bar with save / publish / reset;
+- tests follow four shapes (add, edit, delete, UI-only).
+
+**v3 outputs:**
+- **App:** an editable per-tenant policy app (rules and profiles, a multi-step add wizard, a list with search, filter, and pagination; working copy → saved draft → published revision; top bar save / publish / reset; capability gates and roles in settings; a read-only policy endpoint with `:tid` / `:rev_id`).
+- **Framework and tests:** the matching framework and tests, covering the four shapes, a UI state helper, a policy manager, an import file, a multi-tenant class, and runtime-style API tests.
+- **Supporting files:** new fake tickets and the history (code skip, JSON skip, open bug).
+
+**v3 Definition of Done:** the v2 items, plus:
+- [ ] every v3 pattern is checked by a project test;
+- [ ] `targets` and `interactions` are replayed in-process against the app.
 
 **Definition of Done:**
 - [x] Every updated pattern above is present and checked by a project test (`tests/test_standin.py`, 35 checks, `ast`-based)
@@ -425,6 +444,12 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
   - **Open points for the human:**
     1. Several plans leave out the repeated `settings` / `policy` blocks (STND-103 kept only `item_name` and `interactions`). The 5-step rule says to strip what the test doesn't use, but the real suite pastes these blocks into every entry. Which should win?
     2. STND-104's base entry is still a sibling (`test_orders_list_filter_status[open]`), not `test_orders_detail_cancel`. The output is fine, but the template choice could prefer tests that share the draft's page and action.
+- 2026-10-06: Human style check of the v2 STND-104 pair: about 75–80% of the real shape.
+  - **Better than v1:** array data, seed and expectation sections, 3-space indent, a `params` argument, properties, no chaining, the placeholder, and the docstring style.
+  - **Remaining gaps:** the wrong roles for `targets` / `interactions`; noise in `settings` / `policy`; the request key `endpoint` instead of `path`; the identifier key name; the class setup and decorator vocabulary; the assertion object style; a validation helper that takes `params`; and the top-bar save/publish flow.
+  - **Biggest gap:** the name says "restock", but no visible check verifies it.
+  - **Proposed validator rules:** reject seed/expectation keys nobody reads or consumes; check that the assertions touch what the name claims.
+  - **Outcome:** most gaps trace back to the stand-in, so it goes to v3 (Phase 3b), followed by a prompt update and another live run. Both rules are added to Phase 7. Answer to open point 1: seed only what the scenario reads or needs.
 
 ---
 
