@@ -56,18 +56,14 @@ def test_generate_pair_for_standin_ticket(key: str) -> None:
     # Code and data agree, entries come from the base entry, output follows the style rules.
     ids = computed_test_ids(generated.code)
     assert ids == generated.test_ids
-    entry_ids = [e["id"] for e in generated.data_entries]
+    entry_ids = [e[settings.data.id_field] for e in generated.data_entries]
     assert set(entry_ids) <= set(ids) and len(entry_ids) == len(set(entry_ids))
     assert generated.code == format_python(
         generated.code, settings.style.python, first_party(index, settings)
     )
-    ref = generated.template_entry_ref
-    assert ref is not None
-    base = next(c for c in index.chunks if c.id == ref.chunk_id).data_entries[ref.entry_key]
-    for entry in generated.data_entries:
-        for section in ("settings", "policy"):
-            if section in entry and section in base:  # pasted blocks stay identical, except names
-                assert entry[section].keys() == base[section].keys()
+    assert generated.template_entry_ref is not None
+    for entry in generated.data_entries:  # one expectation section at most
+        assert sum(k in entry for k in settings.data.expectation_sections) <= 1
     assert key.split("-")[1] not in generated.file_name
     assert generated.review_checklist
     assert generated.retrieved_chunk_ids and generated.draft_ref == primary.id

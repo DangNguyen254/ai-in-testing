@@ -1,0 +1,12 @@
+[
+   {
+      "name":"imported-allow-internal",
+      "action":"allow",
+      "description":"Imported from a rules file"
+   },
+   {
+      "name":"imported-deny-legacy",
+      "action":"deny",
+      "description":"Imported from a rules file"
+   }
+]

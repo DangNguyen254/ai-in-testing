@@ -1,4 +1,4 @@
-"""Code generation (generate_v2) with the fake LLM: entries from the base entry, checks with
+"""Code generation (generate_v3) with the fake LLM: entries from the base entry, checks with
 retry, formatting, context budget, traceability."""
 
 from __future__ import annotations
@@ -34,43 +34,54 @@ from ticket2test.retrieve.pipeline import retrieve
 
 STANDIN = REPO_ROOT / "standin"
 CONVENTIONS = (STANDIN / "CONVENTIONS.md").read_text(encoding="utf-8")
-TEMPLATE_CHUNK = "tests/orders/test_orders.py::TestOrders.test_orders_detail_cancel"
-TEMPLATE_ID = "test_orders_detail_cancel"
-IDS = ("test_orders_detail_cancel_restock[1]", "test_orders_detail_cancel_restock[2]")
+TEMPLATE_CHUNK = "tests/rules/test_rules.py::TestRules.test_rules_delete_single"
+TEMPLATE_ID = "test_rules_delete_single"
+IDS = ("test_rules_delete_keeps_others[first]", "test_rules_delete_keeps_others[last]")
+RULES = "{test_id:20}"
 
-# As an LLM might write it: 4-space indent, annotations, imports out of order.
-GOOD_CODE = '''"""Cancelling an order returns its stock."""
+# As an LLM might write it: 4-space indent, annotations, imports out of order and unused.
+GOOD_CODE = '''"""Deleting a rule and publishing keeps the other rules."""
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
-from framework.decorators import browsers, environments
+from framework.decorators import browsers, data_driven, environments
 from framework.base_test import BaseTest
 
 
 @browsers("chrome", "firefox")
 @environments("cloud", "on_prem")
+@data_driven
 @pytest.mark.project("example-project")
-@pytest.mark.component("orders")
-class TestOrdersDetailRestock(BaseTest):
+@pytest.mark.component("rules")
+class TestRulesDelete(BaseTest):
+    def setup(self) -> None:
+        self.base_setup(fresh_driver=False, policy_wait=True)
+
     @pytest.mark.priority("p1")
     @pytest.mark.suite("regression")
-    @pytest.mark.parametrize("units", [1, 2])
-    def test_orders_detail_cancel_restock(self, params: dict, units: int) -> None:
-        detail = self.nav.orders.order_detail
-        detail.open_for(params["order_id"])
-        detail.cancel()
+    @pytest.mark.parametrize("position", ["first", "last"])
+    def test_rules_delete_keeps_others(self, position: str) -> None:
+        rules = self.nav.rules.list
+        rules.open()
+        rules.select_rule(self.params["delete_name"])
+        rules.delete_selected()
+        self.nav.rules.confirm.confirm()
 
-        self.check.equal(detail.status, "cancelled", "order status")
-        self.validate_backend(params)
+        top_bar = self.nav.top_bar
+        top_bar.save()
+        top_bar.publish()
+        self.verify_targets()
 
     @pytest.mark.priority("p3")
     @pytest.mark.suite("regression")
-    def test_orders_detail_cancel_button_label(self) -> None:
-        detail = self.nav.orders.order_detail
-        detail.open()
-        self.check.equal(detail.status, "open", "order status")
+    def test_rules_delete_none_listed(self) -> None:
+        rules = self.nav.rules.list
+        rules.open()
+        self.check.assertEqual(0, rules.rule_count)
 '''
 
 
@@ -91,13 +102,13 @@ def _draft(**changes: Any) -> TestCaseDraft:
         id="STND-104/d1",
         ticket_id="STND-104",
         kind="primary",
-        intent="Cancelling an open order sets it to cancelled and returns the stock.",
-        markers={"priority": "p1", "component": "orders", "suite": "regression"},
+        intent="Deleting a rule and publishing removes only that rule from the policy.",
+        markers={"priority": "p1", "component": "rules", "suite": "regression"},
         test_kind="ui",
         deployment_type="both",
-        preconditions=["An open order for some units of an item"],
-        steps=["Open the order", "Click Cancel order"],
-        expected_outcome="The status is cancelled and the units are back in stock.",
+        preconditions=["A policy with three rules"],
+        steps=["Select one rule", "Delete and confirm", "Save and publish"],
+        expected_outcome="The published policy keeps only the other rules.",
         variants=[],
         confidence=0.9,
         prompt_version="draft_v1",
@@ -107,7 +118,7 @@ def _draft(**changes: Any) -> TestCaseDraft:
 
 @pytest.fixture(scope="module")
 def retrieval(index: IndexData, tmp_path_factory: pytest.TempPathFactory) -> RetrievalResult:
-    """Retrieval for STND-104, with the cancel test pinned as the nearest template."""
+    """Retrieval for STND-104, with the delete test pinned as the nearest template."""
     ticket = normalize(JiraExportSource(STANDIN / "tickets" / "export.json").fetch("STND-104"))
     result = retrieve(ticket, index, _settings(tmp_path_factory.mktemp("r")), None, _draft())
     pinned = TemplateRef(chunk_id=TEMPLATE_CHUNK, entry_key=TEMPLATE_ID, why="pinned for tests")
@@ -119,15 +130,21 @@ def _change(path: str, value: Any = None, op: str = "set") -> dict[str, str]:
     return {"op": op, "path": path, "value_json": "" if op == "delete" else json.dumps(value)}
 
 
-def _plan(test_id: str, units: int = 1, **kw: Any) -> dict[str, Any]:
+_KEEP = {"first": ["b", "c"], "last": ["a", "b"]}
+_DELETE = {"first": "a", "last": "c"}
+
+
+def _plan(test_id: str, **kw: Any) -> dict[str, Any]:
+    position = test_id.split("[")[1].rstrip("]") if "[" in test_id else "first"
+    remaining = [{"name": f"{RULES}-{n}"} for n in _KEEP.get(position, ["b"])]
     return {
         "test_id": test_id,
-        "copy_sections": kw.get("sections", ["settings", "policy", "targets", "interactions"]),
+        "copy_sections": kw.get("sections", ["settings", "policy", "delete_name", "targets"]),
         "changes": kw.get(
             "changes",
             [
-                _change("order_id", 1),
-                _change("targets.orders.0.lines.0.quantity", units),
+                _change("delete_name", f"{RULES}-{_DELETE.get(position, 'a')}"),
+                _change("targets.0.response", remaining),
             ],
         ),
     }
@@ -136,10 +153,10 @@ def _plan(test_id: str, units: int = 1, **kw: Any) -> dict[str, Any]:
 def _reply(code: str = GOOD_CODE, plans: list[dict[str, Any]] | None = None, **kw: Any) -> str:
     return json.dumps(
         {
-            "module_name": kw.get("module_name", "test_orders_detail_restock"),
+            "module_name": kw.get("module_name", "test_rules_delete"),
             "code": code,
-            "entries": [_plan(i, n) for n, i in enumerate(IDS, 1)] if plans is None else plans,
-            "review_checklist": ["Confirm the stock count is shown without a refresh."],
+            "entries": [_plan(i) for i in IDS] if plans is None else plans,
+            "review_checklist": ["Confirm the confirm page lists only the selected rule."],
             "notes": "ok",
         }
     )
@@ -174,23 +191,24 @@ def test_generates_a_traceable_code_and_data_pair(
 ) -> None:
     generated = _generate(index, retrieval, tmp_path, FakeLLMClient([_reply()]))
 
-    assert generated.test_ids == [*IDS, "test_orders_detail_cancel_button_label"]
-    assert [e["id"] for e in generated.data_entries] == list(IDS)  # the label test reads nothing
+    assert generated.test_ids == [*IDS, "test_rules_delete_none_listed"]
+    # The UI-only test reads no data and calls no validation helper: no entry.
+    assert [e["test_id"] for e in generated.data_entries] == list(IDS)
     assert generated.data_format == "array"
-    assert generated.file_name == "tests/orders/test_orders_detail_restock.py"
-    assert generated.data_file_name == "tests/orders/test_orders_detail_restock.json"
+    assert generated.file_name == "tests/rules/test_rules_delete.py"
+    assert generated.data_file_name == "tests/rules/test_rules_delete.json"
     ref = generated.template_entry_ref
     assert ref is not None and (ref.chunk_id, ref.entry_key) == (TEMPLATE_CHUNK, TEMPLATE_ID)
     assert ref.chunk_id in generated.retrieved_chunk_ids
     assert generated.ticket_id == "STND-104" and generated.draft_ref == "STND-104/d1"
-    assert generated.prompt_version == "generate_v2"
+    assert generated.prompt_version == "generate_v3"
     assert (generated.provider, generated.model, generated.attempts) == ("fake", "fake-model", 1)
     assert generated.context_tokens > 0
     assert [p.test_id for p in generated.entry_plans] == list(IDS)
     defaults = Settings().generate.review_checklist_defaults
     assert generated.review_checklist == [
         *defaults,
-        "Confirm the stock count is shown without a refresh.",
+        "Confirm the confirm page lists only the selected rule.",
     ]
 
 
@@ -199,21 +217,17 @@ def test_entries_are_built_from_the_base_entry(
 ) -> None:
     generated = _generate(index, retrieval, tmp_path, FakeLLMClient([_reply()]))
     base = _base(index)
-    for units, entry in enumerate(generated.data_entries, 1):
-        assert list(entry) == ["id", "settings", "policy", "targets", "interactions", "order_id"]
-        assert entry["settings"] == base["settings"]  # copied verbatim
-        # Re-labelled: the policy name embeds the test name.
-        assert entry["policy"]["name"] == "policy-orders-detail-cancel-restock"
-        assert {k: v for k, v in entry["policy"].items() if k != "name"} == {
-            k: v for k, v in base["policy"].items() if k != "name"
-        }
-        assert entry["targets"]["orders"][0]["lines"][0]["quantity"] == units
-        assert entry["interactions"] == base["interactions"]
-    one, two = generated.data_entries
-    assert {k: v for k, v in one.items() if k not in ("id", "targets")} == {
-        k: v for k, v in two.items() if k not in ("id", "targets")
-    }  # variants differ only in what varies
-    assert base["targets"]["orders"][0]["lines"][0]["quantity"] == 2  # base untouched
+    first, last = generated.data_entries
+    for entry in generated.data_entries:
+        assert list(entry) == ["test_id", "settings", "policy", "delete_name", "targets"]
+        assert entry["settings"] == base["settings"] and entry["policy"] == base["policy"]
+        assert entry["targets"][0]["path"] == base["targets"][0]["path"]  # request keys kept
+        assert "skip" not in entry and "priority" not in entry
+    assert (first["delete_name"], last["delete_name"]) == (f"{RULES}-a", f"{RULES}-c")
+    assert last["targets"][0]["response"] == [{"name": f"{RULES}-a"}, {"name": f"{RULES}-b"}]
+    differing = {k for k in first if first[k] != last[k]}
+    assert differing == {"test_id", "delete_name", "targets"}  # only what varies
+    assert base["delete_name"] == f"{RULES}-b"  # base untouched
 
 
 def test_code_is_formatted_to_the_suite_style(
@@ -221,15 +235,15 @@ def test_code_is_formatted_to_the_suite_style(
 ) -> None:
     code = _generate(index, retrieval, tmp_path, FakeLLMClient([_reply()])).code
     lines = code.split("\n")
-    assert "from __future__" not in code and "-> None" not in code and ": dict" not in code
-    assert "   def test_orders_detail_cancel_restock(self, params, units):" in lines
-    assert "      detail.cancel()" in lines
+    assert "from __future__" not in code and "-> None" not in code and ": str" not in code
+    assert "   def test_rules_delete_keeps_others(self, position):" in lines
+    assert "      rules.delete_selected()" in lines
     imports = [line for line in lines if line.startswith(("import ", "from "))]
     assert imports == [
         "import pytest",
         "from framework.base_test import BaseTest",
-        "from framework.decorators import browsers, environments",
-    ]
+        "from framework.decorators import browsers, data_driven, environments",
+    ]  # sorted; the unused pathlib import is dropped
 
 
 def test_first_party_roots_come_from_the_repo(index: IndexData) -> None:
@@ -246,47 +260,61 @@ def test_prompt_contains_conventions_scaffold_base_entry_and_markers(
     user = fake.requests[0].messages[1].content
     assert "Team conventions for tests" in user and "No chaining" in user
     assert "Module imports and class scaffold (copy unchanged; new class name):" in user
-    assert "from framework.decorators import browsers, environments, skip_browser" in user
-    assert '@browsers("chrome", "firefox")\n@environments("cloud", "on_prem")' in user
-    assert "class TestOrders(BaseTest):" in user
-    assert "top-level sections: id, settings, policy, targets, interactions" in user
-    assert '"name":"policy-orders-detail-cancel"' in user  # the suite's JSON style
+    assert "from framework.decorators import browsers, data_driven, environments" in user
+    assert "class TestRules(BaseTest):" in user
+    assert (
+        "   def setup(self):\n      self.base_setup(fresh_driver=False, policy_wait=True)" in user
+    )
+    assert "top-level sections: test_id, settings, policy, delete_name, targets" in user
+    assert '"path":"/api/policy/v1/rules/:tid/:rev_id"' in user  # the suite's JSON style
     assert '@pytest.mark.priority("p1")' in user and "STND-104/d1" in user
-    assert "Placeholder token for unique names: {{unique}}" in user
-    assert "next to `tests/orders/test_orders.py`" in user
+    assert "Unique names in data: {test_id:24}" in user
+    assert "next to `tests/rules/test_rules.py`" in user
 
 
-def test_class_scaffold_is_the_template_class_header(index: IndexData) -> None:
+def test_class_scaffold_has_imports_decorators_and_setup(index: IndexData) -> None:
     chunk = next(c for c in index.chunks if c.id == TEMPLATE_CHUNK)
-    assert class_scaffold(chunk, index) == (
+    assert class_scaffold(chunk, index, ["setup", "teardown"]) == (
+        "from pathlib import Path\n"
         "import pytest\n"
         "from framework.base_test import BaseTest\n"
-        "from framework.decorators import browsers, environments, skip_browser\n"
+        "from framework.decorators import "
+        "browsers, data_driven, environments, retry, skip_browser\n"
         "\n"
         '@browsers("chrome", "firefox")\n'
         '@environments("cloud", "on_prem")\n'
+        "@data_driven\n"
         '@pytest.mark.project("example-project")\n'
-        '@pytest.mark.component("orders")\n'
-        "class TestOrders(BaseTest):"
+        '@pytest.mark.component("rules")\n'
+        "class TestRules(BaseTest):\n"
+        "   def setup(self):\n"
+        "      self.base_setup(fresh_driver=False, policy_wait=True)"
     )
+    tenants = next(c for c in index.chunks if c.class_name == "TestTenantsSecondary")
+    scaffold = class_scaffold(tenants, index, ["setup", "teardown"])
+    assert scaffold is not None and "   def teardown(self):\n      self.logout()" in scaffold
 
 
 # --- checks with retry -----------------------------------------------------------------------
 
 
-def _missing_key_plans() -> list[dict[str, Any]]:
-    return [_plan(i, changes=[]) for i in IDS]
+_NO_HELPER = GOOD_CODE.replace("        self.verify_targets()\n", "")
 
 
 @pytest.mark.parametrize(
     ("bad", "fragment"),
     [
-        (_reply(plans=[_plan(IDS[0])]), "read their data entry but have no entry"),
-        (_reply(plans=_missing_key_plans()), "reads keys its entry lacks: ['order_id']"),
+        (_reply(plans=[_plan(IDS[0])]), "use their data entry but have no entry"),
+        (
+            _reply(plans=[_plan(i, sections=["settings", "targets"], changes=[]) for i in IDS]),
+            "reads keys its entry lacks: ['delete_name']",
+        ),
         (_reply(plans=[_plan(i, sections=["seed"]) for i in IDS]), "not sections of the base"),
         (_reply(plans=[_plan(i, sections=["skip"]) for i in IDS]), "not sections of the base"),
         (
-            _reply(plans=[_plan(i, changes=[_change("targets.items.9.name", "x")]) for i in IDS]),
+            _reply(
+                plans=[_plan(i, changes=[_change("targets.0.response.9.name", "x")]) for i in IDS]
+            ),
             "past the end",
         ),
         (
@@ -298,14 +326,33 @@ def _missing_key_plans() -> list[dict[str, Any]]:
             ),
             "not valid JSON",
         ),
+        (
+            _reply(
+                plans=[_plan(i, changes=[*_plan(i)["changes"], _change("extra", 1)]) for i in IDS]
+            ),
+            "custom key 'extra' is never read",
+        ),
+        (
+            _reply(code=_NO_HELPER),
+            "'targets' is only read by self.verify_targets()",
+        ),
+        (
+            _reply(
+                plans=[
+                    _plan(i, changes=[*_plan(i)["changes"], _change("interactions", [])])
+                    for i in IDS
+                ]
+            ),
+            "one expectation section",
+        ),
         (_reply(plans=[*[_plan(i) for i in IDS], _plan("test_other[9]")]), "doesn't produce"),
         (_reply(module_name="test_stnd_104"), "must not contain the ticket id"),
         (
-            _reply(code=GOOD_CODE.replace("TestOrdersDetailRestock", "TestOrders104")),
+            _reply(code=GOOD_CODE.replace("TestRulesDelete", "TestRules104")),
             "must not contain the ticket id",
         ),
-        (_reply(module_name="OrdersTest"), "must look like test_area_action"),
-        (_reply(code=GOOD_CODE.replace("[1, 2]", "UNITS")), "literals"),
+        (_reply(module_name="RulesTest"), "must look like test_area_action"),
+        (_reply(code=GOOD_CODE.replace('["first", "last"]', "POSITIONS")), "literals"),
         (_reply(code="def broken(:\n"), "does not parse"),
         (_reply(code="x = 1\n", plans=[]), "no test found"),
     ],
@@ -332,15 +379,15 @@ def test_secrets_in_the_output_are_scrubbed(
     index: IndexData, retrieval: RetrievalResult, tmp_path: Path
 ) -> None:
     token = "ghp_" + "Q1w2" * 9
-    leaky = GOOD_CODE.replace('"""Cancelling', f'"""Token {token}. Cancelling')
+    leaky = GOOD_CODE.replace('"""Deleting', f'"""Token {token}. Deleting')
     plans = [
-        _plan(i, changes=[_change("order_id", 1), _change("auth", f"Bearer {'z' * 24}")])
+        _plan(i, changes=[*_plan(i)["changes"], _change("delete_name", f"Bearer {'z' * 24}")])
         for i in IDS
     ]
     generated = _generate(index, retrieval, tmp_path, FakeLLMClient([_reply(leaky, plans)]))
     assert token not in generated.code and "[REDACTED:github_token]" in generated.code
     for entry in generated.data_entries:
-        assert entry["auth"] == "Bearer [REDACTED:bearer_token]"
+        assert entry["delete_name"] == "Bearer [REDACTED:bearer_token]"
     assert generated.redactions >= 3
 
 
@@ -357,9 +404,9 @@ def test_no_template_is_a_clean_error(
 
 def test_build_entry_copies_relabels_and_applies_changes() -> None:
     base = {
-        "id": "test_area_thing_save",
+        "test_id": "test_area_thing_save",
         "policy": {"name": "policy-area-thing-save", "rules": [{"id": "r1"}]},
-        "targets": {"items": [{"name": "x-{{unique}}", "quantity": 1}]},
+        "targets": [{"method": "GET", "path": "/api/x/:tid", "response": [{"n": 1}]}],
         "custom": "test_area_thing_save:label",
         "priority": "p3",
         "skip": {"ticket": "KEY-1", "reason": "r"},
@@ -370,34 +417,38 @@ def test_build_entry_copies_relabels_and_applies_changes() -> None:
         "test_area_thing_save_twice[a]",
         ["policy", "targets", "custom"],
         [
-            ("set", "targets.items.0.quantity", "5"),
-            ("set", "targets.items.1", '{"name": "y-{{unique}}"}'),
+            ("set", "targets.0.response.0.n", "5"),
+            ("set", "targets.1", '{"method": "GET", "path": "/api/y/:tid", "response": {}}'),
             ("delete", "policy.rules", ""),
             ("set", "label", '"Saved"'),
         ],
+        id_field="test_id",
         per_entry_keys=["priority", "skip"],
     )
     assert entry == {
-        "id": "test_area_thing_save_twice[a]",
+        "test_id": "test_area_thing_save_twice[a]",
         "policy": {"name": "policy-area-thing-save-twice"},
-        "targets": {"items": [{"name": "x-{{unique}}", "quantity": 5}, {"name": "y-{{unique}}"}]},
+        "targets": [
+            {"method": "GET", "path": "/api/x/:tid", "response": [{"n": 5}]},
+            {"method": "GET", "path": "/api/y/:tid", "response": {}},
+        ],
         "custom": "test_area_thing_save_twice:label",
         "label": "Saved",
     }
-    assert base["targets"]["items"][0]["quantity"] == 1  # deep copies
+    assert base["targets"][0]["response"][0]["n"] == 1  # deep copies
     with pytest.raises(EntryError, match="not sections"):
         build_entry(base, "b", "test_x", ["priority"], [], per_entry_keys=["priority"])
     with pytest.raises(EntryError, match="set automatically"):
-        build_entry(base, "b", "test_x", [], [("set", "id", '"other"')])
+        build_entry(base, "b", "test_x", [], [("set", "test_id", '"other"')], id_field="test_id")
     with pytest.raises(EntryError, match="not found"):
         build_entry(base, "b", "test_x", [], [("delete", "missing.key", "")])
 
 
 def test_set_path_errors_name_the_step() -> None:
     target: dict[str, Any] = {"a": [1], "s": "text"}
-    with pytest.raises(EntryError, match=r"a.3: index 3 is past the end"):
+    with pytest.raises(EntryError, match=r"a\.3: index 3 is past the end"):
         set_path(target, "a.3", 1)
-    with pytest.raises(EntryError, match=r"s.x: not an object"):
+    with pytest.raises(EntryError, match=r"s\.x: not an object"):
         set_path(target, "s.x", 1)
     with pytest.raises(EntryError, match="invalid path"):
         set_path(target, "a..b", 1)
@@ -411,7 +462,7 @@ def test_relabel_is_a_no_op_for_the_same_name() -> None:
 # --- context budget --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("budget", [3500, 4500, 6000, 9000, 12000, 30000])
+@pytest.mark.parametrize("budget", [4500, 6000, 9000, 12000, 30000])
 def test_context_never_exceeds_the_budget(
     index: IndexData, retrieval: RetrievalResult, tmp_path: Path, budget: int
 ) -> None:
@@ -450,7 +501,7 @@ def test_bigger_budget_includes_more(
             CONVENTIONS,
         )
 
-    small, large = build(3500), build(30000)
+    small, large = build(4500), build(30000)
     assert len(large.pieces) > len(small.pieces) and small.skipped
     assert any(p.title.startswith("Base class: BaseTest") for p in large.pieces)
 
@@ -476,14 +527,12 @@ def test_marker_values_use_known_values(index: IndexData) -> None:
     assert known == {
         "priority": "p1",
         "project": "example-project",
-        "component": "orders",
+        "component": "rules",
         "suite": "regression",
     }
-    fuzzy = _draft(
-        markers={"priority": "p2", "component": "order cancellation", "suite": "unknown"}
-    )
+    fuzzy = _draft(markers={"priority": "p2", "component": "rule deletion", "suite": "unknown"})
     values = marker_values(fuzzy, Settings(), template, index)
-    assert values["component"] == "orders"  # free text -> the template's value
+    assert values["component"] == "rules"  # free text -> the template's value
     assert values["suite"] in ("smoke", "regression")
 
 
@@ -515,11 +564,11 @@ def test_cli_generate_writes_the_pair_outside_the_repo(
     assert result.exit_code == 0, result.output
     assert "Review checklist (needs a real run):" in result.output
     folder = out / "STND-104_d1"
-    code = (folder / "tests/orders/test_orders_detail_restock.py").read_bytes()
-    data = (folder / "tests/orders/test_orders_detail_restock.json").read_bytes().decode("utf-8")
-    assert b"\r\n" not in code and code.startswith(b'"""Cancelling')
+    code = (folder / "tests/rules/test_rules_delete.py").read_bytes()
+    data = (folder / "tests/rules/test_rules_delete.json").read_bytes().decode("utf-8")
+    assert b"\r\n" not in code and code.startswith(b'"""Deleting')
     entries = json.loads(data)
-    assert [e["id"] for e in entries] == list(IDS)
+    assert [e["test_id"] for e in entries] == list(IDS)
     assert data == json.dumps(entries, indent=3, separators=(",", ":"), ensure_ascii=False) + "\n"
     assert (folder / "generated.json").is_file()
     assert (

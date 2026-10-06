@@ -1,202 +1,267 @@
-"""In-memory backend state. Pure functions on a Store, so it is testable without a server."""
+"""In-memory backend state: one policy per tenant, edited in the UI and published as revisions.
+
+Each tenant has:
+- ``settings``: capability gates, user roles, API-token state;
+- a policy (rules and profiles) in three layers: the **working copy** (object editors write
+  here; "unsaved changes"), the **saved draft** (top-bar save), and the **published
+  revisions** (top-bar publish; ``rev_id`` is the latest revision number).
+
+Pure functions on a Store, so it is testable without a server.
+"""
 
 import copy
-import itertools
 
-CATEGORIES = ("general", "hardware", "software", "office")
+ACTIONS = ("allow", "deny", "log")
+LEVELS = ("low", "medium", "high")
 ROLES = ("viewer", "editor", "admin")
-ORDER_STATUSES = ("open", "shipped", "cancelled")
-DEFAULT_SETTINGS = {
-   "timezone": "UTC",
-   "language": "en",
-   "notifications": {"email": True, "weekly_digest": False},
-}
-DEFAULT_POLICY = {
-   "name": "default",
-   "max_order_quantity": 100,
-   "allowed_categories": list(CATEGORIES),
-   "rules": [],
-}
+DEFAULT_CAPABILITIES = {"rules": True, "profiles": True, "bulk_delete": False, "import": True}
+EMPTY_POLICY = {"rules": [], "profiles": []}
+PAGE_SIZE = 5
 
 
 class ValidationError(ValueError):
    """Invalid input; the message is shown to the user."""
 
 
+class PermissionDenied(PermissionError):
+   """The user's role does not allow the change."""
+
+
+class Tenant:
+   def __init__(self, tenant_id):
+      self.id = tenant_id
+      self.settings = {
+         "capabilities": dict(DEFAULT_CAPABILITIES),
+         "roles": {},
+         "api_tokens": {"enabled": False},
+      }
+      self.draft = copy.deepcopy(EMPTY_POLICY)
+      self.working = None  # None: no unsaved changes
+      self.revisions = [copy.deepcopy(EMPTY_POLICY)]  # revision 0
+
+   @property
+   def rev_id(self):
+      return len(self.revisions) - 1
+
+   @property
+   def has_unsaved_changes(self):
+      return self.working is not None
+
+   def view(self):
+      """What the UI shows: the working copy if there are unsaved changes, else the draft."""
+      return self.working if self.working is not None else self.draft
+
+   def edit(self):
+      if self.working is None:
+         self.working = copy.deepcopy(self.draft)
+      return self.working
+
+
 class Store:
    def __init__(self):
-      self.items = {}
-      self.users = {}
-      self.orders = {}
-      self.reset()
+      self.tenants = {}
 
    # --- seed / reset (the test framework's setup applies data-entry sections) ----------
 
    def reset(self):
-      self.items.clear()
-      self.users.clear()
-      self.orders.clear()
-      self.settings = copy.deepcopy(DEFAULT_SETTINGS)
-      self.policy = copy.deepcopy(DEFAULT_POLICY)
-      self._order_ids = itertools.count(1)
+      self.tenants.clear()
 
-   def seed(self, sections):
-      """Apply the seed sections of a data entry: settings, policy, tenants, targets."""
-      if "settings" in sections:
-         self.update_settings(sections["settings"])
-      if "policy" in sections:
-         self.set_policy(sections["policy"])
-      for user in sections.get("tenants", {}).get("users", []):
-         self.invite_user(user["email"], user.get("role", "viewer"))
-         if not user.get("active", True):
-            self.deactivate_user(user["email"])
-      targets = sections.get("targets", {})
-      for item in targets.get("items", []):
-         self.create_item(item["name"], item.get("quantity", 1), item.get("category", "general"))
-      for order in targets.get("orders", []):
-         created = self.create_order(order["lines"])
-         if order.get("status", "open") != "open":
-            created["status"] = order["status"]
+   def tenant(self, tenant_id):
+      if tenant_id not in self.tenants:
+         self.tenants[tenant_id] = Tenant(tenant_id)
+      return self.tenants[tenant_id]
 
-   # --- policy -----------------------------------------------------------------------------
+   def seed(self, blocks):
+      """Apply per-tenant seed blocks: ``[{"tenant": id, "settings": {...}, "policy": {...}}]``.
 
-   def set_policy(self, policy):
-      merged = copy.deepcopy(DEFAULT_POLICY)
-      merged.update(copy.deepcopy(policy))
-      unknown = [c for c in merged["allowed_categories"] if c not in CATEGORIES]
-      if unknown:
-         raise ValidationError(f"Unknown categories in policy: {unknown}")
-      self.policy = merged
-      return self.policy
+      A seeded policy becomes the saved draft and is published as revision 1.
+      """
+      for block in blocks:
+         tenant = self.tenant(block["tenant"])
+         settings = block.get("settings", {})
+         tenant.settings["capabilities"].update(settings.get("capabilities", {}))
+         tenant.settings["roles"].update(settings.get("roles", {}))
+         tenant.settings["api_tokens"].update(settings.get("api_tokens", {}))
+         if "policy" in block:
+            policy = copy.deepcopy(EMPTY_POLICY)
+            policy.update(copy.deepcopy(block["policy"]))
+            policy["rules"] = [_rule(r) for r in policy["rules"]]
+            policy["profiles"] = [_profile(p) for p in policy["profiles"]]
+            tenant.draft = policy
+            tenant.working = None
+            tenant.revisions.append(copy.deepcopy(policy))
 
-   # --- items ------------------------------------------------------------------------------
+   # --- rules (object editors write the working copy) -----------------------------------
 
-   def create_item(self, name, quantity, category="general"):
-      name = name.strip()
-      if not name:
+   def add_rule(self, tenant_id, rule):
+      tenant = self._editable(tenant_id, "rules")
+      rule = _rule(rule)
+      if not rule["name"].strip():
          raise ValidationError("Name is required")
-      if name in self.items:
-         raise ValidationError(f"Item '{name}' already exists")
-      if quantity < 1:
-         raise ValidationError("Quantity must be at least 1")
-      if category not in CATEGORIES:
-         raise ValidationError(f"Unknown category '{category}'")
-      if category not in self.policy["allowed_categories"]:
-         raise ValidationError(f"Category '{category}' is not allowed by policy")
-      item = {"name": name, "quantity": quantity, "category": category, "status": "active"}
-      self.items[name] = item
-      return item
+      if any(r["name"] == rule["name"] for r in tenant.view()["rules"]):
+         raise ValidationError(f"A rule named '{rule['name']}' already exists")
+      tenant.edit()["rules"].append(rule)
+      return rule
 
-   def update_item(self, name, **changes):
-      item = self._item(name)
-      if "category" in changes and changes["category"] not in CATEGORIES:
-         raise ValidationError(f"Unknown category '{changes['category']}'")
-      if "quantity" in changes and changes["quantity"] < 1:
-         raise ValidationError("Quantity must be at least 1")
-      item.update({k: v for k, v in changes.items() if k in ("quantity", "category")})
-      return item
-
-   def delete_item(self, name):
-      self._item(name)
-      del self.items[name]
-
-   def search_items(self, text):
-      needle = text.strip().lower()
-      return [i for i in self.items.values() if needle in i["name"].lower()]
-
-   def _item(self, name):
-      if name not in self.items:
-         raise ValidationError(f"Unknown item '{name}'")
-      return self.items[name]
-
-   # --- users ------------------------------------------------------------------------------
-
-   def invite_user(self, email, role):
-      email = email.strip().lower()
-      if "@" not in email:
-         raise ValidationError("Enter a valid email address")
-      if email in self.users:
-         raise ValidationError(f"{email} has already been invited")
-      if role not in ROLES:
-         raise ValidationError(f"Unknown role '{role}'")
-      user = {"email": email, "role": role, "active": True}
-      self.users[email] = user
-      return user
-
-   def change_role(self, email, role):
-      if role not in ROLES:
-         raise ValidationError(f"Unknown role '{role}'")
-      user = self._user(email)
-      user["role"] = role
-      return user
-
-   def deactivate_user(self, email):
-      user = self._user(email)
-      user["active"] = False
-      return user
-
-   def _user(self, email):
-      key = email.strip().lower()
-      if key not in self.users:
-         raise ValidationError(f"Unknown user '{email}'")
-      return self.users[key]
-
-   # --- orders -----------------------------------------------------------------------------
-
-   def create_order(self, lines):
-      if not lines:
-         raise ValidationError("An order needs at least one line")
-      for line in lines:
-         item = self.items.get(line["item"])
-         if item is None:
-            raise ValidationError(f"Unknown item '{line['item']}'")
-         if line["quantity"] > self.policy["max_order_quantity"]:
-            raise ValidationError(
-               f"Policy allows at most {self.policy['max_order_quantity']} per order"
-            )
-         if line["quantity"] > item["quantity"]:
-            raise ValidationError(f"Not enough stock for '{line['item']}'")
-      for line in lines:
-         self.items[line["item"]]["quantity"] -= line["quantity"]
-      order_id = next(self._order_ids)
-      order = {"id": order_id, "lines": lines, "status": "open", "notes": []}
-      self.orders[order_id] = order
-      return order
-
-   def cancel_order(self, order_id):
-      order = self._order(order_id)
-      if order["status"] == "shipped":
-         raise ValidationError("Shipped orders can't be cancelled")
-      if order["status"] == "open":
-         for line in order["lines"]:
-            if line["item"] in self.items:
-               self.items[line["item"]]["quantity"] += line["quantity"]
-      order["status"] = "cancelled"
-      return order
-
-   def add_note(self, order_id, text):
-      if not text.strip():
-         raise ValidationError("Note can't be empty")
-      order = self._order(order_id)
-      order["notes"].append(text.strip())
-      return order
-
-   def orders_with_status(self, status):
-      return [o for o in self.orders.values() if status in (None, "", o["status"])]
-
-   def _order(self, order_id):
-      if order_id not in self.orders:
-         raise ValidationError(f"Unknown order {order_id}")
-      return self.orders[order_id]
-
-   # --- settings ---------------------------------------------------------------------------
-
-   def update_settings(self, changes):
-      for key in ("timezone", "language"):
+   def update_rule(self, tenant_id, name, changes):
+      tenant = self._editable(tenant_id, "rules")
+      rule = _find(tenant.edit()["rules"], name, "rule")
+      if "action" in changes and changes["action"] not in ACTIONS:
+         raise ValidationError(f"Unknown action '{changes['action']}'")
+      for key in ("action", "enabled", "description", "conditions"):
          if key in changes:
-            self.settings[key] = changes[key]
-      notifications = changes.get("notifications", {})
-      if "email" in notifications:
-         self.settings["notifications"]["email"] = bool(notifications["email"])
-      # Known bug STND-105: the weekly digest choice is accepted but never saved.
-      return self.settings
+            rule[key] = copy.deepcopy(changes[key])
+      return rule
+
+   def delete_rules(self, tenant_id, names):
+      tenant = self._editable(tenant_id, "rules")
+      if len(names) > 1 and not tenant.settings["capabilities"]["bulk_delete"]:
+         raise ValidationError("Deleting several rules at once is not enabled")
+      rules = tenant.edit()["rules"]
+      for name in names:
+         rules.remove(_find(rules, name, "rule"))
+
+   def import_rules(self, tenant_id, rules):
+      if not self.tenant(tenant_id).settings["capabilities"]["import"]:
+         raise ValidationError("Import is not enabled")
+      return [self.add_rule(tenant_id, rule) for rule in rules]
+
+   def list_rules(self, tenant_id, text="", action="", page=1):
+      """One page of rules matching the search text and action filter, plus the total."""
+      needle = text.strip().lower()
+      matching = [
+         r
+         for r in self.tenant(tenant_id).view()["rules"]
+         if needle in r["name"].lower() and action in ("", r["action"])
+      ]
+      start = (max(page, 1) - 1) * PAGE_SIZE
+      return matching[start : start + PAGE_SIZE], len(matching)
+
+   # --- profiles -------------------------------------------------------------------------
+
+   def add_profile(self, tenant_id, profile):
+      tenant = self._editable(tenant_id, "profiles")
+      profile = _profile(profile)
+      if not profile["name"].strip():
+         raise ValidationError("Name is required")
+      if any(p["name"] == profile["name"] for p in tenant.view()["profiles"]):
+         raise ValidationError(f"A profile named '{profile['name']}' already exists")
+      tenant.edit()["profiles"].append(profile)
+      return profile
+
+   def update_profile(self, tenant_id, name, changes):
+      tenant = self._editable(tenant_id, "profiles")
+      if "level" in changes and changes["level"] not in LEVELS:
+         raise ValidationError(f"Unknown level '{changes['level']}'")
+      profile = _find(tenant.edit()["profiles"], name, "profile")
+      for key in ("level", "description"):
+         if key in changes:
+            profile[key] = changes[key]
+      # Known bug STND-105: the change is also written to the saved draft, so a reset keeps it.
+      _find(tenant.draft["profiles"], name, "profile").update(copy.deepcopy(profile))
+      return profile
+
+   def delete_profile(self, tenant_id, name):
+      profiles = self._editable(tenant_id, "profiles").edit()["profiles"]
+      profiles.remove(_find(profiles, name, "profile"))
+
+   def search_profiles(self, tenant_id, text=""):
+      needle = text.strip().lower()
+      return [p for p in self.tenant(tenant_id).view()["profiles"] if needle in p["name"].lower()]
+
+   # --- top bar --------------------------------------------------------------------------
+
+   def save_blocked(self, tenant_id):
+      """Why the top-bar save is disabled, or None."""
+      tenant = self.tenant(tenant_id)
+      if not tenant.has_unsaved_changes:
+         return "Nothing to save"
+      if not tenant.settings["capabilities"]["rules"]:
+         return "Editing rules is not enabled"
+      return None
+
+   def save(self, tenant_id):
+      tenant = self.tenant(tenant_id)
+      reason = self.save_blocked(tenant_id)
+      if reason:
+         raise ValidationError(reason)
+      tenant.draft = tenant.working
+      tenant.working = None
+
+   def publish(self, tenant_id):
+      tenant = self.tenant(tenant_id)
+      if tenant.has_unsaved_changes:
+         raise ValidationError("Save your changes before publishing")
+      tenant.revisions.append(copy.deepcopy(tenant.draft))
+      return tenant.rev_id
+
+   def discard(self, tenant_id):
+      """Top-bar reset: drop unsaved changes."""
+      self.tenant(tenant_id).working = None
+
+   # --- settings -------------------------------------------------------------------------
+
+   def update_capabilities(self, tenant_id, capabilities):
+      caps = self.tenant(tenant_id).settings["capabilities"]
+      unknown = [k for k in capabilities if k not in caps]
+      if unknown:
+         raise ValidationError(f"Unknown capabilities: {unknown}")
+      caps.update({k: bool(v) for k, v in capabilities.items()})
+      return self.tenant(tenant_id).settings
+
+   # --- API writes (role-checked; save and publish in one step) --------------------------
+
+   def api_replace_rules(self, tenant_id, user, rules):
+      tenant = self.tenant(tenant_id)
+      role = tenant.settings["roles"].get(user, "viewer")
+      if role != "admin":
+         raise PermissionDenied(f"Role '{role}' cannot change rules")
+      tenant.draft = copy.deepcopy(tenant.draft)
+      tenant.draft["rules"] = [_rule(r) for r in rules]
+      tenant.working = None
+      return self.publish(tenant_id)
+
+   def published(self, tenant_id, rev_id):
+      tenant = self.tenant(tenant_id)
+      if not 0 <= rev_id <= tenant.rev_id:
+         raise KeyError(rev_id)
+      return tenant.revisions[rev_id]
+
+   # --- helpers --------------------------------------------------------------------------
+
+   def _editable(self, tenant_id, capability):
+      tenant = self.tenant(tenant_id)
+      if not tenant.settings["capabilities"][capability]:
+         raise ValidationError(f"Editing {capability} is not enabled")
+      return tenant
+
+
+def _rule(rule):
+   action = rule.get("action", "allow")
+   if action not in ACTIONS:
+      raise ValidationError(f"Unknown action '{action}'")
+   return {
+      "name": str(rule.get("name", "")),
+      "action": action,
+      "enabled": bool(rule.get("enabled", True)),
+      "description": str(rule.get("description", "")),
+      "conditions": copy.deepcopy(rule.get("conditions", [])),
+   }
+
+
+def _profile(profile):
+   level = profile.get("level", "low")
+   if level not in LEVELS:
+      raise ValidationError(f"Unknown level '{level}'")
+   return {
+      "name": str(profile.get("name", "")),
+      "level": level,
+      "description": str(profile.get("description", "")),
+   }
+
+
+def _find(objects, name, kind):
+   for obj in objects:
+      if obj["name"] == name:
+         return obj
+   raise ValidationError(f"Unknown {kind} '{name}'")

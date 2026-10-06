@@ -61,21 +61,21 @@ def _followup(searches: list[dict[str, str]], done: bool = False) -> str:
 
 def test_candidate_identifiers_and_verification(index: IndexData) -> None:
     text = (
-        "Call `client.build_request()` with base_url; see ItemEditorPage and FooBarWidget. The end."
+        "Call `client.build_request()` with base_url; see RuleWizardPage and FooBarWidget. The end."
     )
     names = candidate_identifiers(text)
     for expected in (
         "client.build_request",
         "build_request",
         "base_url",
-        "ItemEditorPage",
+        "RuleWizardPage",
         "FooBarWidget",
     ):
         assert expected in names
     verified, rejected = verify_identifiers(
-        ["ItemEditorPage", "FooBarWidget", "unique_name", "The"], index.catalog
+        ["RuleWizardPage", "FooBarWidget", "unique_name", "The"], index.catalog
     )
-    assert verified == ["ItemEditorPage", "unique_name"]
+    assert verified == ["RuleWizardPage", "unique_name"]
     assert "FooBarWidget" in rejected and "The" in rejected
 
 
@@ -121,12 +121,12 @@ def test_query_rewrite_terms_are_used_and_invented_names_rejected(
     index: IndexData, tmp_path: Path
 ) -> None:
     fake = FakeLLMClient(
-        [_rewrite(["invite", "role", "editor"], ["InviteUserPage", "RoleAssigner"])]
+        [_rewrite(["wizard", "action", "deny"], ["RuleWizardPage", "ActionAssigner"])]
     )
     result = retrieve(_ticket("STND-101"), index, _settings(tmp_path), fake)
     assert result.rewrite is not None and result.llm_calls == 1
-    assert "InviteUserPage" in result.identifiers
-    assert "RoleAssigner" in result.rejected_identifiers
+    assert "RuleWizardPage" in result.identifiers
+    assert "ActionAssigner" in result.rejected_identifiers
     assert result.prompt_versions == ["query_rewrite_v1"]
     assert any(r.detail.startswith("query=rewrite") for h in result.hits for r in h.reasons)
     assert "<ticket>" in fake.requests[0].messages[1].content
@@ -143,7 +143,7 @@ def test_followup_rounds_stop_at_the_cap(index: IndexData, tmp_path: Path) -> No
     assert result.prompt_versions == ["query_rewrite_v1", "retrieval_followup_v1"]
 
 
-_NEW_EACH_ROUND = ["invite", "cancel", "timezone", "digest", "quantity", "category"]
+_NEW_EACH_ROUND = ["wizard", "delete", "capabilities", "profile", "import", "tenant"]
 
 
 @pytest.mark.parametrize("rounds", [0, 1, 3])
@@ -176,17 +176,17 @@ def test_followup_stops_when_done_or_results_are_not_thin(index: IndexData, tmp_
 
 def test_followup_tools_are_limited_and_tagged(index: IndexData, tmp_path: Path) -> None:
     searches = [
-        {"tool": "grep", "query": "validate_backend"},
+        {"tool": "grep", "query": "verify_targets"},
         {"tool": "grep", "query": "made_up_helper_name"},  # not in the repo: no results
-        {"tool": "symbol", "query": "OrderDetailPage"},
+        {"tool": "symbol", "query": "DeleteConfirmPage"},
         {"tool": "bm25", "query": "extra search beyond the cap"},
     ]
     fake = FakeLLMClient([_rewrite(["order"], []), _followup(searches, done=True)])
     settings = _settings(tmp_path, top_k=50, followup_min_tests=999, followup_max_searches=3)
     result = retrieve(_ticket("STND-104"), index, settings, fake)
     followup = [r.detail for h in result.hits for r in h.reasons if r.source == "followup"]
-    assert any("identifier=validate_backend" in d for d in followup)
-    assert any("definition of OrderDetailPage" in d for d in followup)
+    assert any("identifier=verify_targets" in d for d in followup)
+    assert any("definition of DeleteConfirmPage" in d for d in followup)
     assert not any("made_up_helper_name" in d for d in followup)
     assert not any("beyond the cap" in d for d in followup)  # only the first 3 searches run
 
@@ -216,8 +216,8 @@ def test_eval_fix_pr_files_from_cache_without_network(tmp_path: Path) -> None:
         ref="demo/repo#7",
         payload={
             "issue": {
-                "title": "Inviting a user as editor gives viewer role",
-                "body": "Use InviteUserPage.invite",
+                "title": "Rules added in the wizard get the wrong action",
+                "body": "Use RuleWizardPage.save",
                 "labels": [],
                 "comments": 0,
                 "html_url": "https://github.com/demo/repo/issues/7",
@@ -230,7 +230,7 @@ def test_eval_fix_pr_files_from_cache_without_network(tmp_path: Path) -> None:
     cache.ticket_path("demo/repo#7").write_text(raw.model_dump_json(), "utf-8")
     cache.pr_files_path("demo/repo", 8).parent.mkdir(parents=True)
     cache.pr_files_path("demo/repo", 8).write_text(
-        json.dumps(["framework/pages/users.py", "docs/x.md", "gone.py"]), "utf-8"
+        json.dumps(["framework/pages/rules.py", "docs/x.md", "gone.py"]), "utf-8"
     )
     spec = {
         "name": "demo",
@@ -243,7 +243,7 @@ def test_eval_fix_pr_files_from_cache_without_network(tmp_path: Path) -> None:
     report = evaluate_retrieval(pair_set, REPO_ROOT, settings, client=None, cache=cache)
     [pair] = report.pairs
     assert pair.unit == "file"
-    assert pair.ground_truth == ["framework/pages/users.py"]
+    assert pair.ground_truth == ["framework/pages/rules.py"]
     assert pair.not_in_index == ["gone.py"]
     assert pair.recall == 1.0
 

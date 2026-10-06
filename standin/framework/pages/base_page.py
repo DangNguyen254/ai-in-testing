@@ -8,8 +8,9 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.support.ui import Select, WebDriverWait
 
-FLASH = (By.ID, "flash")
+TOAST = (By.ID, "toast")
 FORM_ERROR = (By.ID, "form-error")
+NAV_LINKS = (By.CSS_SELECTOR, "nav a")
 
 
 class BasePage:
@@ -55,15 +56,22 @@ class BasePage:
    def texts_of(self, locator):
       return [element.text for element in self.find_all(locator)]
 
+   def checked(self, locator):
+      return self.find(locator).is_selected()
+
    def set_checkbox(self, locator, enabled):
       box = self.find(locator)
       if box.is_selected() != enabled:
          box.click()
 
    @property
-   def flash_message(self):
-      return self.text_of(FLASH)
+   def toast(self):
+      return self.text_of(TOAST)
 
    @property
    def error_message(self):
       return self.text_of(FORM_ERROR)
+
+   @property
+   def nav_links(self):
+      return self.texts_of(NAV_LINKS)

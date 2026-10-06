@@ -22,7 +22,8 @@ CTX_BASE_ID = "base_id"
 CTX_ID_FIELD = "id_field"
 CTX_PER_ENTRY_KEYS = "per_entry_keys"
 CTX_DATA_ACCESS = "data_access"
-CTX_DATA_HELPERS = "data_helpers"
+CTX_EXPECTATIONS = "expectation_sections"  # section -> helper that reads it
+CTX_SEED_SECTIONS = "seed_sections"
 CTX_TICKET_ID = "ticket_id"
 
 
@@ -88,7 +89,7 @@ class GenerationResponse(BaseModel):
         uses = data_use(
             self.code,
             ctx.get(CTX_DATA_ACCESS, ["self.params", "params"]),
-            ctx.get(CTX_DATA_HELPERS, []),
+            list(ctx.get(CTX_EXPECTATIONS, {}).values()),
             test_prefix,
         )
         missing = [
@@ -97,8 +98,8 @@ class GenerationResponse(BaseModel):
         ]  # fmt: skip
         if missing:
             raise ValueError(
-                f"these tests read their data entry but have no entry: {missing}. "
-                "Give one entry per pytest id of every test that reads data."
+                f"these tests use their data entry but have no entry: {missing}. Give one "
+                "entry per pytest id of every test that reads keys or calls a validation helper."
             )
 
         base = ctx.get(CTX_BASE_ENTRY)
@@ -125,7 +126,36 @@ class GenerationResponse(BaseModel):
                     f"{plan.test_id} reads keys its entry lacks: {absent}. Add them with "
                     "changes (op set) or copy them from the base entry."
                 )
+            unused = _unconsumed_keys(entry, use, ctx)
+            if unused:
+                raise ValueError(f"{plan.test_id}: {unused}")
         return self
+
+
+def _unconsumed_keys(entry: dict[str, Any], use: Any, ctx: dict[str, Any]) -> str:
+    """Every key must be read by the test or consumed by the framework or a helper it calls."""
+    expectations: dict[str, str] = ctx.get(CTX_EXPECTATIONS, {})
+    fixed = {ctx.get(CTX_ID_FIELD, "id"), *ctx.get(CTX_SEED_SECTIONS, [])}
+    fixed |= set(ctx.get(CTX_PER_ENTRY_KEYS, []))
+    read = (use.keys | use.optional_keys) if use else frozenset()
+    helpers = use.helpers if use else frozenset()
+    present = [k for k in expectations if k in entry]
+    if len(present) > 1:
+        return f"an entry has one expectation section, not {present}"
+    problems = []
+    for key in entry:
+        if key in fixed or key in read:
+            continue
+        if key in expectations:
+            if expectations[key] not in helpers:
+                problems.append(
+                    f"{key!r} is only read by {expectations[key]}(), which the test never calls"
+                )
+        else:
+            problems.append(f"custom key {key!r} is never read by the test")
+    if problems:
+        return "; ".join(problems) + ". Remove it, or read it in the test."
+    return ""
 
 
 def _name_problems(names: list[str], ticket_id: str | None) -> list[str]:

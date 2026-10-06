@@ -1,160 +1,46 @@
 [
    {
-      "id":"test_settings_general_timezone_change[UTC]",
+      "test_id":"test_settings_capabilities_enable_bulk",
       "settings":{
-         "timezone":"UTC",
-         "language":"en",
-         "notifications":{
-            "email":true,
-            "weekly_digest":false
+         "capabilities":{
+            "rules":true,
+            "profiles":true,
+            "bulk_delete":false,
+            "import":true
          }
       },
-      "interactions":[
+      "targets":[
          {
-            "request":{
-               "method":"GET",
-               "endpoint":"/settings"
-            },
+            "method":"GET",
+            "path":"/api/settings/v1/settings/:tid",
             "response":{
-               "status":200,
-               "body":{
-                  "timezone":"UTC"
+               "capabilities":{
+                  "bulk_delete":true
                }
             }
          }
       ]
    },
    {
-      "id":"test_settings_general_timezone_change[Europe/Berlin]",
+      "test_id":"test_settings_capabilities_disable_profiles",
       "settings":{
-         "timezone":"UTC",
-         "language":"en",
-         "notifications":{
-            "email":true,
-            "weekly_digest":false
+         "capabilities":{
+            "rules":true,
+            "profiles":true,
+            "bulk_delete":false,
+            "import":true
          }
       },
-      "interactions":[
+      "targets":[
          {
-            "request":{
-               "method":"GET",
-               "endpoint":"/settings"
-            },
+            "method":"GET",
+            "path":"/api/settings/v1/settings/:tid",
             "response":{
-               "status":200,
-               "body":{
-                  "timezone":"Europe/Berlin"
+               "capabilities":{
+                  "profiles":false
                }
             }
          }
       ]
-   },
-   {
-      "id":"test_settings_general_language_change",
-      "settings":{
-         "timezone":"UTC",
-         "language":"en",
-         "notifications":{
-            "email":true,
-            "weekly_digest":false
-         }
-      },
-      "interactions":[
-         {
-            "request":{
-               "method":"GET",
-               "endpoint":"/settings"
-            },
-            "response":{
-               "status":200,
-               "body":{
-                  "language":"de"
-               }
-            }
-         }
-      ]
-   },
-   {
-      "id":"test_settings_general_timezone_reload",
-      "settings":{
-         "timezone":"UTC",
-         "language":"en",
-         "notifications":{
-            "email":true,
-            "weekly_digest":false
-         }
-      },
-      "interactions":[
-         {
-            "request":{
-               "method":"GET",
-               "endpoint":"/settings"
-            },
-            "response":{
-               "status":200,
-               "body":{
-                  "timezone":"America/New_York"
-               }
-            }
-         }
-      ]
-   },
-   {
-      "id":"test_settings_notifications_email_disable",
-      "settings":{
-         "timezone":"UTC",
-         "language":"en",
-         "notifications":{
-            "email":true,
-            "weekly_digest":false
-         }
-      },
-      "interactions":[
-         {
-            "request":{
-               "method":"GET",
-               "endpoint":"/settings"
-            },
-            "response":{
-               "status":200,
-               "body":{
-                  "notifications":{
-                     "email":false
-                  }
-               }
-            }
-         }
-      ]
-   },
-   {
-      "id":"test_settings_notifications_digest_enable",
-      "settings":{
-         "timezone":"UTC",
-         "language":"en",
-         "notifications":{
-            "email":true,
-            "weekly_digest":false
-         }
-      },
-      "interactions":[
-         {
-            "request":{
-               "method":"GET",
-               "endpoint":"/settings"
-            },
-            "response":{
-               "status":200,
-               "body":{
-                  "notifications":{
-                     "weekly_digest":true
-                  }
-               }
-            }
-         }
-      ],
-      "skip":{
-         "ticket":"STND-105",
-         "reason":"the weekly digest setting is not saved"
-      }
    }
 ]

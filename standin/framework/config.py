@@ -16,6 +16,11 @@ class SuiteConfig:
       self.deployment = deployment
       self.artifacts_dir = artifacts_dir
       self.default_timeout = default_timeout
+      # Accounts the framework provides; data files refer to them as {tenant_id1}, {user_1}.
+      self.tenants = ["tenant-a", "tenant-b", "tenant-c"]
+      self.users = ["user1@example.com", "user2@example.com", "user3@example.com"]
+      self.service_user = "service@example.com"  # admin in every tenant, for managers
+      self.validation_attempts = 3  # bounded re-checks while a published revision settles
 
    @property
    def api_url(self):

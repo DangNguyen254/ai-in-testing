@@ -67,10 +67,13 @@ index:
   save_attempts: 5               # index file rename retries (a scanner can lock it briefly)
 
 data:                            # per-test JSON data files (reading accepts both layouts)
-  format: array                  # array: [{"id": "<pytest id>", ...}]; object: {"<pytest id>": {...}}
-  id_field: id
+  format: array                  # array: [{"test_id": "<pytest id>", ...}]; object: {"<pytest id>": {...}}
+  id_field: test_id               # the entry key holding the pytest id
   access: ["self.params", params]        # tests index these to read their entry
-  reading_helpers: [self.validate_backend]  # calls that read the entry for the test
+  seed_sections: [settings, policy, tenants]   # applied by the framework before the test
+  expectation_sections:                  # section -> the helper that reads it (one per entry)
+    targets: self.verify_targets
+    interactions: self.verify_interactions
   per_entry_keys: [priority, skip]       # never inherited from the base entry
 
 style:                           # the target suite's style; generated output is formatted to it
@@ -119,12 +122,14 @@ context:
   chars_per_token: 3.0           # token estimate = ceil(chars / 3.0); over-counts on purpose
 
 generate:
-  prompt_version: generate_v2
+  prompt_version: generate_v3
   conventions_doc: null          # e.g. standin/CONVENTIONS.md; always included when set
   review_checklist_defaults:      # always on the reviewer checklist ("needs a real run")
-    - Expected responses in `interactions` are not from a real capture; confirm them in a real run.
+    - Expected backend responses are not from a real capture; confirm them in a real run.
     - Check whether the page needs a refresh before a field is read again after saving.
-  placeholder_token: "{{unique}}"
+    - Confirm the save flow (object save, top-bar save and publish, or reset).
+  scaffold_methods: [setup, teardown, setup_method, teardown_method]   # copied with the scaffold
+  placeholder_token: "{test_id:24}"   # unique names in data (N = max length)
   max_example_tests: 4
   deployment_decorators: {cloud: cloud_only, on_prem: on_prem_only}
 

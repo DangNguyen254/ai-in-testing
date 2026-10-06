@@ -85,7 +85,7 @@ def test_json_style_matches_the_standin_data_files() -> None:
 
 
 def test_format_entries_writes_array_or_object_layout() -> None:
-    entries = [{"id": "test_a[1]", "x": 1}, {"id": "test_a[2]", "x": 2}]
+    entries = [{"test_id": "test_a[1]", "x": 1}, {"test_id": "test_a[2]", "x": 2}]
     style = JsonStyle(indent=2, key_separator=": ")
     array = format_entries(entries, DataSettings(), style, "array")
     assert json.loads(array) == entries and '"x": 1' in array and array.endswith("\n")

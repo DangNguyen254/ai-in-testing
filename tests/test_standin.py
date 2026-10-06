@@ -1,7 +1,8 @@
-"""Checks the synthetic stand-in suite against the Phase 3 / 3b definition of done.
+"""Checks the synthetic stand-in suite against the Phase 3 / 3b definition of done (v3).
 
 The stand-in is hand-written, trusted project code, so collecting it on the host is allowed
-(Hard Constraint 3 covers generated tests only). Source checks use the ``ast`` module.
+(Hard Constraint 3 covers generated tests only). Source checks use the ``ast`` module;
+expectations are replayed in-process against the app's state and API router (no server).
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ import re
 import subprocess
 import sys
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -29,9 +30,11 @@ from ticket2test.normalize import normalize
 STANDIN = REPO_ROOT / "standin"
 MANIFEST = json.loads((STANDIN / "manifest.json").read_text(encoding="utf-8"))
 TEST_FILES = sorted((STANDIN / "tests").rglob("test_*.py"))
-FRAMEWORK_KEYS = {"settings", "policy", "tenants", "targets", "interactions", "priority", "skip"}
-SEED_SECTIONS = ("settings", "policy", "tenants", "targets")
-CLASS_DECORATORS = ("browsers", "environments", "pytest.mark.project", "pytest.mark.component")
+ID = "test_id"
+SEED = {"settings", "policy", "tenants"}
+EXPECTATIONS = {"targets": "self.verify_targets", "interactions": "self.verify_interactions"}
+OVERRIDES = {"priority", "skip"}
+SUFFIX = "abc123"
 
 # Collects in a subprocess and prints one JSON line per test with its final markers.
 _PROBE = r"""
@@ -92,11 +95,11 @@ def _entries(test_file: str | Path) -> list[dict[str, Any]]:
 
 
 def _by_id(test_file: str | Path) -> dict[str, dict[str, Any]]:
-    return {entry["id"]: entry for entry in _entries(test_file)}
+    return {entry[ID]: entry for entry in _entries(test_file)}
 
 
-def _all_entries() -> list[dict[str, Any]]:
-    return [entry for path in TEST_FILES for entry in _entries(path)]
+def _all_entries() -> dict[str, dict[str, Any]]:
+    return {entry[ID]: entry for path in TEST_FILES for entry in _entries(path)}
 
 
 def _dotted(node: ast.expr) -> str:
@@ -109,8 +112,7 @@ def _dotted(node: ast.expr) -> str:
 
 def _test_classes() -> Iterator[tuple[Path, ast.ClassDef]]:
     for path in TEST_FILES:
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in tree.body:
+        for node in ast.parse(path.read_text(encoding="utf-8")).body:
             if isinstance(node, ast.ClassDef) and node.name.startswith("Test"):
                 yield path, node
 
@@ -122,25 +124,28 @@ def _test_functions() -> Iterator[tuple[Path, ast.ClassDef, ast.FunctionDef]]:
                 yield path, cls, node
 
 
-def _reads_params(function: ast.FunctionDef) -> set[str]:
+def _functions() -> dict[str, tuple[Path, ast.ClassDef, ast.FunctionDef]]:
+    return {function.name: (path, cls, function) for path, cls, function in _test_functions()}
+
+
+def _calls(function: ast.FunctionDef) -> set[str]:
+    return {_dotted(n.func) for n in ast.walk(function) if isinstance(n, ast.Call)}
+
+
+def _reads(function: ast.FunctionDef) -> set[str]:
     """Keys a test body reads from its entry: ``self.params["k"]`` or ``params["k"]``."""
-    keys = set()
-    for node in ast.walk(function):
-        if (
-            isinstance(node, ast.Subscript)
-            and _dotted(node.value) in ("self.params", "params")
-            and isinstance(node.slice, ast.Constant)
-            and isinstance(node.slice.value, str)
-        ):
-            keys.add(node.slice.value)
-    return keys
-
-
-def _uses_params(function: ast.FunctionDef) -> bool:
-    return bool(_reads_params(function)) or any(
-        isinstance(node, ast.Call) and _dotted(node.func) == "self.validate_backend"
+    return {
+        node.slice.value
         for node in ast.walk(function)
-    )
+        if isinstance(node, ast.Subscript)
+        and _dotted(node.value) in ("self.params", "params")
+        and isinstance(node.slice, ast.Constant)
+        and isinstance(node.slice.value, str)
+    }
+
+
+def _uses_entry(function: ast.FunctionDef) -> bool:
+    return bool(_reads(function)) or bool(_calls(function) & set(EXPECTATIONS.values()))
 
 
 # --- Collection and data files ----------------------------------------------------------
@@ -148,7 +153,7 @@ def _uses_params(function: ast.FunctionDef) -> bool:
 
 def test_collects_without_browser_or_network(items: list[dict[str, Any]]) -> None:
     assert len(items) >= 30
-    assert len({i["file"] for i in items}) >= 4
+    assert len({i["file"] for i in items}) == 5
 
 
 def test_entry_ids_are_collected_test_ids(items: list[dict[str, Any]]) -> None:
@@ -156,61 +161,82 @@ def test_entry_ids_are_collected_test_ids(items: list[dict[str, Any]]) -> None:
     for item in items:
         names.setdefault(item["file"], set()).add(item["name"])
     for test_file, collected in names.items():
-        ids = [entry["id"] for entry in _entries(test_file)]
+        ids = [entry[ID] for entry in _entries(test_file)]
         assert len(ids) == len(set(ids)), f"duplicate ids in {test_file}"
         assert set(ids) <= collected, set(ids) - collected
 
 
-def test_tests_that_use_params_have_an_entry_per_variant(items: list[dict[str, Any]]) -> None:
-    collected = {(i["file"], i["name"].split("[")[0]): set() for i in items}
-    for i in items:
-        collected[(i["file"], i["name"].split("[")[0])].add(i["name"])
+def test_tests_that_use_their_entry_have_one_per_variant(items: list[dict[str, Any]]) -> None:
+    variants: dict[str, set[str]] = {}
+    for item in items:
+        variants.setdefault(item["name"].split("[")[0], set()).add(item["name"])
+    entries = _all_entries()
     without_entry = set()
-    for path, _cls, function in _test_functions():
-        rel = path.relative_to(STANDIN).as_posix()
-        variants = collected[(rel, function.name)]
-        ids = set(_by_id(path))
-        if _uses_params(function):
-            assert variants <= ids, (function.name, variants - ids)
-        elif not variants & ids:
-            without_entry.add(function.name)
-    # Tests that read no data may have no entry.
-    assert without_entry == {"test_inventory_items_list_empty", "test_users_list_sso_banner"}
+    for name, (_path, _cls, function) in _functions().items():
+        if _uses_entry(function):
+            assert variants[name] <= set(entries), (name, variants[name] - set(entries))
+        elif not variants[name] & set(entries):
+            without_entry.add(name)
+    assert without_entry == {"test_rules_list_empty", "test_profiles_list_empty"}
 
 
-def test_every_data_key_a_test_reads_exists_in_its_entries() -> None:
-    for path, _cls, function in _test_functions():
-        keys = _reads_params(function)
-        entries = [e for e in _entries(path) if e["id"].split("[")[0] == function.name]
-        for entry in entries:
-            assert keys <= set(entry), (entry["id"], keys - set(entry))
+def test_every_entry_key_is_read_or_consumed() -> None:
+    """Custom keys are read by the test; an expectation section only with its helper."""
+    functions = _functions()
+    for entry_id, entry in _all_entries().items():
+        function = functions[entry_id.split("[")[0]][2]
+        reads, calls = _reads(function), _calls(function)
+        assert reads <= set(entry), (entry_id, reads - set(entry))
+        for key in set(entry) - {ID} - SEED - OVERRIDES:
+            if key in EXPECTATIONS:
+                assert EXPECTATIONS[key] in calls, (entry_id, key)
+            else:
+                assert key in reads, (entry_id, f"custom key {key!r} is never read")
+        assert not {"targets", "interactions"} <= set(entry), entry_id
 
 
-def test_data_files_are_arrays_with_framework_and_custom_keys() -> None:
-    custom = set()
-    for path in TEST_FILES:
-        entries = _entries(path)
-        assert isinstance(entries, list) and entries, path
-        for entry in entries:
-            assert isinstance(entry["id"], str)
-            custom |= set(entry) - FRAMEWORK_KEYS - {"id"}
-            for interaction in entry.get("interactions", []):
-                assert set(interaction) == {"request", "response"}
-                assert {"method", "endpoint"} <= set(interaction["request"])
-                assert "status" in interaction["response"]
-    assert {"item_name", "email", "expected_items", "count"} <= custom
+def test_expectation_shapes_and_path_placeholders() -> None:
+    def check_target(item: dict[str, Any]) -> None:
+        assert set(item) <= {"method", "path", "payload", "status_code", "response"}, item
+        assert {"method", "path", "response"} <= set(item)
+        assert item["path"].startswith("/api/") and ":tid" in item["path"]
+
+    seen = Counter()
+    for entry in _all_entries().values():
+        for item in entry.get("targets", []):
+            check_target(item)
+            seen["targets"] += 1
+        for block in entry.get("tenants", []):
+            assert set(block) <= {"tenant", "settings", "policy", "targets"}
+            assert re.fullmatch(r"\{tenant_id\d+\}", block["tenant"])
+            for item in block.get("targets", []):
+                check_target(item)
+                seen["tenant targets"] += 1
+        for interaction in entry.get("interactions", []):
+            assert set(interaction) == {"request", "response"}
+            assert set(interaction["request"]) <= {"method", "path", "body"}
+            assert set(interaction["response"]) <= {"status", "body"}
+            seen["interactions"] += 1
+    assert seen["targets"] >= 10 and seen["tenant targets"] >= 2 and seen["interactions"] >= 1
+    statuses = {t.get("status_code") for e in _all_entries().values() for t in e.get("targets", [])}
+    assert 403 in statuses  # a permission test
 
 
-def test_stacked_parametrize_ids_put_the_bottom_decorator_first(
-    items: list[dict[str, Any]],
-) -> None:
-    names = {i["name"] for i in items}
-    # @parametrize("entry_mode", ...) above @parametrize("quantity", ...): quantity comes first.
-    assert "test_inventory_item_create_invalid_quantity[0-typed]" in names
-    assert "test_inventory_item_create_invalid_quantity[typed-0]" not in names
-    assert "test_inventory_item_create_invalid_quantity[0-typed]" in _by_id(
-        "tests/inventory/test_inventory.py"
-    )
+def test_seed_holds_only_settings_policy_and_tenants() -> None:
+    for entry_id, entry in _all_entries().items():
+        settings = entry.get("settings", {})
+        assert set(settings) <= {"capabilities", "roles", "api_tokens"}, entry_id
+        assert set(entry.get("policy", {})) <= {"rules", "profiles"}, entry_id
+
+
+def test_stacked_parametrize_and_priority_override(items: list[dict[str, Any]]) -> None:
+    by_name = {i["name"]: i for i in items}
+    # @parametrize("change", ...) above @parametrize("role", ...): role comes first.
+    assert "test_policy_api_rules_update_forbidden[viewer-replace]" in by_name
+    assert "test_policy_api_rules_update_forbidden[replace-viewer]" not in by_name
+    assert "test_policy_api_rules_update_forbidden[viewer-replace]" in _all_entries()
+    assert by_name["test_rules_add_basic[allow]"]["priority"] == "p0"  # from the decorator
+    assert by_name["test_rules_add_basic[deny]"]["priority"] == "p2"  # from the JSON entry
 
 
 def test_all_tests_carry_the_four_markers_with_known_values(items: list[dict[str, Any]]) -> None:
@@ -226,25 +252,32 @@ def test_all_tests_carry_the_four_markers_with_known_values(items: list[dict[str
 # --- Class scaffold, page objects, assertions -------------------------------------------
 
 
-def test_classes_use_the_base_class_and_the_decorator_stack() -> None:
+def test_classes_use_the_base_class_scaffold_and_setup() -> None:
     styles = Counter()
     for _path, cls in _test_classes():
         assert [_dotted(b) for b in cls.bases] == ["BaseTest"], cls.name
         decorators = [_dotted(d) for d in cls.decorator_list]
-        assert [d for d in decorators if d != "data_driven"] == list(CLASS_DECORATORS), cls.name
-        styles["self.params" if "data_driven" in decorators else "params argument"] += 1
-    # Most classes load data with the class decorator; some take a ``params`` argument.
-    assert styles["self.params"] >= 2 and styles["params argument"] >= 1
+        assert decorators[-2:] == ["pytest.mark.project", "pytest.mark.component"], cls.name
+        assert "environments" in decorators, cls.name
+        methods = {n.name: n for n in cls.body if isinstance(n, ast.FunctionDef)}
+        if "setup" in methods:
+            assert "self.base_setup" in _calls(methods["setup"]), cls.name
+            styles["setup"] += 1
+        if "setup_method" in methods:
+            styles["setup_method"] += 1
+        styles["teardown"] += "teardown" in methods
+        styles["data_driven" if "data_driven" in decorators else "params argument"] += 1
+    assert styles["setup"] >= 3 and styles["setup_method"] >= 1 and styles["teardown"] >= 1
+    assert styles["data_driven"] >= 3 and styles["params argument"] >= 1
 
 
-def test_params_argument_classes_take_params_in_every_test() -> None:
-    for _path, cls, function in _test_functions():
-        decorators = [_dotted(d) for d in cls.decorator_list]
-        args = [a.arg for a in function.args.args]
-        if "data_driven" in decorators:
-            assert "params" not in args, function.name
-        elif _uses_params(function):
-            assert "params" in args, function.name
+def test_base_setup_options_vary_by_class() -> None:
+    options = set()
+    for _path, cls in _test_classes():
+        for node in ast.walk(cls):
+            if isinstance(node, ast.Call) and _dotted(node.func) == "self.base_setup":
+                options |= {k.arg for k in node.keywords}
+    assert {"fresh_driver", "policy_wait"} <= options
 
 
 def test_page_objects_use_properties_and_never_chain() -> None:
@@ -252,27 +285,45 @@ def test_page_objects_use_properties_and_never_chain() -> None:
     for path in (STANDIN / "framework" / "pages").glob("*.py"):
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.FunctionDef):
-                decorators = [_dotted(d) for d in node.decorator_list]
-                setters += any(d.endswith(".setter") for d in decorators)
+                setters += any(_dotted(d).endswith(".setter") for d in node.decorator_list)
             if isinstance(node, ast.Return) and isinstance(node.value, ast.Name):
                 assert node.value.id != "self", path.name  # actions return nothing
-    assert setters >= 10
+    assert setters >= 15
     for path, _cls, function in _test_functions():
         for statement in function.body:
             for node in ast.walk(statement):
-                # No ``page.open().x``: a call's result is never used as an object.
                 is_chained = isinstance(node, ast.Attribute) and isinstance(node.value, ast.Call)
                 assert not is_chained, (path.name, function.name)
 
 
-def test_ui_checks_use_the_assertion_object() -> None:
+def test_save_flows_use_the_shared_top_bar() -> None:
+    flows = Counter()
+    for _path, _cls, function in _test_functions():
+        calls = _calls(function)
+        flows["publish"] += "top_bar.publish" in calls
+        flows["reset"] += "top_bar.reset" in calls
+        flows["settings save"] += any(
+            isinstance(n, ast.Call)
+            and _dotted(n.func).endswith("top_bar.save")
+            and any(k.arg == "settings" for k in n.keywords)
+            for n in ast.walk(function)
+        )
+    assert flows["publish"] >= 8 and flows["reset"] >= 2 and flows["settings save"] >= 2
+
+
+def test_checks_use_the_unittest_assertion_object() -> None:
     for path, _cls, function in _test_functions():
         assert not any(isinstance(n, ast.Assert) for n in ast.walk(function)), function.name
-        calls = {_dotted(n.func) for n in ast.walk(function) if isinstance(n, ast.Call)}
-        assert calls & {"self.check.equal", "self.check.same_items", "self.validate_backend"}, (
-            path.name,
-            function.name,
-        )
+        calls = _calls(function)
+        checks = {c for c in calls if c.startswith("self.check.assert")}
+        assert checks or calls & set(EXPECTATIONS.values()), (path.name, function.name)
+    tc_methods = {
+        c.removeprefix("self.check.")
+        for _p, _c, f in _test_functions()
+        for c in _calls(f)
+        if c.startswith("self.check.")
+    }
+    assert {"assertEqual", "assertIn", "assertNotIn", "assertFalse"} <= tc_methods
 
 
 def test_test_names_summarize_area_and_never_contain_ticket_ids() -> None:
@@ -285,45 +336,52 @@ def test_test_names_summarize_area_and_never_contain_ticket_ids() -> None:
         assert not re.search(r"\d{3,}", cls.name)
 
 
-# --- Repetition, placeholders, self-referencing names ------------------------------------
+# --- Placeholders and repetition ---------------------------------------------------------
 
 
-def test_large_seed_blocks_repeat_across_entries() -> None:
-    for test_file in ("tests/inventory/test_inventory.py", "tests/orders/test_orders.py"):
-        entries = _entries(test_file)
-        settings = {json.dumps(e["settings"], sort_keys=True) for e in entries}
-        assert len(settings) == 1
-        policies = [{k: v for k, v in e["policy"].items() if k != "name"} for e in entries]
-        common = Counter(json.dumps(p, sort_keys=True) for p in policies).most_common(1)[0]
-        assert common[1] >= len(entries) - 3 and len(common[0]) > 600
+def test_unique_names_use_the_test_id_placeholder() -> None:
+    for entry_id, entry in _all_entries().items():
+        blocks = [entry, *entry.get("tenants", [])]
+        for block in blocks:
+            policy = block.get("policy", {})
+            for obj in policy.get("rules", []) + policy.get("profiles", []):
+                assert re.search(r"\{test_id:\d+\}", obj["name"]), (entry_id, obj["name"])
+
+
+def test_placeholders_resolve_like_the_code_helper(standin: dict[str, ModuleType]) -> None:
+    placeholders = standin["framework.placeholders"]
+    resolved = placeholders.resolve(
+        {"name": "{test_id:24}", "tenant": "{tenant_id2}", "roles": {"{user_1}": "viewer"}},
+        "test_rules_add_basic[allow]",
+        SUFFIX,
+    )
+    assert resolved == {
+        "name": "rules-add-basic-a-abc123",
+        "tenant": "tenant-b",
+        "roles": {"user1@example.com": "viewer"},
+    }
+    assert len(resolved["name"]) <= 24
+    assert placeholders.unique_name("test_rules_add_basic[allow]", SUFFIX, 24) == resolved["name"]
+
+
+def test_large_seed_blocks_repeat_across_variants() -> None:
+    entries = _by_id("tests/rules/test_rules.py")
+    prefixes = ("test_rules_list_search", "test_rules_list_filter", "test_rules_list_pagination")
+    lists = [e["policy"] for k, e in entries.items() if k.startswith(prefixes)]
+    assert len(lists) >= 6 and all(p == lists[0] for p in lists)
+    assert len(json.dumps(lists[0])) > 1000
+    capabilities = Counter(json.dumps(e["settings"], sort_keys=True) for e in entries.values())
+    assert capabilities.most_common(1)[0][1] >= len(entries) - 2
 
 
 def test_variants_differ_by_one_or_two_values() -> None:
-    entries = _by_id("tests/inventory/test_inventory.py")
-    one = entries["test_inventory_item_create_category_not_allowed[software]"]
-    other = entries["test_inventory_item_create_category_not_allowed[office]"]
-    assert {k: v for k, v in one.items() if k != "id"} == {
-        k: v for k, v in other.items() if k != "id"
-    }
-    small, big = entries["test_inventory_item_create[1]"], entries["test_inventory_item_create[50]"]
-    assert set(big) - set(small) == {"priority"}
-    assert small["policy"] == big["policy"]
-
-
-def test_policy_names_derive_from_the_test_name() -> None:
-    for entry in _all_entries():
-        if "policy" in entry:
-            function = entry["id"].split("[")[0].removeprefix("test_")
-            assert entry["policy"]["name"] == "policy-" + function.replace("_", "-")
-
-
-def test_unique_names_use_the_placeholder() -> None:
-    for entry in _all_entries():
-        for key in ("item_name", "email"):
-            if key in entry:
-                assert "{{unique}}" in entry[key], (entry["id"], key)
-        for item in entry.get("targets", {}).get("items", []):
-            assert "{{unique}}" in item["name"], entry["id"]
+    entries = _by_id("tests/rules/test_rules.py")
+    exact, partial = (
+        entries["test_rules_list_search[exact]"],
+        entries["test_rules_list_search[partial]"],
+    )
+    differing = {k for k in exact if exact[k] != partial[k]}
+    assert differing == {ID, "query", "expected_count"}
 
 
 # --- Style -------------------------------------------------------------------------------
@@ -361,19 +419,13 @@ def test_json_style_indent_3_compact_keys_final_newline() -> None:
         assert raw == formatted + "\n", path
 
 
-# --- Overrides and skips ----------------------------------------------------------------
-
-
-def test_entry_priority_override_is_applied(items: list[dict[str, Any]]) -> None:
-    by_name = {i["name"]: i for i in items}
-    assert by_name["test_inventory_item_create[1]"]["priority"] == "p1"  # from the decorator
-    assert by_name["test_inventory_item_create[50]"]["priority"] == "p2"  # from the JSON entry
+# --- Skips --------------------------------------------------------------------------------
 
 
 def test_entry_skip_cites_a_ticket_id(items: list[dict[str, Any]]) -> None:
     pattern = re.compile(Settings().eval.ticket_id_pattern)
     skipped = [i for i in items if any(pattern.search(r) for r in i["skips"])]
-    assert [i["name"] for i in skipped] == ["test_settings_notifications_digest_enable"]
+    assert [i["name"] for i in skipped] == ["test_profiles_edit_reset"]
     assert skipped[0]["skips"][0].startswith("STND-105:")
 
 
@@ -383,13 +435,18 @@ def test_deployment_type_skips(
     def skipped(collected: list[dict[str, Any]]) -> set[str]:
         return {i["name"] for i in collected if any("only test" in r for r in i["skips"])}
 
-    assert skipped(items) == {"test_users_profile_deactivate"}
-    assert skipped(on_prem_items) == {"test_users_list_sso_banner"}
+    assert skipped(items) == {"test_settings_capabilities_disable_profiles"}
+    assert skipped(on_prem_items) == {
+        "test_tenants_secondary_rules_add",
+        "test_tenants_secondary_rules_list",
+    }
 
 
-def test_platform_selection_skips_other_browsers() -> None:
+def test_platform_selection_skips_browser_classes_only() -> None:
     collected = _collect("cloud", browser="safari")
-    assert collected and all(any("runs only on" in r for r in i["skips"]) for i in collected)
+    skipped = {i["file"] for i in collected if any("runs only on" in r for r in i["skips"])}
+    assert "tests/api/test_policy_api.py" not in skipped  # no browser, no platform selection
+    assert "tests/rules/test_rules.py" in skipped
 
 
 # --- Test kinds (manifest) --------------------------------------------------------------
@@ -402,10 +459,9 @@ def test_manifest_covers_exactly_the_collected_functions(items: list[dict[str, A
 def test_test_kind_mix() -> None:
     kinds = Counter(t["kind"] for t in MANIFEST["tests"].values())
     total = sum(kinds.values())
-    assert total >= 20
+    assert total >= 25
     assert 0.80 <= kinds["ui"] / total <= 0.92
-    assert kinds["api"] >= 1
-    assert kinds["hybrid"] >= 1
+    assert kinds["api"] >= 1 and kinds["hybrid"] >= 1
 
 
 def test_api_tests_never_touch_the_browser() -> None:
@@ -417,100 +473,209 @@ def test_api_tests_never_touch_the_browser() -> None:
         assert not any(u.startswith(("self.nav", "self.driver")) for u in used), function.name
 
 
-# --- Interactions replay against the app (in process, no server) -------------------------
+# --- Expectations replay against the app (in process, no server) -------------------------
 
 
 @pytest.fixture
-def standin_modules() -> Iterator[dict[str, ModuleType]]:
+def standin() -> Iterator[dict[str, ModuleType]]:
     sys.path.insert(0, str(STANDIN))
+    names = (
+        "app.state",
+        "app.server",
+        "framework.config",
+        "framework.data",
+        "framework.placeholders",
+        "framework.validations",
+    )
     try:
-        yield {
-            "state": importlib.import_module("app.state"),
-            "server": importlib.import_module("app.server"),
-            "names": importlib.import_module("framework.names"),
-            "validations": importlib.import_module("framework.validations"),
-        }
+        yield {name: importlib.import_module(name) for name in names}
     finally:
         sys.path.remove(str(STANDIN))
 
 
-def _replay(modules: dict[str, ModuleType], entry: dict[str, Any], action: Any = None) -> None:
-    """Seed the app from the entry, run the UI action's backend effect, replay interactions."""
-    server, validations = modules["server"], modules["validations"]
-    entry = modules["names"].resolve_placeholders(entry, "abc123")
+Effect = Callable[[Any, dict[str, Any], str, str], Any]
+
+
+def _effects() -> dict[str, Effect]:
+    """The backend effect of each UI flow: (store, entry, unique name, tenant) -> None."""
+
+    def add_rule(action: str, **extra: Any) -> Effect:
+        def run(s: Any, e: dict[str, Any], name: str, t: str) -> None:
+            s.add_rule(t, {"name": name, "action": action, **extra})
+            s.save(t)
+            s.publish(t)
+
+        return run
+
+    def then_publish(change: Callable[[Any, dict[str, Any], str, str], Any]) -> Effect:
+        def run(s: Any, e: dict[str, Any], name: str, t: str) -> None:
+            change(s, e, name, t)
+            s.save(t)
+            s.publish(t)
+
+        return run
+
+    imported = json.loads((STANDIN / "tests/rules/files/rules_import.json").read_text("utf-8"))
+    return {
+        "test_rules_add_basic[allow]": add_rule("allow"),
+        "test_rules_add_basic[deny]": add_rule("deny"),
+        "test_rules_add_with_condition": add_rule(
+            "log", conditions=[{"field": "region", "value": "north"}]
+        ),
+        "test_rules_edit_action": then_publish(
+            lambda s, e, n, t: s.update_rule(t, n, {"action": "deny"})
+        ),
+        "test_rules_edit_disable": then_publish(
+            lambda s, e, n, t: s.update_rule(t, n, {"enabled": False})
+        ),
+        "test_rules_edit_reset": lambda s, e, n, t: (
+            s.update_rule(t, n, {"action": "deny"}),
+            s.discard(t),
+        ),
+        "test_rules_delete_single": then_publish(
+            lambda s, e, n, t: s.delete_rules(t, [e["delete_name"]])
+        ),
+        "test_rules_delete_several": then_publish(
+            lambda s, e, n, t: s.delete_rules(t, e["delete_names"])
+        ),
+        "test_rules_import_file": then_publish(lambda s, e, n, t: s.import_rules(t, imported)),
+        "test_profiles_add_basic": then_publish(
+            lambda s, e, n, t: s.add_profile(t, {"name": n, "level": "medium"})
+        ),
+        "test_profiles_edit_level[low]": then_publish(
+            lambda s, e, n, t: s.update_profile(t, n, {"level": "low"})
+        ),
+        "test_profiles_edit_level[high]": then_publish(
+            lambda s, e, n, t: s.update_profile(t, n, {"level": "high"})
+        ),
+        "test_profiles_delete_created": lambda s, e, n, t: (
+            then_publish(
+                lambda s, e, n, t: (
+                    s.add_profile(t, {"name": e["keep_name"], "level": "low"}),
+                    s.add_profile(t, {"name": e["delete_name"], "level": "high"}),
+                )
+            )(s, e, n, t),
+            then_publish(lambda s, e, n, t: s.delete_profile(t, e["delete_name"]))(s, e, n, t),
+        ),
+        "test_profiles_edit_reset": lambda s, e, n, t: (
+            s.update_profile(t, n, {"level": "high"}),
+            s.discard(t),
+        ),
+        "test_settings_capabilities_enable_bulk": lambda s, e, n, t: s.update_capabilities(
+            t, {"bulk_delete": True}
+        ),
+        "test_settings_capabilities_disable_profiles": lambda s, e, n, t: s.update_capabilities(
+            t, {"profiles": False}
+        ),
+        "test_tenants_secondary_rules_add": lambda s, e, n, t: add_rule("deny")(
+            s, e, n, "tenant-b"
+        ),
+    }
+
+
+def _replay(standin: dict[str, ModuleType], test_id: str, effect: Effect | None) -> None:
+    """Seed from the entry, run the flow's backend effect, then check every expectation."""
+    state, server = standin["app.state"], standin["app.server"]
+    config = standin["framework.config"].CONFIG
+    placeholders, validations = standin["framework.placeholders"], standin["framework.validations"]
+    entry = placeholders.resolve(_all_entries()[test_id], test_id, SUFFIX)
+    primary = config.tenants[0]
     store = server.STORE
     store.reset()
-    store.seed({k: entry[k] for k in SEED_SECTIONS if k in entry})
-    if action:
-        action(store, entry)
-    for interaction in entry.get("interactions", []):
-        request, expected = interaction["request"], interaction["response"]
-        parts = [p for p in request["endpoint"].strip("/").split("/") if p]
-        try:
-            status, body = 200, server.route_api(request["method"], parts, request.get("body"))
-        except modules["state"].ValidationError as error:
-            status, body = 422, {"error": str(error)}
-        except (KeyError, LookupError, ValueError):
-            status, body = 404, {"error": "not found"}
-        assert status == expected["status"], (entry["id"], request)
-        if "body" in expected:
-            validations.matches_subset(body, expected["body"])
+    service = {"roles": {config.service_user: "admin"}}
+    blocks = [{"tenant": t, "settings": service} for t in config.tenants]
+    store.seed(blocks + standin["framework.data"].seed_blocks(entry, primary))
+    if effect is not None:
+        effect(store, entry, placeholders.unique_name(test_id, SUFFIX, 24), primary)
 
-
-# The backend effect of each UI flow, so expectations can be checked without a browser.
-_UI_EFFECTS: dict[str, Any] = {
-    "test_inventory_item_create[1]": lambda s, e: s.create_item(e["item_name"], 1, "hardware"),
-    "test_inventory_item_create[50]": lambda s, e: s.create_item(e["item_name"], 50, "hardware"),
-    "test_inventory_item_edit_category": lambda s, e: s.update_item(
-        e["item_name"], category="office"
-    ),
-    "test_inventory_item_delete": lambda s, e: s.delete_item(e["item_name"]),
-    "test_orders_checkout_place": lambda s, e: s.create_order(
-        [{"item": e["item_name"], "quantity": 3}]
-    ),
-    "test_orders_detail_cancel": lambda s, e: s.cancel_order(1),
-    "test_orders_api_create_cancel_in_ui": lambda s, e: s.cancel_order(
-        s.create_order([{"item": e["item_name"], "quantity": 1}])["id"]
-    ),
-    "test_settings_general_timezone_reload": lambda s, e: s.update_settings(
-        {"timezone": "America/New_York"}
-    ),
-    "test_users_profile_role_change": lambda s, e: s.change_role(e["email"], "admin"),
-}
-
-
-@pytest.mark.parametrize(
-    "test_file, entry_id",
-    [
-        ("tests/inventory/test_inventory.py", "test_inventory_items_api_list"),
-        ("tests/orders/test_orders.py", "test_orders_api_create_unknown_item"),
+    user = config.users[0] if test_id.startswith("test_policy_api_") else config.service_user
+    checks = [(primary, t) for t in entry.get("targets", [])]
+    checks += [(b["tenant"], t) for b in entry.get("tenants", []) for t in b.get("targets", [])]
+    checks += [
         (
-            "tests/inventory/test_inventory.py",
-            "test_inventory_item_create_invalid_quantity[0-typed]",
-        ),
-    ],
-)
-def test_interactions_replay(
-    standin_modules: dict[str, ModuleType], test_file: str, entry_id: str
-) -> None:
-    _replay(standin_modules, _by_id(test_file)[entry_id])
-
-
-def test_ui_flow_interactions_replay(standin_modules: dict[str, ModuleType]) -> None:
-    entries = {e["id"]: e for e in _all_entries()}
-    for entry_id, action in _UI_EFFECTS.items():
-        _replay(standin_modules, entries[entry_id], action)
-
-
-def test_policy_limit_is_enforced(standin_modules: dict[str, ModuleType]) -> None:
-    entry = _by_id("tests/orders/test_orders.py")["test_orders_checkout_policy_limit"]
-    state = standin_modules["state"]
-    with pytest.raises(state.ValidationError, match=re.escape(entry["error"])):
-        _replay(
-            standin_modules,
-            entry,
-            lambda s, e: s.create_order([{"item": e["item_name"], "quantity": e["quantity"]}]),
+            primary,
+            {
+                "method": i["request"]["method"],
+                "path": i["request"]["path"],
+                "payload": i["request"].get("body"),
+                "status_code": i["response"].get("status", 200),
+                "response": i["response"].get("body"),
+            },
         )
+        for i in entry.get("interactions", [])
+    ]
+    assert checks, test_id
+    for tenant, item in checks:
+        path = validations.fill_path(item["path"], tenant, store.tenant(tenant).rev_id)
+        parts = [p for p in path.removeprefix("/api/").split("/") if p]
+        try:
+            status = 200
+            body = server.route_api(item["method"], parts, item.get("payload"), user)
+        except state.PermissionDenied as error:
+            status, body = 403, {"error": str(error)}
+        except state.ValidationError as error:
+            status, body = 422, {"error": str(error)}
+        assert status == item.get("status_code", 200), (test_id, path, body)
+        if item.get("response") is not None:
+            validations.matches_subset(body, item["response"])
+
+
+def _with_expectations() -> list[str]:
+    return [
+        test_id
+        for test_id, entry in _all_entries().items()
+        if entry.get("targets")
+        or entry.get("interactions")
+        or any(b.get("targets") for b in entry.get("tenants", []))
+    ]
+
+
+def test_every_expectation_is_covered_by_a_replay() -> None:
+    api_only = {i for i in _with_expectations() if i.startswith("test_policy_api_")}
+    assert set(_with_expectations()) - api_only <= set(_effects())
+
+
+@pytest.mark.parametrize("test_id", _with_expectations())
+def test_expectations_replay_against_the_app(standin: dict[str, ModuleType], test_id: str) -> None:
+    _replay(standin, test_id, _effects().get(test_id))
+
+
+def test_open_bug_shows_in_the_ui_view(standin: dict[str, ModuleType]) -> None:
+    """STND-105 (open): after a reset, the UI still shows the profile edit."""
+    test_id = "test_profiles_edit_reset"
+    _replay(standin, test_id, _effects()[test_id])
+    name = standin["framework.placeholders"].unique_name(test_id, SUFFIX, 24)
+    tenant = standin["framework.config"].CONFIG.tenants[0]
+    shown = standin["app.server"].STORE.search_profiles(tenant, name)
+    assert [p["level"] for p in shown] == ["high"]  # the test expects "low", so it is skipped
+
+
+def test_ui_only_expectations_match_the_app(standin: dict[str, ModuleType]) -> None:
+    placeholders, server = standin["framework.placeholders"], standin["app.server"]
+    config = standin["framework.config"].CONFIG
+    store = server.STORE
+
+    def seeded(test_id: str) -> dict[str, Any]:
+        entry = placeholders.resolve(_all_entries()[test_id], test_id, SUFFIX)
+        store.reset()
+        store.seed(standin["framework.data"].seed_blocks(entry, config.tenants[0]))
+        return entry
+
+    tenant = config.tenants[0]
+    for match in ("exact", "partial", "mixed_case"):
+        entry = seeded(f"test_rules_list_search[{match}]")
+        assert store.list_rules(tenant, entry["query"])[1] == entry["expected_count"], match
+    for action in ("allow", "deny"):
+        entry = seeded(f"test_rules_list_filter_action[{action}]")
+        assert store.list_rules(tenant, "", action)[1] == entry["expected_count"], action
+    entry = seeded("test_rules_list_pagination")
+    assert len(store.list_rules(tenant, "", "allow", 2)[0]) == entry["last_page_count"]
+    entry = seeded("test_profiles_list_search")
+    assert [p["name"] for p in store.search_profiles(tenant, "team")] == entry["expected_names"]
+    entry = seeded("test_rules_add_duplicate_name")
+    name = placeholders.unique_name("test_rules_add_duplicate_name", SUFFIX, 24)
+    with pytest.raises(standin["app.state"].ValidationError, match="already exists"):
+        store.add_rule(tenant, {"name": name})
 
 
 # --- Tickets ----------------------------------------------------------------------------
@@ -544,8 +709,8 @@ def test_history_has_skip_removed_by_fix_commits(tmp_path: Path) -> None:
     subjects = git("log", "--reverse", "--format=%s").splitlines()
     assert subjects == [
         "Add stand-in suite",
-        "Fix STND-103: reject item quantities below 1",
-        "Fix STND-104: cancelling an order sets it to cancelled",
+        "Fix STND-103: reject duplicate rule names",
+        "Fix STND-104: deleted rules stay deleted after publishing",
     ]
     pattern = re.compile(Settings().eval.ticket_id_pattern)
     for rev, ticket in (("HEAD~1", "STND-103"), ("HEAD", "STND-104")):
@@ -555,30 +720,34 @@ def test_history_has_skip_removed_by_fix_commits(tmp_path: Path) -> None:
             if line.startswith("-") and not line.startswith("---")
         ]
         assert any(ticket in pattern.findall(line) for line in removed), rev
-    # The final tree is the stand-in as committed.
-    assert "skip" not in _by_id("tests/orders/test_orders.py")["test_orders_detail_cancel"]
+    assert "skip" not in _by_id("tests/rules/test_rules.py")["test_rules_delete_single"]
 
 
 # --- App state (no server needed) -------------------------------------------------------
 
 
-def test_app_state_rules(standin_modules: dict[str, ModuleType]) -> None:
-    state = standin_modules["state"]
+def test_app_state_layers_and_revisions(standin: dict[str, ModuleType]) -> None:
+    state = standin["app.state"]
     store = state.Store()
-    store.seed({"targets": {"items": [{"name": "widget", "quantity": 5}]}})
-    with pytest.raises(state.ValidationError, match="at least 1"):
-        store.create_item("bad", 0)
-    order = store.create_order([{"item": "widget", "quantity": 2}])
-    assert store.items["widget"]["quantity"] == 3
-    store.cancel_order(order["id"])
-    assert order["status"] == "cancelled"
-    assert store.items["widget"]["quantity"] == 5
-    store.seed({"policy": {"allowed_categories": ["general"]}})
-    with pytest.raises(state.ValidationError, match="not allowed by policy"):
-        store.create_item("tool", 1, "hardware")
-    # STND-105 is a deliberate open bug: the weekly digest is not saved.
-    store.update_settings({"notifications": {"weekly_digest": True}})
-    assert store.settings["notifications"]["weekly_digest"] is False
+    store.seed([{"tenant": "t1", "policy": {"rules": [{"name": "a"}]}}])
+    tenant = store.tenant("t1")
+    assert tenant.rev_id == 1 and not tenant.has_unsaved_changes
+    store.add_rule("t1", {"name": "b", "action": "deny"})
+    assert tenant.has_unsaved_changes and store.published("t1", 1)["rules"] == [
+        state._rule({"name": "a"})
+    ]
+    with pytest.raises(state.ValidationError, match="Save your changes"):
+        store.publish("t1")
+    store.save("t1")
+    assert store.publish("t1") == 2
+    assert [r["name"] for r in store.published("t1", 2)["rules"]] == ["a", "b"]
+    with pytest.raises(state.ValidationError, match="already exists"):
+        store.add_rule("t1", {"name": "a"})
+    with pytest.raises(state.ValidationError, match="several rules"):
+        store.delete_rules("t1", ["a", "b"])
+    with pytest.raises(state.PermissionDenied):
+        store.api_replace_rules("t1", "nobody@example.com", [])
+    assert store.list_rules("t1", "A")[1] == 1  # case-insensitive search
 
 
 # --- Generic names only -----------------------------------------------------------------
@@ -587,7 +756,6 @@ def test_app_state_rules(standin_modules: dict[str, ModuleType]) -> None:
 def test_only_generic_hosts_in_the_standin() -> None:
     allowed = {"localhost", "127.0.0.1", "example.com", "jira.example.com"}
     host = re.compile(r"https?://([A-Za-z0-9.-]+)")
-    # "@" right after a name character (or the closing "}}" of a placeholder), not a decorator.
     email_domain = re.compile(r"(?<=[\w}])@([A-Za-z0-9-]+\.[A-Za-z0-9.-]+)")
     for path in STANDIN.rglob("*"):
         if path.suffix not in {".py", ".json", ".md", ".ini", ".toml"}:

@@ -20,7 +20,7 @@ Tracks progress, scope, and acceptance criteria for each phase. Read together wi
 | 1 | Ticket normalizer | ✅ | 0 |
 | 2 | Draft generation | ✅ | 1 |
 | 3 | Synthetic stand-in repo | ✅ | 0 |
-| 3b | Stand-in v2/v3 (real-framework patterns) | 🟡 (v3) | 3 |
+| 3b | Stand-in v2/v3 (real-framework patterns) | ✅ | 3 |
 | 4 | Indexer (Python) | ✅ | 3 |
 | 5 | Retrieval | ✅ | 2, 4 |
 | 6 | Code generation (code + JSON pair) | 🟡 (rework after 3b) | 5, 3b |
@@ -220,7 +220,7 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 ---
 
 ## Phase 3b: Stand-in v2/v3 (real-framework patterns)
-**Status:** 🟡 v2 done; v3 in progress
+**Status:** ✅ Done (v3)
 
 **Why:** the human compared a Phase 6 generated pair with the real framework (2026-10-06) and listed ten generic structural differences: class scaffold, data loading, page-object style, assertion style, data-file shape and content, expectation format, marker values, style rules, and "needs a real run" behaviours. Several came from the v1 stand-in itself, which the generator copied faithfully. The updated patterns are in `CLAUDE.md` → "Target test-suite patterns".
 
@@ -254,8 +254,8 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 - **Supporting files:** new fake tickets and the history (code skip, JSON skip, open bug).
 
 **v3 Definition of Done:** the v2 items, plus:
-- [ ] every v3 pattern is checked by a project test;
-- [ ] `targets` and `interactions` are replayed in-process against the app.
+- [x] every v3 pattern is checked by a project test (`tests/test_standin.py`, 55 checks);
+- [x] `targets` and `interactions` are replayed in-process against the app (a mutation check confirmed the replay catches the STND-104 bug).
 
 **Definition of Done:**
 - [x] Every updated pattern above is present and checked by a project test (`tests/test_standin.py`, 35 checks, `ast`-based)
@@ -281,6 +281,15 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
   - **Return-type inference:** types are now inferred from `return Callee(...)` when there is no annotation, so property chains still resolve without annotations. `INDEX_VERSION` is now 3.
   - **Retry on save:** the index save retries the rename up to `index.save_attempts` (a Windows lock made one test flaky).
 - 2026-10-06: Stand-in v2 retrieval baseline (deterministic, no LLM): recall@10 0.833, MRR 0.367 (v1: 0.833 / 0.376). The v1 generator tests (`test_generate.py`, `test_generate_live.py`) are skipped until `generate_v2` (step C): they build entries in the v1 shape, which no longer exists.
+
+- 2026-10-06: v3 built.
+  - **App:** a per-tenant policy app (rules, profiles, settings), with a working copy → saved draft → published revisions, the top bar, a role-checked API, and `:tid` / `:rev_id` endpoints.
+  - **Framework:** a framework fixture with per-class `setup` → `base_setup(fresh_driver, policy_wait, skip_seed)`; `self.check = unittest.TestCase()`; `verify_targets` / `verify_interactions`; brace placeholders with `unique_name`; policy and settings managers; page objects for the top bar, rules (list / wizard / editor / confirm / import), profiles, and capabilities.
+  - **Tests and data:** 28 test functions (36 ids) in 5 areas, covering the four shapes, a UI helper, a manager, an import file, a multi-tenant class with login/logout, and a runtime-style API class with a stacked parametrize and a PUT + 403 permission check. The data uses `test_id`, one expectation section per entry, and a repeated 12-rule list policy.
+  - **Tickets and history:** new STND-101..106 for the new domain, and a history with the duplicate-name code skip and the delete JSON skip.
+  - **Project tests:** check rule (1) on the stand-in itself (every custom key read, expectation sections only with their helper, never both), replay every expectation, and compare the UI-only counts against the app.
+  - **Pipeline:** `data.id_field: test_id`, `data.seed_sections` and `data.expectation_sections` (section → helper; replaces `reading_helpers`), `generate.placeholder_token: {test_id:24}`, `generate.scaffold_methods` (the scaffold piece now includes the class's setup/teardown), and prompt `generate_v3` (the final checks must verify the name's claim; save flows; the assertion object as in the examples; helpers take no arguments; seed only what is needed). The response self-checks now include rule (1): unread custom keys, an expectation section whose helper isn't called, and two expectation sections.
+- 2026-10-06: Verified: ruff, mypy strict (64 files), pytest 428 passed, 12 live deselected. Stand-in v3 deterministic retrieval: recall@10 0.833, MRR 0.311 (STND-104 missed without the LLM, as in v2).
 
 ---
 
@@ -595,4 +604,5 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 | 2026-10-05 | all | Priority marker values changed to lowercase `p0`–`p3` (human request) in config, the stand-in suite and its data, and tests. Earlier log entries keep the values as written then. |
 | 2026-10-06 | – | Pushed the repo to github.com/DangNguyen254/ai-in-testing (human's request): merged GitHub's initial commit (LICENSE only) instead of force-pushing; kept the LICENSE holder DangNguyen254 |
 | 2026-10-06 | all | Target patterns updated from the human's real-framework comparison (CLAUDE.md patterns, guardrails, data models, phases). New Phase 3b (stand-in v2); Phase 6 to be reworked after it; Phase 7 validator list extended |
+| 2026-10-06 | 3b | Stand-in v3 built and verified (policy app with top bar, four test shapes, targets/interactions replayed, rule (1) checked on the stand-in); generate_v3 prompt and self-checks |
 | 2026-10-06 | 3b | Stand-in v2 built and verified (patterns checked by project tests; indexer reads array data and infers unannotated types; config `data`; `Chunk.data_format`); marked ✅ Done. v1 generator tests skipped until `generate_v2` |

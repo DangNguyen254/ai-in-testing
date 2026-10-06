@@ -33,9 +33,10 @@ from ticket2test.models.generated import (
     CTX_BASE_ID,
     CTX_CLASS_PREFIX,
     CTX_DATA_ACCESS,
-    CTX_DATA_HELPERS,
+    CTX_EXPECTATIONS,
     CTX_ID_FIELD,
     CTX_PER_ENTRY_KEYS,
+    CTX_SEED_SECTIONS,
     CTX_TEST_PREFIX,
     CTX_TICKET_ID,
     GeneratedTest,
@@ -106,7 +107,8 @@ def generate_test(
             CTX_ID_FIELD: data.id_field,
             CTX_PER_ENTRY_KEYS: data.per_entry_keys,
             CTX_DATA_ACCESS: data.access,
-            CTX_DATA_HELPERS: data.reading_helpers,
+            CTX_EXPECTATIONS: data.expectation_sections,
+            CTX_SEED_SECTIONS: data.seed_sections,
             CTX_TICKET_ID: draft.ticket_id,
         },
     )
@@ -179,8 +181,9 @@ def first_party(index: IndexData, settings: Settings) -> list[str]:
     return sorted(roots)
 
 
-def class_scaffold(chunk: Chunk, index: IndexData) -> str | None:
-    """The template module's imports, then its class decorators and class line, as written."""
+def class_scaffold(chunk: Chunk, index: IndexData, methods: list[str] | None = None) -> str | None:
+    """The template module's imports, its class decorators and class line, and the class's
+    setup/teardown methods (``methods``), as written."""
     record = index.files.get(chunk.file_path)
     if record is None or record.info is None or chunk.class_name is None:
         return None
@@ -190,7 +193,19 @@ def class_scaffold(chunk: Chunk, index: IndexData) -> str | None:
     bases = f"({', '.join(cls.bases)})" if cls.bases else ""
     header = [*(f"@{d}" for d in cls.decorators), f"class {cls.name}{bases}:"]
     imports = [*record.info.imports, ""] if record.info.imports else []
-    return "\n".join([*imports, *header])
+    hooks = [m for m in cls.methods if m.name in (methods or [])]
+    body = ["\n\n".join(_as_in_class(m.code, cls.code) for m in hooks)] if hooks else []
+    return "\n".join([*imports, *header, *body])
+
+
+def _as_in_class(method_code: str, class_code: str) -> str:
+    """Extracted method code starts at its first character; restore the first line's indent
+    from the class source (the other lines keep theirs)."""
+    first = method_code.split("\n", 1)[0]
+    for line in class_code.split("\n"):
+        if line.strip() == first.strip():
+            return line[: len(line) - len(line.lstrip())] + method_code
+    return method_code
 
 
 def build_generation_context(
@@ -209,7 +224,12 @@ def build_generation_context(
         pieces.append(Piece("Team conventions for tests", conventions, required=True))
     entry_json = format_json(template_chunk.data_entries[entry_key], settings.style.json_files)
     pieces.append(
-        template_piece(template_chunk, entry_key, entry_json, class_scaffold(template_chunk, index))
+        template_piece(
+            template_chunk,
+            entry_key,
+            entry_json,
+            class_scaffold(template_chunk, index, settings.generate.scaffold_methods),
+        )
     )
 
     # The base test class (and its in-repo bases), so inherited helpers are visible.

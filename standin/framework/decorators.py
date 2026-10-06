@@ -31,7 +31,7 @@ def environments(*deployments):
 def data_driven(cls):
    """Data loading: each test gets its matched data entry as ``self.params``."""
    cls.data_driven = True
-   return pytest.mark.usefixtures("load_params")(cls)
+   return cls
 
 
 def retry(times=2, delay=1.0):

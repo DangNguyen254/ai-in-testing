@@ -118,11 +118,19 @@ class DataSettings(_Section):
     """
 
     format: Literal["array", "object"] = "array"
-    id_field: str = "id"
+    id_field: str = "test_id"
     # How a test reads its entry: these expressions are indexed (``self.params["key"]``).
     access: list[str] = Field(default_factory=lambda: ["self.params", "params"])
-    # Calls that read the entry on the test's behalf (e.g. a backend-validation helper).
-    reading_helpers: list[str] = Field(default_factory=lambda: ["self.validate_backend"])
+    # Sections the framework applies before the test (always consumed).
+    seed_sections: list[str] = Field(default_factory=lambda: ["settings", "policy", "tenants"])
+    # Expectation section -> the validation helper that reads it. An entry has at most one,
+    # and only when the test calls its helper.
+    expectation_sections: dict[str, str] = Field(
+        default_factory=lambda: {
+            "targets": "self.verify_targets",
+            "interactions": "self.verify_interactions",
+        }
+    )
     # Per-entry overrides that a new entry never inherits from its base entry.
     per_entry_keys: list[str] = Field(default_factory=lambda: ["priority", "skip"])
 
@@ -195,18 +203,22 @@ class ContextSettings(_Section):
 
 
 class GenerateSettings(_Section):
-    prompt_version: str = "generate_v2"
+    prompt_version: str = "generate_v3"
     # Team conventions for tests (Markdown). Always placed in the context when set.
     conventions_doc: Path | None = None
     # Always on the reviewer checklist: things only a real run can confirm.
     review_checklist_defaults: list[str] = Field(
         default_factory=lambda: [
-            "Expected responses in `interactions` are not from a real capture; "
-            "confirm them in a real run.",
+            "Expected backend responses are not from a real capture; confirm them in a real run.",
             "Check whether the page needs a refresh before a field is read again after saving.",
+            "Confirm the save flow (object save, top-bar save and publish, or reset).",
         ]
     )
-    placeholder_token: str = "{{unique}}"
+    # Class methods copied with the scaffold (setup/teardown with the class's options).
+    scaffold_methods: list[str] = Field(
+        default_factory=lambda: ["setup", "teardown", "setup_method", "teardown_method"]
+    )
+    placeholder_token: str = "{test_id:24}"  # unique names in data; N = max length
     max_example_tests: int = Field(default=4, ge=0)  # similar tests shown as style examples
     # Suite-specific decorator names for deployment-type skips (cloud-only / on-prem-only).
     deployment_decorators: dict[str, str] = Field(

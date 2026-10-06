@@ -1,62 +1,49 @@
-"""Settings area: general settings and notification settings."""
+"""Settings area: capability gates (applied with the top bar's settings save option)."""
 
 from selenium.webdriver.common.by import By
 
 from framework.pages.base_page import BasePage
 
 
-class GeneralSettingsPage(BasePage):
-   path = "/settings/general"
+class CapabilitiesPage(BasePage):
+   path = "/settings/capabilities"
 
-   TIMEZONE = (By.ID, "timezone")
-   LANGUAGE = (By.ID, "language")
-   SAVE = (By.ID, "save-general")
-
-   @property
-   def timezone(self):
-      return self.value_of(self.TIMEZONE)
-
-   @timezone.setter
-   def timezone(self, value):
-      self.select(self.TIMEZONE, value)
+   RULES = (By.ID, "cap-rules")
+   PROFILES = (By.ID, "cap-profiles")
+   BULK_DELETE = (By.ID, "cap-bulk_delete")
+   IMPORT = (By.ID, "cap-import")
 
    @property
-   def language(self):
-      return self.value_of(self.LANGUAGE)
+   def rules_enabled(self):
+      return self.checked(self.RULES)
 
-   @language.setter
-   def language(self, value):
-      self.select(self.LANGUAGE, value)
-
-   def save(self):
-      self.click(self.SAVE)
-
-
-class NotificationSettingsPage(BasePage):
-   path = "/settings/notifications"
-
-   EMAIL = (By.ID, "email-toggle")
-   DIGEST = (By.ID, "digest-toggle")
-   SAVE = (By.ID, "save-notifications")
+   @rules_enabled.setter
+   def rules_enabled(self, value):
+      self.set_checkbox(self.RULES, value)
 
    @property
-   def email_enabled(self):
-      return self.find(self.EMAIL).is_selected()
+   def profiles_enabled(self):
+      return self.checked(self.PROFILES)
 
-   @email_enabled.setter
-   def email_enabled(self, enabled):
-      self.set_checkbox(self.EMAIL, enabled)
+   @profiles_enabled.setter
+   def profiles_enabled(self, value):
+      self.set_checkbox(self.PROFILES, value)
 
    @property
-   def weekly_digest(self):
-      return self.find(self.DIGEST).is_selected()
+   def bulk_delete_enabled(self):
+      return self.checked(self.BULK_DELETE)
 
-   @weekly_digest.setter
-   def weekly_digest(self, enabled):
-      self.set_checkbox(self.DIGEST, enabled)
+   @bulk_delete_enabled.setter
+   def bulk_delete_enabled(self, value):
+      self.set_checkbox(self.BULK_DELETE, value)
 
-   def save(self):
-      self.click(self.SAVE)
+   @property
+   def import_enabled(self):
+      return self.checked(self.IMPORT)
+
+   @import_enabled.setter
+   def import_enabled(self, value):
+      self.set_checkbox(self.IMPORT, value)
 
 
 class SettingsArea:
@@ -64,9 +51,5 @@ class SettingsArea:
       self._args = (driver, base_url, timeout)
 
    @property
-   def general(self):
-      return GeneralSettingsPage(*self._args)
-
-   @property
-   def notifications(self):
-      return NotificationSettingsPage(*self._args)
+   def capabilities(self):
+      return CapabilitiesPage(*self._args)

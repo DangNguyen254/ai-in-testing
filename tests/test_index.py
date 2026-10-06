@@ -78,26 +78,27 @@ def test_local_repo_source_is_read_only_and_skips(tmp_path: Path) -> None:
 
 
 def test_extract_whole_definitions_with_decorators() -> None:
-    source = (STANDIN / "tests" / "inventory" / "test_inventory.py").read_bytes()
-    info = extract_file("tests/inventory/test_inventory.py", source)
+    source = (STANDIN / "tests" / "rules" / "test_rules.py").read_bytes()
+    info = extract_file("tests/rules/test_rules.py", source)
     test_class = info.classes[0]
-    method = next(m for m in test_class.methods if m.name == "test_inventory_item_create")
-    assert method.code.startswith('@pytest.mark.priority("p1")')
-    assert method.code.rstrip().endswith("self.validate_backend()")
-    assert method.decorators[-1] == 'pytest.mark.parametrize("quantity", [1, 50])'
+    method = next(m for m in test_class.methods if m.name == "test_rules_add_basic")
+    assert method.code.startswith('@pytest.mark.priority("p0")')
+    assert method.code.rstrip().endswith("self.verify_targets()")
+    assert method.decorators[-1] == 'pytest.mark.parametrize("action", ["allow", "deny"])'
     assert test_class.decorators == [
         'browsers("chrome", "firefox")',
         'environments("cloud", "on_prem")',
         "data_driven",
         'pytest.mark.project("example-project")',
-        'pytest.mark.component("inventory")',
+        'pytest.mark.component("rules")',
     ]
+    assert info.imports[0] == "from pathlib import Path"
     # Unannotated code: types come from what a function returns.
     nav_info = extract_file(
         "framework/pages/nav.py", (STANDIN / "framework" / "pages" / "nav.py").read_bytes()
     )
-    inventory = next(m for m in nav_info.classes[0].methods if m.name == "inventory")
-    assert inventory.returns is None and inventory.returned_calls == ["InventoryArea"]
+    rules = next(m for m in nav_info.classes[0].methods if m.name == "rules")
+    assert rules.returns is None and rules.returned_calls == ["RulesArea"]
     assert "def " not in test_class.header_code  # class chunk header has no methods
 
 
@@ -110,28 +111,45 @@ def test_extract_rejects_syntax_errors() -> None:
 
 
 def test_test_chunks_carry_decorators_markers_ids_and_entries(standin_index: IndexData) -> None:
-    chunk = _chunk(standin_index, "TestInventoryItems.test_inventory_item_create_invalid_quantity")
+    chunk = _chunk(standin_index, "TestRules.test_rules_list_search")
     assert chunk.kind == "test"  # type: ignore[attr-defined]
-    assert chunk.class_name == "TestInventoryItems"  # type: ignore[attr-defined]
+    assert chunk.class_name == "TestRules"  # type: ignore[attr-defined]
     assert {m.name: m.args for m in chunk.markers} == {  # type: ignore[attr-defined]
         "priority": ["p2"],
         "suite": ["regression"],
         "project": ["example-project"],
-        "component": ["inventory"],
+        "component": ["rules"],
     }
-    assert [p.argnames for p in chunk.parametrize] == [["entry_mode"], ["quantity"]]  # type: ignore[attr-defined]
+    assert [p.argnames for p in chunk.parametrize] == [["match"]]  # type: ignore[attr-defined]
     assert chunk.test_ids == [  # type: ignore[attr-defined]
-        "test_inventory_item_create_invalid_quantity[0-typed]",
-        "test_inventory_item_create_invalid_quantity[0-pasted]",
-        "test_inventory_item_create_invalid_quantity[-1-typed]",
-        "test_inventory_item_create_invalid_quantity[-1-pasted]",
+        "test_rules_list_search[exact]",
+        "test_rules_list_search[partial]",
+        "test_rules_list_search[mixed_case]",
     ]
-    assert chunk.data_file == "tests/inventory/test_inventory.json"  # type: ignore[attr-defined]
+    assert chunk.data_file == "tests/rules/test_rules.json"  # type: ignore[attr-defined]
     assert chunk.data_format == "array"  # type: ignore[attr-defined]
     assert set(chunk.data_entries) == set(chunk.test_ids)  # type: ignore[attr-defined]
-    entry = chunk.data_entries["test_inventory_item_create_invalid_quantity[0-typed]"]  # type: ignore[attr-defined]
-    assert entry["id"] == "test_inventory_item_create_invalid_quantity[0-typed]"
-    assert entry["interactions"][0]["response"] == {"status": 404}
+    entry = chunk.data_entries["test_rules_list_search[partial]"]  # type: ignore[attr-defined]
+    assert entry["test_id"] == "test_rules_list_search[partial]"
+    assert (entry["query"], entry["expected_count"]) == ("alpha", 3)
+
+
+def test_stacked_parametrize_ids_put_the_bottom_decorator_first(tmp_path: Path) -> None:
+    (tmp_path / "test_x.py").write_text(
+        "import pytest\n\n\n"
+        '@pytest.mark.parametrize("mode", ["typed", "pasted"])\n'
+        '@pytest.mark.parametrize("quantity", ["0", "-1"])\n'
+        "def test_x(quantity, mode):\n    pass\n",
+        encoding="utf-8",
+    )
+    data, _ = build_index(LocalPathRepoSource(tmp_path), _settings(tmp_path))
+    chunk = next(c for c in data.chunks if c.kind == "test")
+    assert chunk.test_ids == [
+        "test_x[0-typed]",
+        "test_x[0-pasted]",
+        "test_x[-1-typed]",
+        "test_x[-1-pasted]",
+    ]
 
 
 def test_static_ids_match_pytest_collect_only(standin_index: IndexData) -> None:
@@ -143,9 +161,9 @@ def test_static_ids_match_pytest_collect_only(standin_index: IndexData) -> None:
 
 
 def test_page_objects_are_chunked_whole(standin_index: IndexData) -> None:
-    page = _chunk(standin_index, "ItemsPage")
+    page = _chunk(standin_index, "RuleListPage")
     assert page.kind == "page_object"  # type: ignore[attr-defined]
-    assert "def search(" in page.code and "def item_names(" in page.code  # type: ignore[attr-defined]
+    assert "def search(" in page.code and "def rule_names(" in page.code  # type: ignore[attr-defined]
     assert "@search_text.setter" in page.code  # type: ignore[attr-defined]
     plain = _chunk(standin_index, "ApiClient")
     assert plain.kind == "class"  # type: ignore[attr-defined]
@@ -157,16 +175,16 @@ def test_page_objects_are_chunked_whole(standin_index: IndexData) -> None:
 
 def test_catalog_confirms_existence_and_non_existence(standin_index: IndexData) -> None:
     catalog = standin_index.catalog
-    for name in ("BaseTest", "ItemEditorPage", "unique_name", "validate_backend", "load_params"):
+    for name in ("BaseTest", "RuleWizardPage", "unique_name", "verify_targets", "base_setup"):
         assert catalog.has(name), name
     for name in (
-        "ItemEditPage",
-        "assert_backend",
+        "RuleWizzardPage",
+        "validate_backend",
         "make_unique_name",
-        "nav.inventory.basket",
+        "nav.rules.basket",
     ):
         assert not catalog.has(name), name
-    assert catalog.fixtures["load_params"] is False and catalog.fixtures["params"] is False
+    assert catalog.fixtures["params"] is False and catalog.fixtures["_framework"] is False
     assert catalog.markers["priority"] == ["p0", "p1", "p2", "p3"]
     assert catalog.markers["suite"] == ["regression", "smoke"]
 
@@ -174,14 +192,14 @@ def test_catalog_confirms_existence_and_non_existence(standin_index: IndexData) 
 @pytest.mark.parametrize(
     ("chain", "status"),
     [
-        ("nav.inventory.items.search", "ok"),
-        ("nav.users.invite.send", "ok"),
-        ("nav.orders.order_detail.cancel", "ok"),
-        ("nav.settings.notifications.weekly_digest", "ok"),  # a property with a setter
-        ("nav.inventory.items.flash_message", "ok"),  # inherited from BasePage
-        ("nav.inventory.basket", "missing"),
-        ("nav.users.invite.invite", "missing"),  # v1 method, now `email`/`role` + `send()`
-        ("nav.inventory.items.driver.get", "unknown_type"),  # selenium type, can't check
+        ("nav.rules.list.search", "ok"),
+        ("nav.rules.wizard.next", "ok"),
+        ("nav.top_bar.publish", "ok"),
+        ("nav.settings.capabilities.bulk_delete_enabled", "ok"),  # a property with a setter
+        ("nav.rules.list.toast", "ok"),  # inherited from BasePage
+        ("nav.rules.basket", "missing"),
+        ("nav.rules.wizard.submit", "missing"),
+        ("nav.rules.list.driver.get", "unknown_type"),  # selenium type, can't check
         ("api.items", "no_root"),  # not a configured chain root
     ],
 )
@@ -191,15 +209,17 @@ def test_property_chains(standin_index: IndexData, chain: str, status: str) -> N
 
 def test_chains_from_a_test_class_including_calls(standin_index: IndexData) -> None:
     catalog = standin_index.catalog
-    ok = catalog.resolve_chain("TestUsers", ["nav", "users", "invite", "send"])
+    ok = catalog.resolve_chain("TestRules", ["nav", "rules", "wizard", "save"])
     assert ok.ok
     # Actions return nothing, so chaining after one can't resolve.
-    chained = catalog.resolve_chain("TestUsers", ["nav", "users", "invite", "open()", "send"])
+    chained = catalog.resolve_chain("TestRules", ["nav", "rules", "wizard", "next()", "save"])
     assert chained.status == "unknown_type"
-    missing = catalog.resolve_chain("TestOrders", ["api", "create_orders"])
+    missing = catalog.resolve_chain("TestProfiles", ["policy", "add_rules"])
     assert missing.status == "missing" and missing.failed_step == 1
-    assert catalog.resolve_chain("TestOrders", ["check", "equal"]).ok
-    assert "nav.inventory.item_editor.quantity" in {c.chain for c in catalog.chains}
+    assert catalog.resolve_chain("TestProfiles", ["policy", "add_rule"]).ok
+    # The assertion object is a unittest.TestCase (outside the repo): not checkable further.
+    assert catalog.resolve_chain("TestRules", ["check", "assertEqual"]).status == "unknown_type"
+    assert "nav.rules.wizard.condition_value" in {c.chain for c in catalog.chains}
 
 
 # --- indexer: cache, incremental, errors -----------------------------------------------------
@@ -228,7 +248,7 @@ def test_cache_reloads_without_reparsing(tmp_path: Path) -> None:
 def test_incremental_rebuild_parses_only_changed_files(tmp_path: Path) -> None:
     repo, settings = _copy_standin(tmp_path), _settings(tmp_path)
     update_index(repo, settings)
-    target = repo / "framework" / "names.py"
+    target = repo / "framework" / "placeholders.py"
     target.write_text(
         target.read_text("utf-8") + "\n\ndef brand_new_helper() -> None:\n    pass\n", "utf-8"
     )
@@ -268,9 +288,9 @@ def test_parse_errors_are_logged_and_skipped(
 
 def test_missing_data_file_is_not_fatal(tmp_path: Path) -> None:
     repo, settings = _copy_standin(tmp_path), _settings(tmp_path)
-    (repo / "tests" / "users" / "test_users.json").unlink()
+    (repo / "tests" / "profiles" / "test_profiles.json").unlink()
     data, _ = build_index(LocalPathRepoSource(repo), settings)
-    chunk = next(c for c in data.chunks if c.qualname == "TestUsers.test_users_invite_role")
+    chunk = next(c for c in data.chunks if c.qualname == "TestProfiles.test_profiles_add_basic")
     assert chunk.data_file is None and chunk.data_entries == {}
 
 
@@ -303,12 +323,12 @@ def test_search_known_httpx_functions(httpx_index: IndexData, symbol: str) -> No
 @pytest.mark.parametrize(
     ("query", "expected"),
     [
+        ("wizard", "tests/rules/test_rules.py::TestRules.test_rules_add_basic"),
         (
-            "item_editor",
-            "tests/inventory/test_inventory.py::TestInventoryItems"
-            ".test_inventory_item_create_invalid_quantity",
+            "capabilities",
+            "tests/settings/test_settings.py::TestSettingsCapabilities"
+            ".test_settings_capabilities_enable_bulk",
         ),
-        ("invite", "tests/users/test_users.py::TestUsers.test_users_invite_role"),
     ],
 )
 def test_search_known_standin_pages(standin_index: IndexData, query: str, expected: str) -> None:
@@ -320,7 +340,7 @@ def test_search_edge_cases(standin_index: IndexData) -> None:
     index = standin_index.search_index()
     assert index.search("") == []
     assert index.search("zzzzqqq") == []
-    pages = index.search("search items", top_k=3, kinds={"page_object"})
+    pages = index.search("search rules", top_k=3, kinds={"page_object"})
     assert pages and all(h.chunk.kind == "page_object" for h in pages)
 
 
@@ -332,13 +352,13 @@ def test_cli_index_and_search(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     runner = CliRunner()
     result = runner.invoke(app, ["index", str(STANDIN)])
     assert result.exit_code == 0, result.output
-    assert "26 files" in result.output and "page-object chains: 276" in result.output
+    assert "27 files" in result.output and "page-object chains: 285" in result.output
 
     result = runner.invoke(
-        app, ["search", "invite user", "--repo", str(STANDIN), "--kind", "test", "--top-k", "3"]
+        app, ["search", "delete rule", "--repo", str(STANDIN), "--kind", "test", "--top-k", "3"]
     )
     assert result.exit_code == 0, result.output
-    assert "TestUsers.test_users_invite_role" in result.output
+    assert "TestRules.test_rules_delete_single" in result.output
     assert len(result.output.strip().splitlines()) == 3
 
 
@@ -401,6 +421,6 @@ def test_class_header_refs_exclude_methods() -> None:
 
 
 def test_chunks_carry_refs(standin_index: IndexData) -> None:
-    test = _chunk(standin_index, "TestUsers.test_users_invite_role")
-    assert ["nav", "users", "invite"] in test.refs.self_chains  # type: ignore[attr-defined]
-    assert {"send", "validate_backend", "equal"} <= set(test.refs.calls)  # type: ignore[attr-defined]
+    test = _chunk(standin_index, "TestRules.test_rules_add_basic")
+    assert ["nav", "rules", "wizard"] in test.refs.self_chains  # type: ignore[attr-defined]
+    assert {"next", "publish", "verify_targets", "assertEqual"} <= set(test.refs.calls)  # type: ignore[attr-defined]

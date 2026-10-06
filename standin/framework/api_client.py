@@ -1,81 +1,42 @@
-"""Minimal JSON API client for seeding and checking backend state (stdlib only)."""
+"""Minimal JSON API client (stdlib only). Returns the status with the body; never raises on
+an HTTP error status, so validators can compare expected error statuses."""
 
 import json
 import urllib.error
 import urllib.request
-from urllib.parse import quote
-
-
-class ApiError(RuntimeError):
-   def __init__(self, status, message):
-      super().__init__(f"HTTP {status}: {message}")
-      self.status = status
-      self.message = message
 
 
 class ApiClient:
-   def __init__(self, api_url, timeout=10.0):
+   def __init__(self, api_url, user=None, timeout=10.0):
       self.api_url = api_url.rstrip("/")
+      self.user = user
       self.timeout = timeout
 
-   def request(self, method, path, payload=None):
+   def request(self, method, path, payload=None, user=None):
+      """``path`` is relative to ``/api`` or starts with it. Returns ``(status, body)``."""
+      relative = path.removeprefix("/api").lstrip("/")
       data = json.dumps(payload).encode("utf-8") if payload is not None else None
+      headers = {"Content-Type": "application/json"}
+      if user or self.user:
+         headers["X-User"] = user or self.user
       req = urllib.request.Request(
-         f"{self.api_url}/{path.lstrip('/')}",
-         data=data,
-         method=method,
-         headers={"Content-Type": "application/json"},
+         f"{self.api_url}/{relative}", data=data, method=method, headers=headers
       )
       try:
          with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-            return json.loads(resp.read() or b"null")
+            return resp.status, json.loads(resp.read() or b"null")
       except urllib.error.HTTPError as exc:
-         body = json.loads(exc.read() or b"{}")
-         raise ApiError(exc.code, body.get("error", "")) from exc
+         return exc.code, json.loads(exc.read() or b"{}")
 
-   # state
+   # test setup
 
    def reset(self):
       self.request("POST", "_reset", {})
 
-   def seed(self, sections):
-      """Apply a data entry's seed sections (settings, policy, tenants, targets)."""
-      self.request("POST", "_seed", sections)
+   def seed(self, blocks):
+      """Apply per-tenant seed blocks (settings, policy)."""
+      self.request("POST", "_seed", {"tenants": blocks})
 
-   # resources
-
-   def items(self):
-      result = self.request("GET", "items")
-      return result
-
-   def item(self, name):
-      result = self.request("GET", f"items/{quote(name)}")
-      return result
-
-   def users(self):
-      result = self.request("GET", "users")
-      return result
-
-   def user(self, email):
-      result = self.request("GET", f"users/{quote(email)}")
-      return result
-
-   def orders(self):
-      result = self.request("GET", "orders")
-      return result
-
-   def order(self, order_id):
-      result = self.request("GET", f"orders/{order_id}")
-      return result
-
-   def create_order(self, lines):
-      result = self.request("POST", "orders", {"lines": lines})
-      return result
-
-   def settings(self):
-      result = self.request("GET", "settings")
-      return result
-
-   def policy(self):
-      result = self.request("GET", "policy")
-      return result
+   def revision(self, tenant):
+      _, body = self.request("GET", f"policy/v1/revision/{tenant}")
+      return body["rev_id"]

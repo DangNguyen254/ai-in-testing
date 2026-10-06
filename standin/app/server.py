@@ -1,42 +1,29 @@
-"""HTTP server for the fake app (stdlib only). Run: python -m app.server --port 8080
+"""HTTP server for the fake policy app (stdlib only). Run: python -m app.server --port 8080
 
-HTML pages use stable element ids that the page objects in ``framework/pages`` rely on.
-The JSON API under ``/api`` lets tests seed state (by data-entry section) and check backend
-results (``interactions`` in the data files replay requests against it).
+HTML pages use stable element ids that the page objects in ``framework/pages`` rely on. Every
+page has the shared top bar (save / publish / reset). The session cookie holds the tenant and
+user, set by ``/login?tenant=...&user=...``.
+
+JSON API under ``/api`` (tests seed state and check backend results through it):
+- ``GET /api/policy/v1/{policy,rules,profiles}/<tenant>/<rev_id>``: a published revision
+- ``GET /api/policy/v1/revision/<tenant>``: the latest revision number
+- ``PUT /api/policy/v1/rules/<tenant>``: replace the rules and publish (admin role only)
+- ``GET /api/settings/v1/settings/<tenant>``
+- ``POST /api/_reset``, ``POST /api/_seed`` (test setup only)
 """
 
 import argparse
 import json
-import os
 from html import escape
 from http import HTTPStatus
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
-from app.state import CATEGORIES, ORDER_STATUSES, ROLES, Store, ValidationError
+from app.state import ACTIONS, LEVELS, PAGE_SIZE, PermissionDenied, Store, ValidationError
 
 STORE = Store()
-DEPLOYMENT = os.environ.get("STANDIN_DEPLOYMENT", "cloud")
-TIMEZONES = ("UTC", "Europe/Berlin", "America/New_York", "Asia/Tokyo")
-LANGUAGES = ("en", "de", "fr")
-
-
-def page(title, body, flash="", error=""):
-   nav = " | ".join(
-      f'<a id="nav-{area}" href="{href}">{label}</a>'
-      for area, href, label in (
-         ("inventory", "/inventory/items", "Inventory"),
-         ("users", "/users", "Users"),
-         ("orders", "/orders", "Orders"),
-         ("settings", "/settings/general", "Settings"),
-      )
-   )
-   flash_html = f'<div id="flash">{escape(flash)}</div>' if flash else ""
-   error_html = f'<div id="form-error">{escape(error)}</div>' if error else ""
-   return (
-      f"<!doctype html><html><head><title>{escape(title)}</title></head><body>"
-      f"<nav>{nav}</nav>{flash_html}<h1>{escape(title)}</h1>{error_html}{body}</body></html>"
-   )
+WIZARDS = {}  # (tenant, user) -> rule fields from step 1 of the add wizard
 
 
 def options(values, selected):
@@ -46,163 +33,189 @@ def options(values, selected):
    )
 
 
-# --- HTML pages ---------------------------------------------------------------------------
-
-
-def items_page(query, flash):
-   rows = "".join(
-      f'<tr class="item-row"><td class="item-name">'
-      f'<a href="/inventory/items/{quote(i["name"])}/edit">{escape(i["name"])}</a></td>'
-      f'<td class="item-quantity">{i["quantity"]}</td>'
-      f'<td class="item-category">{escape(i["category"])}</td></tr>'
-      for i in STORE.search_items(query)
+def page(tenant_id, title, body, here, toast="", error=""):
+   tenant = STORE.tenant(tenant_id)
+   caps = tenant.settings["capabilities"]
+   links = [("rules", "/rules", "Rules")]
+   if caps["profiles"]:
+      links.append(("profiles", "/profiles", "Profiles"))
+   links.append(("settings", "/settings/capabilities", "Settings"))
+   nav = " | ".join(f'<a id="nav-{key}" href="{href}">{label}</a>' for key, href, label in links)
+   blocked = STORE.save_blocked(tenant_id)
+   status = (
+      "Unsaved changes" if tenant.has_unsaved_changes else f"Published revision {tenant.rev_id}"
    )
+   hidden = f'<input type="hidden" name="next" value="{escape(here)}">'
+   top_bar = (
+      f'<div id="top-bar"><span id="topbar-status">{status}</span>'
+      f'<form method="post" action="/topbar/save">{hidden}'
+      f'<button id="topbar-save"{" disabled" if blocked else ""}>Save</button></form>'
+      f'<form method="post" action="/topbar/publish">{hidden}'
+      '<button id="topbar-publish">Publish</button></form>'
+      f'<form method="post" action="/topbar/reset">{hidden}'
+      '<button id="topbar-reset">Reset</button></form>'
+      '<a id="logout" href="/logout">Log out</a></div>'
+   )
+   toast_html = f'<div id="toast">{escape(toast)}</div>' if toast else ""
+   error_html = f'<div id="form-error">{escape(error)}</div>' if error else ""
+   return (
+      f"<!doctype html><html><head><title>{escape(title)}</title></head><body>"
+      f'{top_bar}<nav>{nav}</nav><span id="tenant-name">{escape(tenant_id)}</span>'
+      f"{toast_html}<h1>{escape(title)}</h1>{error_html}{body}</body></html>"
+   )
+
+
+# --- HTML pages -----------------------------------------------------------------------------
+
+
+def rules_page(tenant_id, query, toast):
+   text, action = query.get("q", ""), query.get("action", "")
+   page_number = int(query.get("page", "1") or 1)
+   rules, total = STORE.list_rules(tenant_id, text, action, page_number)
+   rows = "".join(
+      f'<tr class="rule-row"><td><input type="checkbox" class="rule-select" form="delete-form" '
+      f'name="selected" value="{escape(r["name"])}"></td>'
+      f'<td class="rule-name"><a href="/rules/{quote(r["name"])}/edit">{escape(r["name"])}</a></td>'
+      f'<td class="rule-action">{r["action"]}</td>'
+      f'<td class="rule-enabled">{"on" if r["enabled"] else "off"}</td></tr>'
+      for r in rules
+   )
+   pages = max(1, -(-total // PAGE_SIZE))
+   keep = f"q={quote(text)}&action={quote(action)}"
+   pager = f'<span id="page-number">{page_number}</span>/<span id="page-count">{pages}</span>'
+   if page_number < pages:
+      pager += f'<a id="next-page" href="/rules?{keep}&page={page_number + 1}">Next</a>'
+   if page_number > 1:
+      pager += f'<a id="previous-page" href="/rules?{keep}&page={page_number - 1}">Previous</a>'
    body = (
-      f'<form method="get"><input id="search-box" name="q" value="{escape(query)}">'
+      f'<form method="get"><input id="search-box" name="q" value="{escape(text)}">'
+      '<select id="action-filter" name="action"><option value="">any</option>'
+      f"{options(ACTIONS, action)}</select>"
       '<button id="search-button">Search</button></form>'
-      '<a id="new-item" href="/inventory/items/new">New item</a>'
-      f'<table id="items-table">{rows}</table>'
+      '<a id="add-rule" href="/rules/new">Add rule</a> '
+      '<a id="import-rules" href="/rules/import">Import</a>'
+      '<form id="delete-form" method="post" action="/rules/delete">'
+      '<button id="delete-selected">Delete selected</button></form>'
+      f'<span id="rule-count">{total}</span>'
+      f'<table id="rules-table">{rows}</table>{pager}'
    )
-   return page("Items", body, flash)
+   return page(tenant_id, "Rules", body, "/rules", toast)
 
 
-def item_form(item, error="", values=None):
+def wizard_step1(tenant_id, values=None, error=""):
    values = values or {}
-   name = values.get("name", item["name"] if item else "")
-   quantity = values.get("quantity", str(item["quantity"]) if item else "1")
-   category = values.get("category", item["category"] if item else "general")
-   action = f"/inventory/items/{quote(item['name'])}/edit" if item else "/inventory/items/new"
-   readonly = " readonly" if item else ""
-   delete = (
-      f'<form method="post" action="/inventory/items/{quote(item["name"])}/delete">'
-      '<button id="delete-item">Delete</button></form>'
-      if item
-      else ""
-   )
    body = (
-      f'<form id="item-form" method="post" action="{action}">'
-      f'<input id="item-name" name="name" value="{escape(name)}"{readonly}>'
-      f'<input id="item-quantity" name="quantity" value="{escape(quantity)}">'
-      f'<select id="item-category" name="category">{options(CATEGORIES, category)}</select>'
-      '<button id="save-item">Save</button></form>'
-      f"{delete}"
+      '<form method="post" action="/rules/new/step1">'
+      f'<input id="rule-name" name="name" value="{escape(values.get("name", ""))}">'
+      f'<select id="rule-action" name="action">{options(ACTIONS, values.get("action", "allow"))}'
+      "</select>"
+      f'<input id="rule-description" name="description" '
+      f'value="{escape(values.get("description", ""))}">'
+      '<button id="wizard-next">Next</button></form>'
    )
-   return page("Edit item" if item else "New item", body, error=error)
+   return page(tenant_id, "Add rule: details", body, "/rules/new", error=error)
 
 
-def users_page(flash):
+def wizard_step2(tenant_id, error=""):
+   body = (
+      '<form method="post" action="/rules/new/save">'
+      '<input id="condition-field" name="field"><input id="condition-value" name="value">'
+      '<button id="rule-save">Save rule</button></form>'
+   )
+   return page(tenant_id, "Add rule: conditions", body, "/rules/new", error=error)
+
+
+def rule_editor(tenant_id, name, error=""):
+   rule = next(r for r in STORE.tenant(tenant_id).view()["rules"] if r["name"] == name)
+   checked = " checked" if rule["enabled"] else ""
+   body = (
+      f'<form method="post" action="/rules/{quote(name)}/edit">'
+      f'<span id="rule-name">{escape(name)}</span>'
+      f'<select id="rule-action" name="action">{options(ACTIONS, rule["action"])}</select>'
+      f'<input type="checkbox" id="rule-enabled" name="enabled"{checked}>'
+      f'<input id="rule-description" name="description" value="{escape(rule["description"])}">'
+      '<button id="rule-save">Save rule</button></form>'
+   )
+   return page(tenant_id, f"Rule {name}", body, f"/rules/{quote(name)}/edit", error=error)
+
+
+def delete_confirm(tenant_id, names):
+   items = "".join(f'<li class="pending-delete">{escape(n)}</li>' for n in names)
+   hidden = "".join(f'<input type="hidden" name="selected" value="{escape(n)}">' for n in names)
+   body = (
+      f'<ul id="pending-deletes">{items}</ul><form method="post" action="/rules/delete/confirm">'
+      f'{hidden}<button id="confirm-delete">Delete</button></form>'
+      '<a id="cancel-delete" href="/rules">Cancel</a>'
+   )
+   return page(tenant_id, "Delete rules", body, "/rules")
+
+
+def import_page(tenant_id, error=""):
+   body = (
+      '<form method="post" action="/rules/import">'
+      '<textarea id="import-content" name="content"></textarea>'
+      '<button id="import-button">Import</button></form>'
+   )
+   return page(tenant_id, "Import rules", body, "/rules/import", error=error)
+
+
+def profiles_page(tenant_id, query, toast):
+   text = query.get("q", "")
    rows = "".join(
-      f'<tr class="user-row"><td class="user-email"><a href="/users/{quote(u["email"])}">'
-      f'{escape(u["email"])}</a></td><td class="user-role">{u["role"]}</td>'
-      f'<td class="user-status">{"active" if u["active"] else "inactive"}</td></tr>'
-      for u in STORE.users.values()
-   )
-   banner = (
-      '<div id="sso-banner">Single sign-on is managed by your identity provider</div>'
-      if DEPLOYMENT == "cloud"
-      else ""
+      f'<tr class="profile-row"><td class="profile-name">'
+      f'<a href="/profiles/{quote(p["name"])}/edit">{escape(p["name"])}</a></td>'
+      f'<td class="profile-level">{p["level"]}</td>'
+      f'<td><form method="post" action="/profiles/{quote(p["name"])}/delete">'
+      f'<button class="profile-delete" value="{escape(p["name"])}">Delete</button></form></td></tr>'
+      for p in STORE.search_profiles(tenant_id, text)
    )
    body = (
-      f'{banner}<a id="invite-user" href="/users/invite">Invite user</a>'
-      f'<table id="users-table">{rows}</table>'
+      f'<form method="get"><input id="profile-search" name="q" value="{escape(text)}">'
+      '<button id="profile-search-button">Search</button></form>'
+      '<a id="add-profile" href="/profiles/new">Add profile</a>'
+      f'<table id="profiles-table">{rows}</table>'
    )
-   return page("Users", body, flash)
+   return page(tenant_id, "Profiles", body, "/profiles", toast)
 
 
-def invite_page(error=""):
+def profile_editor(tenant_id, name=None, error=""):
+   profile = (
+      next(p for p in STORE.tenant(tenant_id).view()["profiles"] if p["name"] == name)
+      if name
+      else {"name": "", "level": "low", "description": ""}
+   )
+   action = f"/profiles/{quote(name)}/edit" if name else "/profiles/new"
+   readonly = " readonly" if name else ""
    body = (
-      '<form method="post" action="/users/invite"><input id="invite-email" name="email">'
-      f'<select id="invite-role" name="role">{options(ROLES, "viewer")}</select>'
-      '<button id="send-invite">Send invite</button></form>'
+      f'<form method="post" action="{action}">'
+      f'<input id="profile-name" name="name" value="{escape(profile["name"])}"{readonly}>'
+      f'<select id="profile-level" name="level">{options(LEVELS, profile["level"])}</select>'
+      f'<input id="profile-description" name="description" '
+      f'value="{escape(profile["description"])}">'
+      '<button id="profile-save">Save profile</button></form>'
    )
-   return page("Invite user", body, error=error)
+   return page(tenant_id, f"Profile {name}" if name else "Add profile", body, action, error=error)
 
 
-def profile_page(email, flash, error=""):
-   user = STORE.users[email]
-   target = quote(email)
-   body = (
-      f'<span id="user-status">{"active" if user["active"] else "inactive"}</span>'
-      f'<form method="post" action="/users/{target}/role">'
-      f'<select id="role-select" name="role">{options(ROLES, user["role"])}</select>'
-      '<button id="save-role">Save role</button></form>'
-      f'<form method="post" action="/users/{target}/deactivate">'
-      '<button id="deactivate-user">Deactivate</button></form>'
-   )
-   return page(email, body, flash, error)
-
-
-def orders_page(status, flash):
-   rows = "".join(
-      f'<tr class="order-row"><td class="order-id"><a href="/orders/{o["id"]}">{o["id"]}</a></td>'
-      f'<td class="order-status">{o["status"]}</td></tr>'
-      for o in STORE.orders_with_status(status or None)
+def capabilities_page(tenant_id, toast):
+   caps = STORE.tenant(tenant_id).settings["capabilities"]
+   boxes = "".join(
+      f'<label><input type="checkbox" id="cap-{key}" name="{key}" form="settings-form"'
+      f"{' checked' if on else ''}>{key}</label>"
+      for key, on in caps.items()
    )
    body = (
-      '<form method="get"><select id="status-filter" name="status">'
-      f'<option value="">all</option>{options(ORDER_STATUSES, status)}</select>'
-      '<button id="apply-filter">Filter</button></form>'
-      '<a id="new-order" href="/orders/new">New order</a>'
-      f'<table id="orders-table">{rows}</table>'
+      f'<form id="settings-form" method="post" action="/settings/save">{boxes}'
+      '<button id="settings-save">Apply settings</button></form>'
    )
-   return page("Orders", body, flash)
+   return page(tenant_id, "Capabilities", body, "/settings/capabilities", toast)
 
 
-def checkout_page(error=""):
-   names = tuple(STORE.items)
-   first = names[0] if names else ""
-   body = (
-      '<form method="post" action="/orders/new">'
-      f'<select id="checkout-item" name="item">{options(names, first)}</select>'
-      '<input id="checkout-quantity" name="quantity" value="1">'
-      '<button id="place-order">Place order</button></form>'
-   )
-   return page("New order", body, error=error)
-
-
-def order_page(order_id, flash, error=""):
-   order = STORE.orders[order_id]
-   notes = "".join(f'<li class="note">{escape(n)}</li>' for n in order["notes"])
-   body = (
-      f'<span id="order-status">{order["status"]}</span>'
-      f'<form method="post" action="/orders/{order_id}/cancel">'
-      '<button id="cancel-order">Cancel order</button></form>'
-      f'<form method="post" action="/orders/{order_id}/notes">'
-      '<textarea id="note-text" name="text"></textarea><button id="add-note">Add note</button>'
-      f'</form><ul id="notes">{notes}</ul>'
-   )
-   return page(f"Order {order_id}", body, flash, error)
-
-
-def general_settings_page(flash):
-   s = STORE.settings
-   body = (
-      '<form method="post" action="/settings/general">'
-      f'<select id="timezone" name="timezone">{options(TIMEZONES, s["timezone"])}</select>'
-      f'<select id="language" name="language">{options(LANGUAGES, s["language"])}</select>'
-      '<button id="save-general">Save</button></form>'
-      '<a id="notifications-tab" href="/settings/notifications">Notifications</a>'
-   )
-   return page("General settings", body, flash)
-
-
-def notification_settings_page(flash):
-   n = STORE.settings["notifications"]
-   checked = {key: " checked" if n[key] else "" for key in ("email", "weekly_digest")}
-   body = (
-      '<form method="post" action="/settings/notifications">'
-      f'<input type="checkbox" id="email-toggle" name="email"{checked["email"]}>'
-      f'<input type="checkbox" id="digest-toggle" name="weekly_digest"{checked["weekly_digest"]}>'
-      '<button id="save-notifications">Save</button></form>'
-   )
-   return page("Notification settings", body, flash)
-
-
-# --- Request handling ---------------------------------------------------------------------
+# --- request handling -----------------------------------------------------------------------
 
 
 class Handler(BaseHTTPRequestHandler):
-   server_version = "StandinApp/1.0"
+   server_version = "StandinPolicyApp/3.0"
 
    def log_message(self, format, *args):  # quiet by default
       pass
@@ -223,11 +236,13 @@ class Handler(BaseHTTPRequestHandler):
    def _json(self, payload, status=HTTPStatus.OK):
       self._send(status, json.dumps(payload), "application/json")
 
-   def _redirect(self, location, flash=""):
-      if flash:
-         location += ("&" if "?" in location else "?") + "flash=" + quote(flash)
+   def _redirect(self, location, toast="", cookie=None):
+      if toast:
+         location += ("&" if "?" in location else "?") + "toast=" + quote(toast)
       self.send_response(HTTPStatus.SEE_OTHER)
       self.send_header("Location", location)
+      if cookie is not None:
+         self.send_header("Set-Cookie", f"session={cookie}; Path=/")
       self.end_headers()
 
    def _body(self):
@@ -235,142 +250,180 @@ class Handler(BaseHTTPRequestHandler):
 
    def _form(self):
       parsed = parse_qs(self._body().decode("utf-8"), keep_blank_values=True)
-      return {k: v[-1] for k, v in parsed.items()}
-
-   def _json_body(self):
-      raw = self._body()
-      return json.loads(raw) if raw else {}
+      return {k: v[-1] for k, v in parsed.items()}, parsed.get("selected", [])
 
    def _parts(self):
       url = urlsplit(self.path)
       query = {k: v[-1] for k, v in parse_qs(url.query).items()}
       return [unquote(p) for p in url.path.strip("/").split("/") if p], query
 
+   def _session(self):
+      cookie = SimpleCookie(self.headers.get("Cookie", ""))
+      if "session" not in cookie:
+         return None, None
+      tenant, _, user = unquote(cookie["session"].value).partition("|")
+      return tenant or None, user or None
+
+   def _sign_in(self, status=HTTPStatus.UNAUTHORIZED):
+      self._html("<!doctype html><title>Sign in</title><h1>Sign in</h1>", status)
+
    # dispatch
 
    def do_GET(self):
       parts, query = self._parts()
-      flash = query.get("flash", "")
+      if parts[:1] == ["api"]:
+         self._api("GET", parts[1:])
+         return
+      if parts == ["login"]:
+         session = quote(f"{query.get('tenant', '')}|{query.get('user', '')}")
+         self._redirect("/rules", cookie=session)
+         return
+      if parts == ["logout"]:
+         self._redirect("/", cookie="")
+         return
+      tenant, _ = self._session()
+      if tenant is None:
+         self._sign_in()
+         return
+      toast = query.get("toast", "")
       try:
-         if parts[:1] == ["api"]:
-            self._api("GET", parts[1:])
-         elif not parts:
-            self._redirect("/inventory/items")
-         elif parts == ["inventory", "items"]:
-            self._html(items_page(query.get("q", ""), flash))
-         elif parts == ["inventory", "items", "new"]:
-            self._html(item_form(None))
-         elif len(parts) == 4 and parts[:2] == ["inventory", "items"] and parts[3] == "edit":
-            self._html(item_form(STORE.items[parts[2]]))
-         elif parts == ["users"]:
-            self._html(users_page(flash))
-         elif parts == ["users", "invite"]:
-            self._html(invite_page())
-         elif len(parts) == 2 and parts[0] == "users":
-            self._html(profile_page(parts[1], flash))
-         elif parts == ["orders"]:
-            self._html(orders_page(query.get("status", ""), flash))
-         elif parts == ["orders", "new"]:
-            self._html(checkout_page())
-         elif len(parts) == 2 and parts[0] == "orders":
-            self._html(order_page(int(parts[1]), flash))
-         elif parts == ["settings", "general"]:
-            self._html(general_settings_page(flash))
-         elif parts == ["settings", "notifications"]:
-            self._html(notification_settings_page(flash))
-         else:
-            self._html(page("Not found", ""), HTTPStatus.NOT_FOUND)
-      except (KeyError, ValueError):
-         self._html(page("Not found", ""), HTTPStatus.NOT_FOUND)
+         self._get_page(tenant, parts, query, toast)
+      except (KeyError, StopIteration, ValueError):
+         self._html(page(tenant, "Not found", "", "/rules"), HTTPStatus.NOT_FOUND)
+
+   def _get_page(self, tenant, parts, query, toast):
+      if not parts or parts == ["rules"]:
+         self._html(rules_page(tenant, query, toast))
+      elif parts == ["rules", "new"]:
+         self._html(wizard_step1(tenant))
+      elif parts == ["rules", "import"]:
+         self._html(import_page(tenant))
+      elif len(parts) == 3 and parts[0] == "rules" and parts[2] == "edit":
+         self._html(rule_editor(tenant, parts[1]))
+      elif parts == ["profiles"]:
+         self._html(profiles_page(tenant, query, toast))
+      elif parts == ["profiles", "new"]:
+         self._html(profile_editor(tenant))
+      elif len(parts) == 3 and parts[0] == "profiles" and parts[2] == "edit":
+         self._html(profile_editor(tenant, parts[1]))
+      elif parts == ["settings", "capabilities"]:
+         self._html(capabilities_page(tenant, toast))
+      else:
+         raise KeyError(self.path)
 
    def do_POST(self):
       parts, _ = self._parts()
       if parts[:1] == ["api"]:
          self._api("POST", parts[1:])
          return
-      form = self._form()
+      tenant, user = self._session()
+      if tenant is None:
+         self._sign_in()
+         return
+      form, selected = self._form()
       try:
-         self._post_form(parts, form)
+         self._post_form(tenant, user, parts, form, selected)
       except ValidationError as exc:
-         self._form_error(parts, form, str(exc))
-
-   def do_PATCH(self):
-      parts, _ = self._parts()
-      self._api("PATCH", parts[1:]) if parts[:1] == ["api"] else self._json({}, 404)
+         self._form_error(tenant, parts, form, str(exc))
 
    def do_PUT(self):
       parts, _ = self._parts()
-      self._api("PUT", parts[1:]) if parts[:1] == ["api"] else self._json({}, 404)
-
-   def do_DELETE(self):
-      parts, _ = self._parts()
-      self._api("DELETE", parts[1:]) if parts[:1] == ["api"] else self._json({}, 404)
-
-   def _post_form(self, parts, form):
-      if parts == ["inventory", "items", "new"]:
-         quantity = _int(form.get("quantity", ""))
-         STORE.create_item(form.get("name", ""), quantity, form.get("category", "general"))
-         self._redirect("/inventory/items", "Item created")
-      elif len(parts) == 4 and parts[:2] == ["inventory", "items"] and parts[3] == "edit":
-         quantity = _int(form.get("quantity", ""))
-         STORE.update_item(parts[2], quantity=quantity, category=form.get("category", ""))
-         self._redirect("/inventory/items", "Item saved")
-      elif len(parts) == 4 and parts[:2] == ["inventory", "items"] and parts[3] == "delete":
-         STORE.delete_item(parts[2])
-         self._redirect("/inventory/items", "Item deleted")
-      elif parts == ["users", "invite"]:
-         STORE.invite_user(form.get("email", ""), form.get("role", "viewer"))
-         self._redirect("/users", "Invitation sent")
-      elif len(parts) == 3 and parts[0] == "users" and parts[2] == "role":
-         STORE.change_role(parts[1], form.get("role", ""))
-         self._redirect(f"/users/{quote(parts[1])}", "Role updated")
-      elif len(parts) == 3 and parts[0] == "users" and parts[2] == "deactivate":
-         STORE.deactivate_user(parts[1])
-         self._redirect(f"/users/{quote(parts[1])}", "User deactivated")
-      elif parts == ["orders", "new"]:
-         order = STORE.create_order(
-            [{"item": form.get("item", ""), "quantity": _int(form.get("quantity", ""))}]
-         )
-         self._redirect(f"/orders/{order['id']}", "Order placed")
-      elif len(parts) == 3 and parts[0] == "orders" and parts[2] == "cancel":
-         STORE.cancel_order(int(parts[1]))
-         self._redirect(f"/orders/{parts[1]}", "Order cancelled")
-      elif len(parts) == 3 and parts[0] == "orders" and parts[2] == "notes":
-         STORE.add_note(int(parts[1]), form.get("text", ""))
-         self._redirect(f"/orders/{parts[1]}", "Note added")
-      elif parts == ["settings", "general"]:
-         STORE.update_settings({k: form[k] for k in ("timezone", "language") if k in form})
-         self._redirect("/settings/general", "Settings saved")
-      elif parts == ["settings", "notifications"]:
-         notifications = {k: k in form for k in ("email", "weekly_digest")}
-         STORE.update_settings({"notifications": notifications})
-         self._redirect("/settings/notifications", "Settings saved")
+      if parts[:1] == ["api"]:
+         self._api("PUT", parts[1:])
       else:
-         self._html(page("Not found", ""), HTTPStatus.NOT_FOUND)
+         self._json({}, HTTPStatus.NOT_FOUND)
 
-   def _form_error(self, parts, form, error):
+   def _post_form(self, tenant, user, parts, form, selected):
+      back = form.get("next", "/rules")
+      if parts == ["topbar", "save"]:
+         STORE.save(tenant)
+         self._redirect(back, "Changes saved")
+      elif parts == ["topbar", "publish"]:
+         rev_id = STORE.publish(tenant)
+         self._redirect(back, f"Published revision {rev_id}")
+      elif parts == ["topbar", "reset"]:
+         STORE.discard(tenant)
+         self._redirect(back, "Changes discarded")
+      elif parts == ["rules", "new", "step1"]:
+         if not form.get("name", "").strip():
+            raise ValidationError("Name is required")
+         WIZARDS[(tenant, user)] = {k: form.get(k, "") for k in ("name", "action", "description")}
+         self._html(wizard_step2(tenant))
+      elif parts == ["rules", "new", "save"]:
+         rule = dict(WIZARDS.pop((tenant, user), {}))
+         if form.get("field"):
+            rule["conditions"] = [{"field": form["field"], "value": form.get("value", "")}]
+         try:
+            STORE.add_rule(tenant, rule)
+         except ValidationError:
+            WIZARDS[(tenant, user)] = {k: v for k, v in rule.items() if k != "conditions"}
+            raise
+         self._redirect("/rules", "Rule added")
+      elif len(parts) == 3 and parts[0] == "rules" and parts[2] == "edit":
+         changes = {
+            "action": form.get("action", "allow"),
+            "enabled": "enabled" in form,
+            "description": form.get("description", ""),
+         }
+         STORE.update_rule(tenant, parts[1], changes)
+         self._redirect("/rules", "Rule saved")
+      elif parts == ["rules", "delete"]:
+         if not selected:
+            raise ValidationError("Select at least one rule")
+         self._html(delete_confirm(tenant, selected))
+      elif parts == ["rules", "delete", "confirm"]:
+         STORE.delete_rules(tenant, selected)
+         self._redirect("/rules", "Rules deleted")
+      elif parts == ["rules", "import"]:
+         try:
+            rules = json.loads(form.get("content", "") or "[]")
+         except json.JSONDecodeError:
+            raise ValidationError("The file is not valid JSON") from None
+         added = STORE.import_rules(tenant, rules)
+         self._redirect("/rules", f"Imported {len(added)} rules")
+      elif parts == ["profiles", "new"]:
+         STORE.add_profile(tenant, {k: form.get(k, "") for k in ("name", "level", "description")})
+         self._redirect("/profiles", "Profile added")
+      elif len(parts) == 3 and parts[0] == "profiles" and parts[2] == "edit":
+         changes = {k: form.get(k, "") for k in ("level", "description")}
+         STORE.update_profile(tenant, parts[1], changes)
+         self._redirect("/profiles", "Profile saved")
+      elif len(parts) == 3 and parts[0] == "profiles" and parts[2] == "delete":
+         STORE.delete_profile(tenant, parts[1])
+         self._redirect("/profiles", "Profile deleted")
+      elif parts == ["settings", "save"]:
+         caps = STORE.tenant(tenant).settings["capabilities"]
+         STORE.update_capabilities(tenant, {key: key in form for key in caps})
+         self._redirect("/settings/capabilities", "Settings applied")
+      else:
+         self._html(page(tenant, "Not found", "", "/rules"), HTTPStatus.NOT_FOUND)
+
+   def _form_error(self, tenant, parts, form, error):
       status = HTTPStatus.UNPROCESSABLE_ENTITY
-      if parts == ["inventory", "items", "new"]:
-         self._html(item_form(None, error, form), status)
-      elif parts[:2] == ["inventory", "items"] and len(parts) == 4:
-         self._html(item_form(STORE.items.get(parts[2]), error, form), status)
-      elif parts == ["users", "invite"]:
-         self._html(invite_page(error), status)
-      elif parts[:1] == ["users"] and len(parts) == 3:
-         self._html(profile_page(parts[1], "", error), status)
-      elif parts == ["orders", "new"]:
-         self._html(checkout_page(error), status)
-      elif parts[:1] == ["orders"] and len(parts) == 3:
-         self._html(order_page(int(parts[1]), "", error), status)
+      if parts == ["rules", "new", "step1"]:
+         self._html(wizard_step1(tenant, form, error), status)
+      elif parts == ["rules", "new", "save"]:
+         self._html(wizard_step2(tenant, error), status)
+      elif len(parts) == 3 and parts[0] == "rules" and parts[2] == "edit":
+         self._html(rule_editor(tenant, parts[1], error), status)
+      elif parts == ["rules", "import"]:
+         self._html(import_page(tenant, error), status)
+      elif parts == ["profiles", "new"]:
+         self._html(profile_editor(tenant, None, error), status)
+      elif len(parts) == 3 and parts[0] == "profiles":
+         self._html(profile_editor(tenant, parts[1], error), status)
       else:
-         self._html(page("Error", "", error=error), status)
+         self._html(page(tenant, "Error", "", form.get("next", "/rules"), error=error), status)
 
    # JSON API
 
    def _api(self, method, parts):
       try:
-         payload = self._json_body() if method in ("POST", "PATCH", "PUT") else {}
-         result = route_api(method, parts, payload)
+         raw = self._body() if method in ("POST", "PUT") else b""
+         payload = json.loads(raw) if raw else {}
+         result = route_api(method, parts, payload, self.headers.get("X-User", ""))
+      except PermissionDenied as exc:
+         self._json({"error": str(exc)}, HTTPStatus.FORBIDDEN)
       except ValidationError as exc:
          self._json({"error": str(exc)}, HTTPStatus.UNPROCESSABLE_ENTITY)
       except (KeyError, LookupError, ValueError):
@@ -379,68 +432,31 @@ class Handler(BaseHTTPRequestHandler):
          self._json(result)
 
 
-def route_api(method, parts, payload):
+def route_api(method, parts, payload, user=""):
    """JSON API routing, separate from the handler so it can be tested without a server."""
    match method, parts:
       case "POST", ["_reset"]:
          STORE.reset()
+         WIZARDS.clear()
          return {"ok": True}
       case "POST", ["_seed"]:
-         STORE.seed(payload)  # the data entry's seed sections
+         STORE.seed(payload["tenants"])  # the data entry's seed sections, per tenant
          return {"ok": True}
-      case "GET", ["items"]:
-         return list(STORE.items.values())
-      case "POST", ["items"]:
-         return STORE.create_item(
-            payload["name"], int(payload.get("quantity", 1)), payload.get("category", "general")
-         )
-      case "GET", ["items", name]:
-         return STORE.items[name]
-      case "PATCH", ["items", name]:
-         return STORE.update_item(name, **payload)
-      case "DELETE", ["items", name]:
-         STORE.delete_item(name)
-         return {"ok": True}
-      case "GET", ["users"]:
-         return list(STORE.users.values())
-      case "POST", ["users"]:
-         return STORE.invite_user(payload["email"], payload.get("role", "viewer"))
-      case "GET", ["users", email]:
-         return STORE.users[email.lower()]
-      case "PATCH", ["users", email]:
-         if payload.get("active") is False:
-            STORE.deactivate_user(email)
-         if "role" in payload:
-            STORE.change_role(email, payload["role"])
-         return STORE.users[email.lower()]
-      case "GET", ["orders"]:
-         return list(STORE.orders.values())
-      case "POST", ["orders"]:
-         return STORE.create_order(payload["lines"])
-      case "GET", ["orders", order_id]:
-         return STORE.orders[int(order_id)]
-      case "POST", ["orders", order_id, "cancel"]:
-         return STORE.cancel_order(int(order_id))
-      case "GET", ["settings"]:
-         return STORE.settings
-      case "PUT", ["settings"]:
-         return STORE.update_settings(payload)
-      case "GET", ["policy"]:
-         return STORE.policy
-      case "PUT", ["policy"]:
-         return STORE.set_policy(payload)
+      case "GET", ["policy", "v1", "revision", tenant]:
+         return {"rev_id": STORE.tenant(tenant).rev_id}
+      case "GET", ["policy", "v1", "policy", tenant, rev_id]:
+         return STORE.published(tenant, int(rev_id))
+      case "GET", ["policy", "v1", ("rules" | "profiles") as section, tenant, rev_id]:
+         return STORE.published(tenant, int(rev_id))[section]
+      case "PUT", ["policy", "v1", "rules", tenant]:
+         return {"rev_id": STORE.api_replace_rules(tenant, user, payload.get("rules", []))}
+      case "GET", ["settings", "v1", "settings", tenant]:
+         return STORE.tenant(tenant).settings
    raise LookupError(f"{method} /api/{'/'.join(parts)}")
 
 
-def _int(value):
-   try:
-      return int(value)
-   except ValueError:
-      raise ValidationError("Quantity must be a whole number") from None
-
-
 def main():
-   parser = argparse.ArgumentParser(description="Run the stand-in fake web app.")
+   parser = argparse.ArgumentParser(description="Run the stand-in fake policy app.")
    parser.add_argument("--host", default="127.0.0.1")
    parser.add_argument("--port", type=int, default=8080)
    args = parser.parse_args()

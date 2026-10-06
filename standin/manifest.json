@@ -1,120 +1,129 @@
 {
   "_comment": "Ground truth for the synthetic stand-in: what kind each test is, and which tests each fake ticket maps to. Used by this project's tests and the eval harness.",
   "tests": {
-    "tests/inventory/test_inventory.py::TestInventoryItems::test_inventory_item_create": {
+    "tests/rules/test_rules.py::TestRules::test_rules_add_basic": {
       "kind": "ui"
     },
-    "tests/inventory/test_inventory.py::TestInventoryItems::test_inventory_item_create_invalid_quantity": {
+    "tests/rules/test_rules.py::TestRules::test_rules_add_with_condition": {
       "kind": "ui"
     },
-    "tests/inventory/test_inventory.py::TestInventoryItems::test_inventory_item_create_category_not_allowed": {
+    "tests/rules/test_rules.py::TestRules::test_rules_add_duplicate_name": {
       "kind": "ui"
     },
-    "tests/inventory/test_inventory.py::TestInventoryItems::test_inventory_items_search_by_name": {
+    "tests/rules/test_rules.py::TestRules::test_rules_edit_action": {
       "kind": "ui"
     },
-    "tests/inventory/test_inventory.py::TestInventoryItems::test_inventory_item_edit_category": {
+    "tests/rules/test_rules.py::TestRules::test_rules_edit_disable": {
       "kind": "ui"
     },
-    "tests/inventory/test_inventory.py::TestInventoryItems::test_inventory_item_delete": {
+    "tests/rules/test_rules.py::TestRules::test_rules_edit_reset": {
       "kind": "ui"
     },
-    "tests/inventory/test_inventory.py::TestInventoryItems::test_inventory_items_list_empty": {
+    "tests/rules/test_rules.py::TestRules::test_rules_delete_single": {
       "kind": "ui"
     },
-    "tests/inventory/test_inventory.py::TestInventoryItems::test_inventory_items_api_list": {
-      "kind": "api"
-    },
-    "tests/orders/test_orders.py::TestOrders::test_orders_checkout_place": {
+    "tests/rules/test_rules.py::TestRules::test_rules_delete_several": {
       "kind": "ui"
     },
-    "tests/orders/test_orders.py::TestOrders::test_orders_checkout_policy_limit": {
+    "tests/rules/test_rules.py::TestRules::test_rules_list_search": {
       "kind": "ui"
     },
-    "tests/orders/test_orders.py::TestOrders::test_orders_detail_cancel": {
+    "tests/rules/test_rules.py::TestRules::test_rules_list_filter_action": {
       "kind": "ui"
     },
-    "tests/orders/test_orders.py::TestOrders::test_orders_list_filter_status": {
+    "tests/rules/test_rules.py::TestRules::test_rules_list_pagination": {
       "kind": "ui"
     },
-    "tests/orders/test_orders.py::TestOrders::test_orders_detail_add_note": {
+    "tests/rules/test_rules.py::TestRules::test_rules_list_empty": {
       "kind": "ui"
     },
-    "tests/orders/test_orders.py::TestOrders::test_orders_api_create_cancel_in_ui": {
+    "tests/rules/test_rules.py::TestRules::test_rules_save_blocked_disabled": {
+      "kind": "ui"
+    },
+    "tests/rules/test_rules.py::TestRules::test_rules_import_file": {
+      "kind": "ui"
+    },
+    "tests/rules/test_rules.py::TestRules::test_rules_list_api_created": {
       "kind": "hybrid"
     },
-    "tests/orders/test_orders.py::TestOrders::test_orders_api_create_unknown_item": {
+    "tests/profiles/test_profiles.py::TestProfiles::test_profiles_add_basic": {
+      "kind": "ui"
+    },
+    "tests/profiles/test_profiles.py::TestProfiles::test_profiles_edit_level": {
+      "kind": "ui"
+    },
+    "tests/profiles/test_profiles.py::TestProfiles::test_profiles_delete_created": {
+      "kind": "ui"
+    },
+    "tests/profiles/test_profiles.py::TestProfiles::test_profiles_edit_reset": {
+      "kind": "ui"
+    },
+    "tests/profiles/test_profiles.py::TestProfiles::test_profiles_list_search": {
+      "kind": "ui"
+    },
+    "tests/profiles/test_profiles.py::TestProfiles::test_profiles_list_empty": {
+      "kind": "ui"
+    },
+    "tests/settings/test_settings.py::TestSettingsCapabilities::test_settings_capabilities_enable_bulk": {
+      "kind": "ui"
+    },
+    "tests/settings/test_settings.py::TestSettingsCapabilities::test_settings_capabilities_disable_profiles": {
+      "kind": "ui"
+    },
+    "tests/tenants/test_tenants.py::TestTenantsSecondary::test_tenants_secondary_rules_add": {
+      "kind": "ui"
+    },
+    "tests/tenants/test_tenants.py::TestTenantsSecondary::test_tenants_secondary_rules_list": {
+      "kind": "ui"
+    },
+    "tests/api/test_policy_api.py::TestPolicyApi::test_policy_api_rules_read": {
       "kind": "api"
     },
-    "tests/settings/test_settings.py::TestSettings::test_settings_general_timezone_change": {
-      "kind": "ui"
+    "tests/api/test_policy_api.py::TestPolicyApi::test_policy_api_rules_update_forbidden": {
+      "kind": "api"
     },
-    "tests/settings/test_settings.py::TestSettings::test_settings_general_language_change": {
-      "kind": "ui"
-    },
-    "tests/settings/test_settings.py::TestSettings::test_settings_general_timezone_reload": {
-      "kind": "ui"
-    },
-    "tests/settings/test_settings.py::TestSettings::test_settings_notifications_email_disable": {
-      "kind": "ui"
-    },
-    "tests/settings/test_settings.py::TestSettings::test_settings_notifications_digest_enable": {
-      "kind": "ui"
-    },
-    "tests/users/test_users.py::TestUsers::test_users_invite_role": {
-      "kind": "ui"
-    },
-    "tests/users/test_users.py::TestUsers::test_users_invite_duplicate_email": {
-      "kind": "ui"
-    },
-    "tests/users/test_users.py::TestUsers::test_users_profile_role_change": {
-      "kind": "ui"
-    },
-    "tests/users/test_users.py::TestUsers::test_users_profile_deactivate": {
-      "kind": "ui"
-    },
-    "tests/users/test_users.py::TestUsers::test_users_list_sso_banner": {
-      "kind": "ui"
+    "tests/api/test_policy_api.py::TestPolicyApi::test_policy_api_rules_update_admin": {
+      "kind": "api"
     }
   },
   "tickets": {
     "STND-101": {
       "status": "fixed",
       "tests": [
-        "tests/users/test_users.py::TestUsers::test_users_invite_role"
+        "tests/rules/test_rules.py::TestRules::test_rules_add_basic"
       ]
     },
     "STND-102": {
       "status": "fixed",
       "tests": [
-        "tests/inventory/test_inventory.py::TestInventoryItems::test_inventory_items_search_by_name"
+        "tests/rules/test_rules.py::TestRules::test_rules_list_search"
       ]
     },
     "STND-103": {
       "status": "fixed",
       "tests": [
-        "tests/inventory/test_inventory.py::TestInventoryItems::test_inventory_item_create_invalid_quantity"
+        "tests/rules/test_rules.py::TestRules::test_rules_add_duplicate_name"
       ],
       "history": "code skip citing the ticket, removed by the fix commit"
     },
     "STND-104": {
       "status": "fixed",
       "tests": [
-        "tests/orders/test_orders.py::TestOrders::test_orders_detail_cancel"
+        "tests/rules/test_rules.py::TestRules::test_rules_delete_single"
       ],
       "history": "JSON entry skip citing the ticket, removed by the fix commit"
     },
     "STND-105": {
       "status": "open",
       "tests": [
-        "tests/settings/test_settings.py::TestSettings::test_settings_notifications_digest_enable"
+        "tests/profiles/test_profiles.py::TestProfiles::test_profiles_edit_reset"
       ],
       "history": "still skipped by ticket id in the JSON entry"
     },
     "STND-106": {
       "status": "fixed",
       "tests": [
-        "tests/settings/test_settings.py::TestSettings::test_settings_general_timezone_reload"
+        "tests/rules/test_rules.py::TestRules::test_rules_list_pagination"
       ]
     }
   }

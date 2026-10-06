@@ -1,9 +1,9 @@
-"""Settings: timezone, language, and notification preferences."""
+"""Settings: capability gates, applied with the top bar's settings save option."""
 
 import pytest
 
 from framework.base_test import BaseTest
-from framework.decorators import browsers, data_driven, environments
+from framework.decorators import browsers, data_driven, environments, on_prem_only
 
 
 @browsers("chrome", "firefox")
@@ -11,59 +11,33 @@ from framework.decorators import browsers, data_driven, environments
 @data_driven
 @pytest.mark.project("example-project")
 @pytest.mark.component("settings")
-class TestSettings(BaseTest):
-   @pytest.mark.priority("p2")
-   @pytest.mark.suite("regression")
-   @pytest.mark.parametrize("timezone", ["UTC", "Europe/Berlin"])
-   def test_settings_general_timezone_change(self, timezone):
-      general = self.nav.settings.general
-      general.open()
-      general.timezone = timezone
-      general.save()
-
-      self.check.equal(general.flash_message, "Settings saved", "flash message")
-      self.validate_backend()
-
-   @pytest.mark.priority("p3")
-   @pytest.mark.suite("regression")
-   def test_settings_general_language_change(self):
-      general = self.nav.settings.general
-      general.open()
-      general.language = "de"
-      general.save()
-
-      self.validate_backend()
-
-   @pytest.mark.priority("p1")
-   @pytest.mark.suite("smoke")
-   def test_settings_general_timezone_reload(self):
-      """1. Save a timezone. 2. Reload the page. 3. The saved timezone is still selected."""
-      general = self.nav.settings.general
-      general.open()
-      general.timezone = "America/New_York"
-      general.save()
-      general.refresh()
-
-      self.check.equal(general.timezone, "America/New_York", "selected timezone")
-      self.validate_backend()
+class TestSettingsCapabilities(BaseTest):
+   def setup(self):
+      self.base_setup(fresh_driver=False, policy_wait=False)
 
    @pytest.mark.priority("p2")
    @pytest.mark.suite("regression")
-   def test_settings_notifications_email_disable(self):
-      notifications = self.nav.settings.notifications
-      notifications.open()
-      notifications.email_enabled = False
-      notifications.save()
+   def test_settings_capabilities_enable_bulk(self):
+      capabilities = self.nav.settings.capabilities
+      capabilities.open()
+      capabilities.bulk_delete_enabled = True
+      self.nav.top_bar.save(settings=True)
 
-      self.check.equal(notifications.flash_message, "Settings saved", "flash message")
-      self.validate_backend()
+      self.check.assertEqual("Settings applied", capabilities.toast)
+      self.verify_targets()
 
-   @pytest.mark.priority("p3")
+   @pytest.mark.priority("p2")
    @pytest.mark.suite("regression")
-   def test_settings_notifications_digest_enable(self):
-      notifications = self.nav.settings.notifications
-      notifications.open()
-      notifications.weekly_digest = True
-      notifications.save()
+   @on_prem_only
+   def test_settings_capabilities_disable_profiles(self):
+      """
+      1. Turn off the profiles capability and apply the settings.
+      2. The Profiles link is gone from the navigation.
+      """
+      capabilities = self.nav.settings.capabilities
+      capabilities.open()
+      capabilities.profiles_enabled = False
+      self.nav.top_bar.save(settings=True)
 
-      self.validate_backend()
+      self.check.assertNotIn("Profiles", capabilities.nav_links)
+      self.verify_targets()

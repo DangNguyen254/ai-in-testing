@@ -5,8 +5,8 @@
 Commits (fixed author and dates, so the history is reproducible):
 1. The suite with two known bugs. Their tests are skipped, citing the ticket:
    STND-103 by a code skip, STND-104 by a JSON data-entry skip.
-2. "Fix STND-103 ..." restores quantity validation and removes the code skip.
-3. "Fix STND-104 ..." restores order cancellation and removes the JSON skip.
+2. "Fix STND-103 ..." restores the duplicate-name check and removes the code skip.
+3. "Fix STND-104 ..." makes deletes stick and removes the JSON skip.
 The last commit's tree equals the stand-in as committed in this repo.
 """
 
@@ -25,17 +25,22 @@ IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", "artifacts")
 AUTHOR = ("Stand-in Bot", "standin-bot@example.com")
 DATES = ("2026-01-05T10:00:00+00:00", "2026-01-12T15:30:00+00:00", "2026-01-19T11:45:00+00:00")
 
-INVENTORY_TEST = "tests/inventory/test_inventory.py"
-ORDERS_DATA = "tests/orders/test_orders.json"
+RULES_TEST = "tests/rules/test_rules.py"
+RULES_DATA = "tests/rules/test_rules.json"
 STATE = "app/state.py"
 
-QUANTITY_CHECK = (
-   '      if quantity < 1:\n         raise ValidationError("Quantity must be at least 1")\n'
+# STND-103: without this check, duplicate rule names are accepted.
+DUPLICATE_CHECK = (
+   '      if any(r["name"] == rule["name"] for r in tenant.view()["rules"]):\n'
+   "         raise ValidationError(f\"A rule named '{rule['name']}' already exists\")\n"
 )
-CANCEL_LINE = '      order["status"] = "cancelled"\n'
-SKIP_DECORATOR = '   @pytest.mark.skip(reason="STND-103: items can be saved with quantity 0")\n'
-SKIP_TARGET = "   def test_inventory_item_create_invalid_quantity("
-CANCEL_TEST_ID = "test_orders_detail_cancel"
+# STND-104: deleting from a copy of the rules leaves the policy unchanged.
+DELETE_FIXED = '      rules = tenant.edit()["rules"]\n'
+DELETE_BUGGY = '      rules = copy.deepcopy(tenant.edit()["rules"])\n'
+SKIP_DECORATOR = '   @pytest.mark.skip(reason="STND-103: duplicate rule names are accepted")\n'
+SKIP_TARGET = "   def test_rules_add_duplicate_name("
+DELETE_TEST_ID = "test_rules_delete_single"
+ID_FIELD = "test_id"
 
 
 def _edit(path, change):
@@ -60,14 +65,18 @@ def _remove_first(text, snippet):
    return text.replace(snippet, "", 1)
 
 
+def _replace_first(text, old, new):
+   return text.replace(old, new, 1)
+
+
 def _add_skip(text):
    return text.replace(SKIP_TARGET, SKIP_DECORATOR + SKIP_TARGET, 1)
 
 
 def _add_json_skip(text):
    entries = json.loads(text)
-   entry = next(e for e in entries if e["id"] == CANCEL_TEST_ID)
-   entry["skip"] = {"ticket": "STND-104", "reason": "cancelling an order leaves it open"}
+   entry = next(e for e in entries if e[ID_FIELD] == DELETE_TEST_ID)
+   entry["skip"] = {"ticket": "STND-104", "reason": "a deleted rule comes back after publishing"}
    # The suite's JSON style: indent 3, "key":value, final newline.
    return json.dumps(entries, indent=3, separators=(",", ":"), ensure_ascii=False) + "\n"
 
@@ -118,20 +127,23 @@ def build(out, force=False):
 
    # Commit 1: both bugs present, both tests skipped with the ticket id.
    _sync(out)
-   _edit(out / STATE, lambda t: _remove_first(_remove_first(t, QUANTITY_CHECK), CANCEL_LINE))
-   _edit(out / INVENTORY_TEST, _add_skip)
-   _edit(out / ORDERS_DATA, _add_json_skip)
+   _edit(
+      out / STATE,
+      lambda t: _replace_first(_remove_first(t, DUPLICATE_CHECK), DELETE_FIXED, DELETE_BUGGY),
+   )
+   _edit(out / RULES_TEST, _add_skip)
+   _edit(out / RULES_DATA, _add_json_skip)
    _commit(out, "Add stand-in suite", DATES[0])
 
-   # Commit 2: fix STND-103 (validation back, code skip removed). Bug STND-104 remains.
+   # Commit 2: fix STND-103 (name check back, code skip removed). Bug STND-104 remains.
    _sync(out)
-   _edit(out / STATE, lambda t: _remove_first(t, CANCEL_LINE))
-   _edit(out / ORDERS_DATA, _add_json_skip)
-   _commit(out, "Fix STND-103: reject item quantities below 1", DATES[1])
+   _edit(out / STATE, lambda t: _replace_first(t, DELETE_FIXED, DELETE_BUGGY))
+   _edit(out / RULES_DATA, _add_json_skip)
+   _commit(out, "Fix STND-103: reject duplicate rule names", DATES[1])
 
-   # Commit 3: fix STND-104 (cancellation back, JSON skip removed) = current stand-in.
+   # Commit 3: fix STND-104 (delete edits the policy, JSON skip removed) = current stand-in.
    _sync(out)
-   _commit(out, "Fix STND-104: cancelling an order sets it to cancelled", DATES[2])
+   _commit(out, "Fix STND-104: deleted rules stay deleted after publishing", DATES[2])
    return out
 
 
