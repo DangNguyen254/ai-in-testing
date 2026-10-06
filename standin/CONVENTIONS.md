@@ -40,7 +40,18 @@ Generic conventions for this synthetic suite. Generated tests must follow them.
 4. UI-only: seed → search / filter / page / trigger a validation error → check counts or
    messages. No `targets`, no publish.
 
-The final checks must verify what the test name claims.
+The final checks must verify what the test name claims, and every outcome a docstring states
+has its own check (e.g. "page 2 shows only allow rules" needs a check on page 2's actions,
+not only a count).
+
+## List pages
+- Rules are listed by name, ignoring case; `page_size` rules per page (read it from the
+  page object, `rules.page_size`; never hardcode it).
+- `total_count` counts every match across all pages. `rule_names` and `rule_actions` are the
+  rows of the current page only.
+- A search text or action filter applies only on `search()`.
+- A test that depends on page contents or order seeds enough rules to make them obvious and
+  states the expected rows in its entry (e.g. `page_2_names`).
 
 ## Checks
 - `self.check` is a `unittest.TestCase`: `assertEqual`, `assertTrue`, `assertFalse`,
@@ -59,14 +70,20 @@ The final checks must verify what the test name claims.
 - Seed sections: `settings` (`capabilities`, `roles`, `api_tokens`) and `policy` (`rules`,
   `profiles`) for the primary tenant; `tenants` for several tenants, each block with
   `tenant` (`{tenant_id1}`, ...) and optional `settings`, `policy`, `targets`.
-- Seed only what the scenario reads or the feature needs.
+- Seed only what the scenario reads or the feature needs. In `settings.capabilities`, list only
+  the gates the feature uses (`{"rules":true}` for rules tests; add `bulk_delete` / `import`
+  only for those features). Unlisted gates keep their defaults.
 - Expectations: `targets` items `{"method", "path", "payload"?, "status_code"?, "response"}`,
   or `interactions` items `{"request": {"method", "path"}, "response": {"status", "body"}}`.
   Never both. Paths use `:tid` and `:rev_id`; list only the response fields the test asserts.
 - Unique names: `{test_id:N}` in data (at most N characters) and `self.unique_name(N)` in code;
   both give the same name. Test users: `{user_1}`, `{user_2}`.
+- Object names are at most 32 characters. With a suffix, N + the suffix length must stay within
+  32 (`{test_id:12}-epsilon-proxy` is 12 + 14 = 26).
 - Custom keys only for values the test body reads and that differ between variants or must
-  match the seed (e.g. `delete_name`, `expected_count`). Simple UI inputs stay in the code.
+  match the seed (e.g. `delete_name`, `total_count`). Simple UI inputs stay in the code.
+  Name a key for what it measures: `total_count` (all matches), `page_2_names` (one page's
+  rows); not a vague `expected_count` next to a per-page value.
 - Other pre-existing state: a UI helper in the test file (`_add_profile`), the policy manager
   (`self.policy.add_rule(...)`), the settings manager (`self.settings.set_capabilities(...)`),
   or a file under `tests/<area>/files/`.

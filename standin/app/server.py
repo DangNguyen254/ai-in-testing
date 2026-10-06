@@ -82,7 +82,10 @@ def rules_page(tenant_id, query, toast):
    )
    pages = max(1, -(-total // PAGE_SIZE))
    keep = f"q={quote(text)}&action={quote(action)}"
-   pager = f'<span id="page-number">{page_number}</span>/<span id="page-count">{pages}</span>'
+   pager = (
+      f'<span id="page-number">{page_number}</span>/<span id="page-count">{pages}</span>'
+      f'<span id="page-size">{PAGE_SIZE}</span>'
+   )
    if page_number < pages:
       pager += f'<a id="next-page" href="/rules?{keep}&page={page_number + 1}">Next</a>'
    if page_number > 1:
@@ -96,7 +99,7 @@ def rules_page(tenant_id, query, toast):
       '<a id="import-rules" href="/rules/import">Import</a>'
       '<form id="delete-form" method="post" action="/rules/delete">'
       '<button id="delete-selected">Delete selected</button></form>'
-      f'<span id="rule-count">{total}</span>'
+      f'<span id="rule-total">{total}</span>'
       f'<table id="rules-table">{rows}</table>{pager}'
    )
    return page(tenant_id, "Rules", body, "/rules", toast)

@@ -3,7 +3,7 @@
 Run with `uv run --env-file .env pytest -m live tests/test_generate_live.py -v`.
 About 3 LLM calls per ticket (draft, query rewrite, generation) plus any retries/follow-ups.
 Each generated pair is saved to output/generated/live-<version>/ for human review, where
-<version> comes from generate.prompt_version (generate_v3 -> live-v3). A rerun with the same
+<version> comes from generate.prompt_version (generate_v4 -> live-v4). A rerun with the same
 prompt version overwrites that folder.
 """
 

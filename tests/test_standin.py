@@ -374,6 +374,45 @@ def test_large_seed_blocks_repeat_across_variants() -> None:
     assert capabilities.most_common(1)[0][1] >= len(entries) - 2
 
 
+def test_seeded_names_stay_within_the_app_name_cap(standin: dict[str, ModuleType]) -> None:
+    """Every ``{test_id:N}`` name, with any suffix, fits the app's cap; so do ``unique_name(N)``."""
+    placeholders = standin["framework.placeholders"]
+    cap = standin["app.state"].NAME_MAX_LENGTH
+    pattern = re.compile(r"\{test_id:\d+\}")
+
+    def strings(value: Any) -> list[str]:
+        if isinstance(value, str):
+            return [value]
+        if isinstance(value, list):
+            return [s for v in value for s in strings(v)]
+        if isinstance(value, dict):
+            return [s for v in value.values() for s in strings(v)]
+        return []
+
+    checked = 0
+    for test_id, entry in _all_entries().items():
+        for raw in strings(entry):
+            if pattern.search(raw):
+                resolved = placeholders.resolve(raw, test_id, SUFFIX)
+                assert len(resolved) <= cap, (test_id, raw, resolved)
+                checked += 1
+    assert checked > 50
+    for path in TEST_FILES:
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Call) and _dotted(node.func).endswith("unique_name"):
+                limit = node.args[0]
+                assert isinstance(limit, ast.Constant) and limit.value <= cap, path
+
+
+def test_rule_list_is_sorted_by_name_and_names_are_capped(standin: dict[str, ModuleType]) -> None:
+    state = standin["app.state"]
+    store = state.Store()
+    store.seed([{"tenant": "t", "policy": {"rules": [{"name": n} for n in ("b", "C", "a")]}}])
+    assert [r["name"] for r in store.list_rules("t")[0]] == ["a", "b", "C"]
+    with pytest.raises(state.ValidationError, match="longer than"):
+        store.add_rule("t", {"name": "x" * (state.NAME_MAX_LENGTH + 1)})
+
+
 def test_variants_differ_by_one_or_two_values() -> None:
     entries = _by_id("tests/rules/test_rules.py")
     exact, partial = (
@@ -381,7 +420,7 @@ def test_variants_differ_by_one_or_two_values() -> None:
         entries["test_rules_list_search[partial]"],
     )
     differing = {k for k in exact if exact[k] != partial[k]}
-    assert differing == {ID, "query", "expected_count"}
+    assert differing == {ID, "query", "total_count"}
 
 
 # --- Style -------------------------------------------------------------------------------
@@ -664,12 +703,19 @@ def test_ui_only_expectations_match_the_app(standin: dict[str, ModuleType]) -> N
     tenant = config.tenants[0]
     for match in ("exact", "partial", "mixed_case"):
         entry = seeded(f"test_rules_list_search[{match}]")
-        assert store.list_rules(tenant, entry["query"])[1] == entry["expected_count"], match
+        assert store.list_rules(tenant, entry["query"])[1] == entry["total_count"], match
     for action in ("allow", "deny"):
         entry = seeded(f"test_rules_list_filter_action[{action}]")
-        assert store.list_rules(tenant, "", action)[1] == entry["expected_count"], action
+        shown, total = store.list_rules(tenant, "", action)
+        assert total == entry["total_count"], action
+        assert {r["action"] for r in shown} == {action}, action
     entry = seeded("test_rules_list_pagination")
-    assert len(store.list_rules(tenant, "", "allow", 2)[0]) == entry["last_page_count"]
+    page_size = standin["app.state"].PAGE_SIZE
+    first, total = store.list_rules(tenant, "", "allow", 1)
+    assert total == entry["total_count"] and len(first) == page_size
+    second = store.list_rules(tenant, "", "allow", 2)[0]
+    assert [r["name"] for r in second] == entry["page_2_names"]
+    assert {r["action"] for r in first + second} == {"allow"}
     entry = seeded("test_profiles_list_search")
     assert [p["name"] for p in store.search_profiles(tenant, "team")] == entry["expected_names"]
     entry = seeded("test_rules_add_duplicate_name")

@@ -3,10 +3,7 @@
       "test_id":"test_settings_capabilities_enable_bulk",
       "settings":{
          "capabilities":{
-            "rules":true,
-            "profiles":true,
-            "bulk_delete":false,
-            "import":true
+            "bulk_delete":false
          }
       },
       "targets":[
@@ -25,10 +22,7 @@
       "test_id":"test_settings_capabilities_disable_profiles",
       "settings":{
          "capabilities":{
-            "rules":true,
-            "profiles":true,
-            "bulk_delete":false,
-            "import":true
+            "profiles":true
          }
       },
       "targets":[

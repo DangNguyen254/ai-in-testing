@@ -17,6 +17,7 @@ ROLES = ("viewer", "editor", "admin")
 DEFAULT_CAPABILITIES = {"rules": True, "profiles": True, "bulk_delete": False, "import": True}
 EMPTY_POLICY = {"rules": [], "profiles": []}
 PAGE_SIZE = 5
+NAME_MAX_LENGTH = 32
 
 
 class ValidationError(ValueError):
@@ -127,13 +128,19 @@ class Store:
       return [self.add_rule(tenant_id, rule) for rule in rules]
 
    def list_rules(self, tenant_id, text="", action="", page=1):
-      """One page of rules matching the search text and action filter, plus the total."""
+      """One page of rules matching the search text and action filter, plus the total.
+
+      Rules are listed by name, ignoring case, so page contents are predictable.
+      """
       needle = text.strip().lower()
-      matching = [
-         r
-         for r in self.tenant(tenant_id).view()["rules"]
-         if needle in r["name"].lower() and action in ("", r["action"])
-      ]
+      matching = sorted(
+         (
+            r
+            for r in self.tenant(tenant_id).view()["rules"]
+            if needle in r["name"].lower() and action in ("", r["action"])
+         ),
+         key=lambda r: (r["name"].lower(), r["name"]),
+      )
       start = (max(page, 1) - 1) * PAGE_SIZE
       return matching[start : start + PAGE_SIZE], len(matching)
 
@@ -241,7 +248,7 @@ def _rule(rule):
    if action not in ACTIONS:
       raise ValidationError(f"Unknown action '{action}'")
    return {
-      "name": str(rule.get("name", "")),
+      "name": _name(rule),
       "action": action,
       "enabled": bool(rule.get("enabled", True)),
       "description": str(rule.get("description", "")),
@@ -254,7 +261,7 @@ def _profile(profile):
    if level not in LEVELS:
       raise ValidationError(f"Unknown level '{level}'")
    return {
-      "name": str(profile.get("name", "")),
+      "name": _name(profile),
       "level": level,
       "description": str(profile.get("description", "")),
    }
@@ -265,3 +272,10 @@ def _find(objects, name, kind):
       if obj["name"] == name:
          return obj
    raise ValidationError(f"Unknown {kind} '{name}'")
+
+
+def _name(obj):
+   name = str(obj.get("name", ""))
+   if len(name) > NAME_MAX_LENGTH:
+      raise ValidationError(f"Name is longer than {NAME_MAX_LENGTH} characters")
+   return name

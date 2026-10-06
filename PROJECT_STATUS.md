@@ -23,7 +23,7 @@ Tracks progress, scope, and acceptance criteria for each phase. Read together wi
 | 3b | Stand-in v2/v3 (real-framework patterns) | ✅ | 3 |
 | 4 | Indexer (Python) | ✅ | 3 |
 | 5 | Retrieval | ✅ | 2, 4 |
-| 6 | Code generation (code + JSON pair) | 🟡 (style check of v3 pending) | 5, 3b |
+| 6 | Code generation (code + JSON pair) | 🟡 (v4 live run + style check pending) | 5, 3b |
 | 7 | Validators, repair, sandbox | ⬜ | 6 |
 | 8 | Eval harness | ⬜ | 5 (minimal), 7 (full) |
 | 9 | Rust support | ⬜ | 8 |
@@ -36,13 +36,19 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 
 Read this first when resuming in a new session.
 
-**Where we are:** Phase 6 is 🟡, waiting for the human's **third style check**. The pairs from the latest live run (stand-in v3, prompt `generate_v3`, 5/5 passed) are in `output/generated/live-v3/`. The fair comparisons are **STND-106** (`tests/rules/test_rules_list_filter.*`) and **STND-103** (`tests/rules/test_rules_add_duplicate.*`). 101, 102, and 104 used their own linked test as the base entry, so they would just mirror it. Earlier runs are in `live-v1/` and `live-v2/`.
+**Where we are:** Phase 6 is 🟡. The human's third style check (STND-106 from `live-v3/`) found semantic errors, which were traced to the stand-in's own pagination test. The stand-in, the conventions, and the prompt (`generate_v4`) are now fixed; the **v4 live run** (writes to `output/generated/live-v4/`) and a fourth style check are next. Earlier runs are in `live-v1/` to `live-v3/`.
+
+**Decision (2026-10-06, human):** keep LLM use to a minimum. No LLM reviewer step: semantic gaps are handled by a stronger generation prompt and by deterministic heuristics in Phase 7 that flag for the reviewer.
 
 **Next steps, in order:**
-1. Human style check of the v3 pairs → fix what it finds (stand-in, prompt, or generator), then rerun the live test if needed.
+1. v4 live run (about 15 LLM calls; ask first) → human style check → fix and rerun if needed.
 2. Close Phase 6 (the last DoD item is the human style check).
 3. Phase 7: validators, repair loop, sandbox. Use the validator list in `CLAUDE.md`, which includes rule (1) (every seed/expectation key is read or consumed; never both `targets` and `interactions`) and the name-claim heuristic. Also add:
-   - names of seeded objects must use `{test_id:N}`; STND-103 used the literal `web-access`.
+   - names of seeded objects must use `{test_id:N}`; STND-103 used the literal `web-access`;
+   - **claims vs. checks** (deterministic, flags only): take the outcome nouns from the docstring's last steps and the draft's `expected_outcome` (e.g. "page 2", "only allow", "filter stays selected") and flag any without a matching check; flag a test whose only checks are counts when the outcome names which items are shown;
+   - **name length:** `{test_id:N}` + literal suffix ≤ the name cap (config; stand-in 32), and `unique_name(N)` with N ≤ cap;
+   - **unused capability gates:** capability keys in `settings` must be gates the feature uses (a per-component gate map in config);
+   - **unstated constants:** flag arithmetic on page counts when the test reads no page size (heuristic).
 
 **Known open points (not blocking):**
 - Template choice: STND-106 used `test_rules_add_basic[allow]` as the base instead of a list or pagination test. Ranking is same component first, then the retrieval score.
@@ -503,6 +509,29 @@ Read this first when resuming in a new session.
   - **Remaining defect:** STND-103 seeds and types the literal name `web-access` instead of `{test_id:N}` / `self.unique_name(N)`. This needs a Phase 7 rule: names of seeded objects must use the unique-name placeholder.
   - **Status:** the pairs in `output/generated/live-v3/` are ready for the human style check; v2 outputs are kept in `output/generated/live-v2/`.
 - 2026-10-06: The live test now writes each run to `output/generated/live-<prompt version>/` (e.g. `live-v3/`), so the folder name says which version produced it (the human's request); earlier runs are in `live-v1/` and `live-v2/`.
+- 2026-10-06: Human style check of the v3 STND-106 pair: the closest yet to a real UI-only test (right shape, purposeful seed, placeholders, properties, `assertEqual` without messages). Remaining errors are **semantic**:
+  - the page counts only work with an unstated page size of 5;
+  - the docstring claims "page 2 shows only allow rules", but only counts are checked;
+  - `rule_count` is ambiguous (total vs. current page);
+  - page 1 is never checked;
+  - unused capability gates are seeded;
+  - the name length isn't checked against a cap;
+  - page contents depend on an unstated sort order.
+
+  **Root cause:** the output copies the stand-in's own `test_rules_list_pagination` (the ticket's linked test, in context), which had every one of these flaws.
+
+  **Decision (human):** no LLM reviewer step; strengthen the prompt and add deterministic heuristics (Phase 7).
+
+  **Fixes:**
+  - **App:** rules listed by name (ignoring case); `#page-size` shown; object names capped at 32 characters (`NAME_MAX_LENGTH`, enforced on seed and add).
+  - **Page object:** `rule_count` → `total_count` (all matches); new `rule_actions`, `page_size`, `page_count`; docstring states which values are per page.
+  - **Tests:** the pagination test checks page 1 (total, full page, only allow) and page 2 (number, filter kept, exact `page_2_names`, only allow); the filter test checks the shown actions.
+  - **Data:** `expected_count` → `total_count`, `last_page_count` → `page_2_names`, capability gates trimmed to what each feature uses (defaults fill the rest).
+  - **Conventions:** a "List pages" section, the docstring-claims rule, key naming, gates, and the name cap.
+  - **Prompt `generate_v4`:** every stated outcome gets its own check (counts don't prove which items); check state before and after a move; no unstated constants; key names say what they measure; seeded names always use the placeholder and fit the cap; parametrize only when the steps are identical; trim unused sub-keys.
+  - **Project tests:** all placeholder names fit the cap; sorting and the cap are enforced; page 1 and page 2 replayed against the app.
+
+  Verified: ruff, mypy strict (64 files), pytest 433 passed, 12 live deselected; stand-in collects 36 tests.
 
 ---
 
@@ -650,4 +679,5 @@ Read this first when resuming in a new session.
 | 2026-10-06 | all | Target patterns updated from the human's real-framework comparison (CLAUDE.md patterns, guardrails, data models, phases). New Phase 3b (stand-in v2); Phase 6 to be reworked after it; Phase 7 validator list extended |
 | 2026-10-06 | – | Handoff section added (session moves to Claude Code desktop) |
 | 2026-10-06 | 3b | Stand-in v3 built and verified (policy app with top bar, four test shapes, targets/interactions replayed, rule (1) checked on the stand-in); generate_v3 prompt and self-checks |
+| 2026-10-06 | 6 | Third style check (STND-106): semantic gaps traced to the stand-in; stand-in patched (sorting, page size, name cap, `total_count`), `generate_v4`; no LLM reviewer step (human decision) |
 | 2026-10-06 | 3b | Stand-in v2 built and verified (patterns checked by project tests; indexer reads array data and infers unannotated types; config `data`; `Chunk.data_format`); marked ✅ Done. v1 generator tests skipped until `generate_v2` |

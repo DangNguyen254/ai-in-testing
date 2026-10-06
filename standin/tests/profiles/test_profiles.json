@@ -3,10 +3,7 @@
       "test_id":"test_profiles_add_basic",
       "settings":{
          "capabilities":{
-            "rules":true,
-            "profiles":true,
-            "bulk_delete":false,
-            "import":true
+            "profiles":true
          }
       },
       "targets":[
@@ -26,10 +23,7 @@
       "test_id":"test_profiles_edit_level[low]",
       "settings":{
          "capabilities":{
-            "rules":true,
-            "profiles":true,
-            "bulk_delete":false,
-            "import":true
+            "profiles":true
          }
       },
       "policy":{
@@ -57,10 +51,7 @@
       "test_id":"test_profiles_edit_level[high]",
       "settings":{
          "capabilities":{
-            "rules":true,
-            "profiles":true,
-            "bulk_delete":false,
-            "import":true
+            "profiles":true
          }
       },
       "policy":{
@@ -88,10 +79,7 @@
       "test_id":"test_profiles_delete_created",
       "settings":{
          "capabilities":{
-            "rules":true,
-            "profiles":true,
-            "bulk_delete":false,
-            "import":true
+            "profiles":true
          }
       },
       "keep_name":"{test_id:20}-keep",
@@ -112,10 +100,7 @@
       "test_id":"test_profiles_edit_reset",
       "settings":{
          "capabilities":{
-            "rules":true,
-            "profiles":true,
-            "bulk_delete":false,
-            "import":true
+            "profiles":true
          }
       },
       "policy":{
@@ -147,10 +132,7 @@
       "test_id":"test_profiles_list_search",
       "settings":{
          "capabilities":{
-            "rules":true,
-            "profiles":true,
-            "bulk_delete":false,
-            "import":true
+            "profiles":true
          }
       },
       "policy":{

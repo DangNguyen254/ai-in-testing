@@ -178,7 +178,7 @@ class TestRules(BaseTest):
       rules.search_text = self.params["query"]
       rules.search()
 
-      self.check.assertEqual(self.params["expected_count"], rules.rule_count)
+      self.check.assertEqual(self.params["total_count"], rules.total_count)
 
    @pytest.mark.priority("p2")
    @pytest.mark.suite("regression")
@@ -189,26 +189,34 @@ class TestRules(BaseTest):
       rules.action_filter = action
       rules.search()
 
-      self.check.assertEqual(self.params["expected_count"], rules.rule_count)
+      self.check.assertEqual(self.params["total_count"], rules.total_count)
+      self.check.assertEqual({action}, set(rules.rule_actions))
 
    @pytest.mark.priority("p3")
    @pytest.mark.suite("regression")
    @retry(times=2)
    def test_rules_list_pagination(self):
       """
-      1. Filter the rule list by action.
-      2. Go to the next page.
-      3. The filter is kept and the last page shows the remaining rules.
+      1. Filter the rule list by the allow action.
+      2. Page 1 is full and shows only allow rules.
+      3. Go to the next page.
+      4. The filter is kept and page 2 shows the remaining allow rules.
       """
       rules = self.nav.rules.list
       rules.open()
       rules.action_filter = "allow"
       rules.search()
+
+      self.check.assertEqual(self.params["total_count"], rules.total_count)
+      self.check.assertEqual(rules.page_size, len(rules.rule_names))
+      self.check.assertEqual({"allow"}, set(rules.rule_actions))
+
       rules.next_page()
 
       self.check.assertEqual(2, rules.page_number)
       self.check.assertEqual("allow", rules.action_filter)
-      self.check.assertEqual(self.params["last_page_count"], len(rules.rule_names))
+      self.check.assertEqual(self.params["page_2_names"], rules.rule_names)
+      self.check.assertEqual({"allow"}, set(rules.rule_actions))
 
    @pytest.mark.priority("p3")
    @pytest.mark.suite("regression")
@@ -216,7 +224,7 @@ class TestRules(BaseTest):
       rules = self.nav.rules.list
       rules.open()
 
-      self.check.assertEqual(0, rules.rule_count)
+      self.check.assertEqual(0, rules.total_count)
 
    @pytest.mark.priority("p2")
    @pytest.mark.suite("regression")

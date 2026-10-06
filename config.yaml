@@ -122,7 +122,7 @@ context:
   chars_per_token: 3.0           # token estimate = ceil(chars / 3.0); over-counts on purpose
 
 generate:
-  prompt_version: generate_v3
+  prompt_version: generate_v4
   conventions_doc: null          # e.g. standin/CONVENTIONS.md; always included when set
   review_checklist_defaults:      # always on the reviewer checklist ("needs a real run")
     - Expected backend responses are not from a real capture; confirm them in a real run.

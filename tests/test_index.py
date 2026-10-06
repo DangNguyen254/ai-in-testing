@@ -131,7 +131,7 @@ def test_test_chunks_carry_decorators_markers_ids_and_entries(standin_index: Ind
     assert set(chunk.data_entries) == set(chunk.test_ids)  # type: ignore[attr-defined]
     entry = chunk.data_entries["test_rules_list_search[partial]"]  # type: ignore[attr-defined]
     assert entry["test_id"] == "test_rules_list_search[partial]"
-    assert (entry["query"], entry["expected_count"]) == ("alpha", 3)
+    assert (entry["query"], entry["total_count"]) == ("alpha", 3)
 
 
 def test_stacked_parametrize_ids_put_the_bottom_decorator_first(tmp_path: Path) -> None:
@@ -352,7 +352,7 @@ def test_cli_index_and_search(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     runner = CliRunner()
     result = runner.invoke(app, ["index", str(STANDIN)])
     assert result.exit_code == 0, result.output
-    assert "27 files" in result.output and "page-object chains: 285" in result.output
+    assert "27 files" in result.output and "page-object chains: 291" in result.output
 
     result = runner.invoke(
         app, ["search", "delete rule", "--repo", str(STANDIN), "--kind", "test", "--top-k", "3"]

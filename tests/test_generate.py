@@ -1,4 +1,4 @@
-"""Code generation (generate_v3) with the fake LLM: entries from the base entry, checks with
+"""Code generation (generate_v4) with the fake LLM: entries from the base entry, checks with
 retry, formatting, context budget, traceability."""
 
 from __future__ import annotations
@@ -81,7 +81,7 @@ class TestRulesDelete(BaseTest):
     def test_rules_delete_none_listed(self) -> None:
         rules = self.nav.rules.list
         rules.open()
-        self.check.assertEqual(0, rules.rule_count)
+        self.check.assertEqual(0, rules.total_count)
 '''
 
 
@@ -201,7 +201,7 @@ def test_generates_a_traceable_code_and_data_pair(
     assert ref is not None and (ref.chunk_id, ref.entry_key) == (TEMPLATE_CHUNK, TEMPLATE_ID)
     assert ref.chunk_id in generated.retrieved_chunk_ids
     assert generated.ticket_id == "STND-104" and generated.draft_ref == "STND-104/d1"
-    assert generated.prompt_version == "generate_v3"
+    assert generated.prompt_version == "generate_v4"
     assert (generated.provider, generated.model, generated.attempts) == ("fake", "fake-model", 1)
     assert generated.context_tokens > 0
     assert [p.test_id for p in generated.entry_plans] == list(IDS)

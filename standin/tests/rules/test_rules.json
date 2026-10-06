@@ -3,10 +3,7 @@
       "test_id":"test_rules_add_basic[allow]",
       "settings":{
          "capabilities":{
-            "rules":true,
-            "profiles":true,
-            "bulk_delete":false,
-            "import":true
+            "rules":true
          }
       },
       "targets":[
@@ -26,10 +23,7 @@
       "test_id":"test_rules_add_basic[deny]",
       "settings":{
          "capabilities":{
-            "rules":true,
-            "profiles":true,
-            "bulk_delete":false,
-            "import":true
+            "rules":true
          }
       },
       "targets":[
@@ -50,10 +44,7 @@
       "test_id":"test_rules_add_with_condition",
       "settings":{
          "capabilities":{
-            "rules":true,
-            "profiles":true,
-            "bulk_delete":false,
-            "import":true
+            "rules":true
          }
       },
       "targets":[
@@ -79,10 +70,7 @@
       "test_id":"test_rules_add_duplicate_name",
       "settings":{
          "capabilities":{
-            "rules":true,
-            "profiles":true,
-            "bulk_delete":false,
-            "import":true
+            "rules":true
          }
       },
       "policy":{
@@ -98,10 +86,7 @@
       "test_id":"test_rules_edit_action",
       "settings":{
          "capabilities":{
-            "rules":true,
-            "profiles":true,
-            "bulk_delete":false,
-            "import":true
+            "rules":true
          }
       },
       "policy":{
@@ -130,10 +115,7 @@
       "test_id":"test_rules_edit_disable",
       "settings":{
          "capabilities":{
-            "rules":true,
-            "profiles":true,
-            "bulk_delete":false,
-            "import":true
+            "rules":true
          }
       },
       "policy":{
@@ -162,10 +144,7 @@
       "test_id":"test_rules_edit_reset",
       "settings":{
          "capabilities":{
-            "rules":true,
-            "profiles":true,
-            "bulk_delete":false,
-            "import":true
+            "rules":true
          }
       },
       "policy":{
@@ -193,10 +172,7 @@
       "test_id":"test_rules_delete_single",
       "settings":{
          "capabilities":{
-            "rules":true,
-            "profiles":true,
-            "bulk_delete":false,
-            "import":true
+            "rules":true
          }
       },
       "policy":{
@@ -236,9 +212,7 @@
       "settings":{
          "capabilities":{
             "rules":true,
-            "profiles":true,
-            "bulk_delete":true,
-            "import":true
+            "bulk_delete":true
          }
       },
       "policy":{
@@ -284,10 +258,7 @@
       "test_id":"test_rules_list_search[exact]",
       "settings":{
          "capabilities":{
-            "rules":true,
-            "profiles":true,
-            "bulk_delete":false,
-            "import":true
+            "rules":true
          }
       },
       "policy":{
@@ -355,16 +326,13 @@
          ]
       },
       "query":"{test_id:12}-alpha-web",
-      "expected_count":1
+      "total_count":1
    },
    {
       "test_id":"test_rules_list_search[partial]",
       "settings":{
          "capabilities":{
-            "rules":true,
-            "profiles":true,
-            "bulk_delete":false,
-            "import":true
+            "rules":true
          }
       },
       "policy":{
@@ -432,16 +400,13 @@
          ]
       },
       "query":"alpha",
-      "expected_count":3
+      "total_count":3
    },
    {
       "test_id":"test_rules_list_search[mixed_case]",
       "settings":{
          "capabilities":{
-            "rules":true,
-            "profiles":true,
-            "bulk_delete":false,
-            "import":true
+            "rules":true
          }
       },
       "policy":{
@@ -509,16 +474,13 @@
          ]
       },
       "query":"ALPHA",
-      "expected_count":3
+      "total_count":3
    },
    {
       "test_id":"test_rules_list_filter_action[allow]",
       "settings":{
          "capabilities":{
-            "rules":true,
-            "profiles":true,
-            "bulk_delete":false,
-            "import":true
+            "rules":true
          }
       },
       "policy":{
@@ -585,16 +547,13 @@
             }
          ]
       },
-      "expected_count":7
+      "total_count":7
    },
    {
       "test_id":"test_rules_list_filter_action[deny]",
       "settings":{
          "capabilities":{
-            "rules":true,
-            "profiles":true,
-            "bulk_delete":false,
-            "import":true
+            "rules":true
          }
       },
       "policy":{
@@ -661,16 +620,13 @@
             }
          ]
       },
-      "expected_count":3
+      "total_count":3
    },
    {
       "test_id":"test_rules_list_pagination",
       "settings":{
          "capabilities":{
-            "rules":true,
-            "profiles":true,
-            "bulk_delete":false,
-            "import":true
+            "rules":true
          }
       },
       "policy":{
@@ -737,16 +693,17 @@
             }
          ]
       },
-      "last_page_count":2
+      "total_count":7,
+      "page_2_names":[
+         "{test_id:12}-gamma-ssh",
+         "{test_id:12}-zeta-cache"
+      ]
    },
    {
       "test_id":"test_rules_save_blocked_disabled",
       "settings":{
          "capabilities":{
-            "rules":true,
-            "profiles":true,
-            "bulk_delete":false,
-            "import":true
+            "rules":true
          }
       },
       "policy":{
@@ -763,8 +720,6 @@
       "settings":{
          "capabilities":{
             "rules":true,
-            "profiles":true,
-            "bulk_delete":false,
             "import":true
          }
       },
@@ -789,10 +744,7 @@
       "test_id":"test_rules_list_api_created",
       "settings":{
          "capabilities":{
-            "rules":true,
-            "profiles":true,
-            "bulk_delete":false,
-            "import":true
+            "rules":true
          }
       }
    }

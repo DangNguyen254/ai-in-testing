@@ -9,6 +9,12 @@ from framework.pages.base_page import BasePage
 
 
 class RuleListPage(BasePage):
+   """Rules listed by name (ignoring case), ``page_size`` per page.
+
+   ``total_count`` counts every match across all pages; ``rule_names`` and ``rule_actions``
+   are the rows of the current page. A search text or action filter applies on ``search()``.
+   """
+
    path = "/rules"
 
    SEARCH_BOX = (By.ID, "search-box")
@@ -18,8 +24,11 @@ class RuleListPage(BasePage):
    IMPORT = (By.ID, "import-rules")
    DELETE_SELECTED = (By.ID, "delete-selected")
    NAMES = (By.CSS_SELECTOR, "#rules-table .rule-name")
-   COUNT = (By.ID, "rule-count")
+   ACTIONS = (By.CSS_SELECTOR, "#rules-table .rule-action")
+   TOTAL = (By.ID, "rule-total")
    PAGE_NUMBER = (By.ID, "page-number")
+   PAGE_COUNT = (By.ID, "page-count")
+   PAGE_SIZE = (By.ID, "page-size")
    NEXT_PAGE = (By.ID, "next-page")
 
    @property
@@ -43,12 +52,24 @@ class RuleListPage(BasePage):
       return self.texts_of(self.NAMES)
 
    @property
-   def rule_count(self):
-      return int(self.text_of(self.COUNT))
+   def rule_actions(self):
+      return self.texts_of(self.ACTIONS)
+
+   @property
+   def total_count(self):
+      return int(self.text_of(self.TOTAL))
 
    @property
    def page_number(self):
       return int(self.text_of(self.PAGE_NUMBER))
+
+   @property
+   def page_count(self):
+      return int(self.text_of(self.PAGE_COUNT))
+
+   @property
+   def page_size(self):
+      return int(self.text_of(self.PAGE_SIZE))
 
    def search(self):
       self.click(self.SEARCH_BUTTON)
