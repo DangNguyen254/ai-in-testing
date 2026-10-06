@@ -2,7 +2,9 @@
 
 Run with `uv run --env-file .env pytest -m live tests/test_generate_live.py -v`.
 About 3 LLM calls per ticket (draft, query rewrite, generation) plus any retries/follow-ups.
-Each generated pair is saved to output/generated/live/ for human review.
+Each generated pair is saved to output/generated/live-<version>/ for human review, where
+<version> comes from generate.prompt_version (generate_v3 -> live-v3). A rerun with the same
+prompt version overwrites that folder.
 """
 
 from __future__ import annotations
@@ -25,7 +27,7 @@ from ticket2test.style import format_entries, format_python
 
 STANDIN = REPO_ROOT / "standin"
 TICKETS = ["STND-101", "STND-102", "STND-103", "STND-104", "STND-106"]
-REVIEW_DIR = REPO_ROOT / "output" / "generated" / "live"
+OUTPUT_DIR = REPO_ROOT / "output" / "generated"
 LF = chr(10)
 
 
@@ -69,7 +71,8 @@ def test_generate_pair_for_standin_ticket(key: str) -> None:
     assert generated.retrieved_chunk_ids and generated.draft_ref == primary.id
     assert generated.context_tokens <= settings.context.max_tokens
 
-    folder = REVIEW_DIR / key
+    version = settings.generate.prompt_version.removeprefix("generate_")
+    folder = OUTPUT_DIR / f"live-{version}" / key
     (folder / Path(generated.file_name).parent).mkdir(parents=True, exist_ok=True)
     (folder / generated.file_name).write_text(generated.code, encoding="utf-8", newline=LF)
     (folder / generated.data_file_name).write_text(

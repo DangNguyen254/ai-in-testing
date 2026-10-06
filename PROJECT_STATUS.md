@@ -466,7 +466,8 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
   - **Rerun:** 5/5 passed in 2m28s, first attempt each, context 7.8k–9.9k of 12k estimated tokens. All five use rules base entries and live in `tests/rules/`.
   - **Claude's read:** the scaffold is copied with `setup` and the `base_setup` options; the top-bar save/publish flow is right; UI-only tests (102, 103) stop before the top bar and have no `targets`; `assertEqual` is used in the suite's order; helpers are called with no arguments; one expectation section per entry; STND-104's name matches its check (only the remaining rules are published).
   - **Remaining defect:** STND-103 seeds and types the literal name `web-access` instead of `{test_id:N}` / `self.unique_name(N)`. This needs a Phase 7 rule: names of seeded objects must use the unique-name placeholder.
-  - **Status:** the pairs in `output/generated/live/` are ready for the human style check; v2 outputs are kept in `output/generated/live-v2/`.
+  - **Status:** the pairs in `output/generated/live-v3/` are ready for the human style check; v2 outputs are kept in `output/generated/live-v2/`.
+- 2026-10-06: The live test now writes each run to `output/generated/live-<prompt version>/` (e.g. `live-v3/`), so the folder name says which version produced it (the human's request); earlier runs are in `live-v1/` and `live-v2/`.
 
 ---
 
