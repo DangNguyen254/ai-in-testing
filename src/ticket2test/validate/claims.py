@@ -86,8 +86,28 @@ def _is_outcome(step: str) -> bool:
 
 
 def clauses(claim: str) -> list[str]:
-    parts = re.split(r",|;|\band\b|\bbut\b", claim)
-    return [p.strip(" .") for p in parts if p.strip(" .")]
+    """Split at ",", ";", "and", "but", except inside parentheses or double quotes, and before
+    a negation that qualifies the previous clause ("the action deny, not allow")."""
+    parts: list[str] = []
+    depth, quoted, current = 0, False, ""
+    for token in re.split(r'(,|;|\band\b|\bbut\b|[()"])', claim):
+        if token in ("(", ")"):
+            depth = max(0, depth + (1 if token == "(" else -1))
+        elif token == '"':
+            quoted = not quoted
+        elif token in (",", ";", "and", "but") and not depth and not quoted:
+            parts.append(current)
+            current = ""
+            continue
+        current += token
+    parts.append(current)
+    merged: list[str] = []
+    for part in parts:
+        if merged and re.match(r"\s*(not|no)\b", part):
+            merged[-1] += "," + part
+        else:
+            merged.append(part)
+    return [p.strip(" .") for p in merged if p.strip(" .")]
 
 
 def evidence(

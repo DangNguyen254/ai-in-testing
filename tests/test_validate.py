@@ -515,3 +515,23 @@ def test_cli_collect_without_a_runtime_fails_clearly(
     assert result.exit_code == 2 and "never collected on the host" in result.output
     result = runner.invoke(app, ["sandbox"])
     assert result.exit_code == 2 and "not found" in result.output
+
+
+def test_claim_clauses_keep_lists_quotes_and_negations_together() -> None:
+    from ticket2test.validate.claims import clauses
+
+    assert clauses("All rules (alpha-web, alpha-mail) are listed, whatever their case.") == [
+        "All rules (alpha-web, alpha-mail) are listed",
+        "whatever their case",
+    ]
+    assert clauses("The rule has the action deny, not allow.") == [
+        "The rule has the action deny, not allow"
+    ]
+    assert clauses('The toast says "Saved, published" and the list is empty') == [
+        'The toast says "Saved, published"',
+        "the list is empty",
+    ]
+    assert clauses("The tenant's policy has the rule; the primary's is unchanged") == [
+        "The tenant's policy has the rule",
+        "the primary's is unchanged",
+    ]

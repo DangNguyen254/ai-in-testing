@@ -25,7 +25,7 @@ Tracks progress, scope, and acceptance criteria for each phase. Read together wi
 | 5 | Retrieval | ✅ | 2, 4 |
 | 6 | Code generation (code + JSON pair) | ✅ (real-codebase style check deferred to integration) | 5, 3b |
 | 7 | Validators, repair, sandbox | ✅ | 6 |
-| 8 | Eval harness | ⬜ | 5 (minimal), 7 (full) |
+| 8 | Eval harness | ✅ | 5 (minimal), 7 (full) |
 | 9 | Rust support | ⬜ | 8 |
 
 Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the synthetic stand-in became Phase 3; former Phases 3–8 are now 4–9.
@@ -36,19 +36,19 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 
 Read this first when resuming in a new session.
 
-**Where we are:** Phases 0–7 are ✅. Phase 6 closed on 2026-10-06 (the real-codebase style check is deferred to integration). Phase 7 (validators, repair loop, container sandbox) is built and verified; **Phase 8 (eval harness) is next**.
+**Where we are:** Phases 0–8 are ✅. The baseline eval report is `output/reports/phase8/eval-20261006T102640.md` (summary in the Phase 8 log). Phase 9 (Rust) is marked "later" in `CLAUDE.md`; **ask the human before starting it**.
 
-**Decision (2026-10-06, human):** keep LLM use to a minimum. No LLM reviewer step: semantic gaps are handled by a stronger generation prompt and by deterministic heuristics (Phase 7 warnings). Sonnet 5.5 for every LLM step (the Haiku trial for retrieval was worse).
+**Decision (2026-10-06, human):** keep LLM use to a minimum. No LLM reviewer step: semantic gaps are handled by a stronger generation prompt and by deterministic heuristics (Phase 7 warnings). Sonnet 5.5 for every LLM step (the Haiku trial for retrieval was worse). Latency and pricing evals come later (calls and time are already recorded).
 
-**Next steps, in order:**
-1. Phase 8: eval harness. Mine ticket ↔ test pairs from the stand-in history; reach 30+ pairs; metrics: retrieval, invented-name rate (from the Phase 7 validators), `--collect` pass rate in the sandbox, cost/time; leave-one-out for the stand-in (exclude each ticket's linked test), so results aren't circular.
-2. Optional: a live end-to-end run of generate → validate → repair → collect (about 15–20 LLM calls; ask first). Not run yet with the repair loop in place.
-3. A porting checklist for the company environment (adapters, LLM endpoint, `markers` / `style` / `data` / `validation` config, conventions doc, dependency review).
+**Next steps (for the human to choose):**
+1. Phase 9 (Rust support), or skip it for now.
+2. Hand-label the 12 LLM-judge verdicts in the baseline report to validate the judge (it marks default metadata such as `deployment_type: both` as "unsupported").
+3. Port to the company environment: `docs/porting-checklist.md`; then the real-codebase style check deferred from Phase 6.
 
 **Known open points (not blocking):**
 - Template choice: STND-106 used `test_rules_add_basic[allow]` as the base instead of a list or pagination test. Ranking is same component first, then the retrieval score.
 - Retrieval without the LLM misses STND-104 (recall@10 0.833 on the stand-in); with the LLM it was found before.
-- Phase 8 idea: leave-one-out evaluation (exclude each ticket's own linked test from the index), so style comparisons aren't circular.
+- The stand-in is too easy to separate configurations: the baseline scores 12/12 on every generation metric. Real discrimination needs the real codebase (or a harder stand-in).
 
 **How to run (Windows, from the repo root):**
 - Checks: `.venv/Scripts/ruff.exe check .`, `.venv/Scripts/python.exe -m mypy src`, `.venv/Scripts/python.exe -m pytest -q` (basetemp is `.scratch/pytest`, set in `pyproject.toml`).
@@ -618,7 +618,7 @@ Read this first when resuming in a new session.
 ---
 
 ## Phase 8: Eval harness
-**Status:** ⬜ Not started
+**Status:** ✅ Done (2026-10-06)
 
 **Goal:** Measure quality per stage, so we know what to improve and can prove value.
 
@@ -641,15 +641,48 @@ Read this first when resuming in a new session.
 - All code execution (incl. collection) goes through the Phase 7 sandbox
 
 **Definition of Done:**
-- [ ] At least 30 eval pairs across the sources above, incl. at least one mined from git history
-- [ ] One full baseline report generated and summarized in the log below
-- [ ] Re-running with the same config gives consistent retrieval metrics
-- [ ] Report clearly separates measured metrics from unvalidated judge metrics
+- [x] At least 30 eval pairs across the sources above, incl. at least one mined from git history (31 distinct; 2 mined)
+- [x] One full baseline report generated and summarized in the log below
+- [x] Re-running with the same config gives consistent retrieval metrics (deterministic runs identical, tested; the LLM steps vary by about ±0.05 recall between runs, see the Phase 5/6 logs)
+- [x] Report clearly separates measured metrics from unvalidated judge metrics
 
 **Open questions:**
 - Which metric matters most to the QE team? Confirm before optimizing.
+- Latency and pricing evals per stage: wanted later (the human, 2026-10-06). Calls and wall-clock time are recorded per ticket and per set already.
 
-**Log:** –
+**Log:**
+- 2026-10-06: Started. Human decisions: latency/pricing evals later; a lean baseline (retrieval with the LLM once, generation for 12 tickets) plus the LLM judge.
+- 2026-10-06: Built.
+  - **Pairs (31 distinct):** 6 more public `encode/httpx` bug issue ↔ merged fix-PR pairs (#3411, #3140, #3111, #2883, #2810, #2694; found from merged PR bodies that close an issue, feature requests skipped; 19 in total); 6 more fake stand-in tickets STND-107..112 for profiles, settings, tenants, the policy API, rule edit, and import (12 in total; export, manifest, and pair set); `eval_data/standin_mined.json` with 2 pairs mined from the scripted history.
+  - **Mining:** `adapters/repo/git_history.py` (read-only: `log`, `diff-tree`, `show`; no write method), `eval/mining.py` (a commit that removes a skip citing a ticket id, as a test or class decorator or a JSON entry's `skip`, while the test still exists), CLI `mine`. Config `eval.max_commits` (5000).
+  - **Generation eval (`eval/generation.py`):** per ticket: draft → retrieval → `generate_with_repair` → validators → sandbox collect; leave-one-out by default (`index_without` drops the linked test chunks; a check records whether the linked test stayed out of the context); drafts cached in `<cache_dir>/eval/drafts` (flagged per ticket; `--fresh-drafts`); generated pairs kept under the report folder.
+  - **Judge (`eval/judge.py`, `prompts/judge_draft_v1.md`):** verdict, score, unsupported, missing; `--judge` only; its own UNVALIDATED section.
+  - **Report (`eval/report.py`, `eval/run.py`):** pair sources, distinct pairs, mined-pair agreement, retrieval per set (mean [min–max] over `--runs`), generation metrics and a per-ticket table, judge section, config snapshot. CLI `eval --set <file|dir> --stage retrieval|generation|all [--runs] [--judge] [--no-collect] [--no-leave-one-out] [--fresh-drafts]`.
+  - **Models:** `PairSet` gains `conventions_doc` and `generation`; `EvalPair` gains `source` (additive).
+  - **Also:** `docs/porting-checklist.md` (what to fill in for a real environment; placeholders only).
+- 2026-10-06: Verified. ruff, mypy strict (76 files), pytest 486 passed, 14 deselected. Deterministic eval twice over all sets: identical (httpx 0.571 / 0.415, stand-in 0.917 / 0.377, mined 0.500 / 0.100).
+- 2026-10-06: **Baseline** (`output/reports/phase8/eval-20261006T102640.md`; Sonnet 5.5 via the Claude Code CLI; 81 LLM calls, about 14 minutes; sandbox: Podman).
+
+  | Retrieval (LLM on, 1 run) | Pairs | recall@10 | MRR |
+  |---|---|---|---|
+  | httpx | 19 | 0.755 | 0.753 |
+  | stand-in | 12 | 1.000 | 0.403 |
+  | mined | 2 | 1.000 | 0.155 |
+
+  | Generation (stand-in, leave-one-out) | Value |
+  |---|---|
+  | Tickets generated | 12/12 (11 UI, 1 API) |
+  | Validators pass, first attempt / after repair | 1.000 / 1.000 (0 repairs) |
+  | Invented names, first attempt | 0 |
+  | `pytest --collect-only` in the sandbox | 12/12 |
+  | Reviewer warnings per test | 0.33 |
+  | LLM calls / time | 48 (4 per ticket incl. the judge) / 587 s, about 49 s per ticket |
+  | LLM judge (UNVALIDATED) | 7 faithful, 5 partly; mean 0.89 |
+
+  - **Leave-one-out held:** every ticket used a sibling as its template (e.g. STND-106 from `test_rules_list_filter_action[allow]`); 0 violations.
+  - **Reading:** on the stand-in, every generation metric is at the ceiling, so it shows the pipeline works end to end but can't separate configurations. What it doesn't measure: test-level faithfulness. STND-110's test covers viewers only, while the ticket names viewers and editors.
+  - **Judge calibration:** all 5 "partly" verdicts cite default metadata (`deployment_type: both`, priority, suite) as unsupported. The judge prompt should treat config defaults as neutral; not changed, since the judge is unvalidated until hand-labelled.
+  - **Warnings:** 2 of the 4 were clause-splitter false positives (a parenthesised name list, and "deny, not allow"); fixed after the run (`clauses` keeps parentheses, double quotes, and a trailing negation together). The other two are fair reviewer prompts ("whatever their capitalization", "including the last one of the file").
 
 ---
 
@@ -715,4 +748,5 @@ Read this first when resuming in a new session.
 | 2026-10-06 | 6 | Per-step models (`step_models`, `LLMRequest.model`); Haiku 4.5 trial for the retrieval steps was worse, slower, not cheaper; kept Sonnet (human decision) |
 | 2026-10-06 | 6 | Closed (real-codebase style check deferred to integration; human decision) |
 | 2026-10-06 | 7 | Validators (errors + reviewer warnings), repair loop, container sandbox (Podman verified); marked ✅ Done |
+| 2026-10-06 | 8 | Eval harness: 31 pairs (+2 mined), mining, generation eval with leave-one-out and sandbox, judge, report; baseline run; marked ✅ Done |
 | 2026-10-06 | 3b | Stand-in v2 built and verified (patterns checked by project tests; indexer reads array data and infers unannotated types; config `data`; `Chunk.data_format`); marked ✅ Done. v1 generator tests skipped until `generate_v2` |

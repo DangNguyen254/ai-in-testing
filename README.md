@@ -152,15 +152,33 @@ the runtime or the image is missing, the command fails; it never falls back to t
 Building the image pulls the public `python:3.12-slim` base image and installs pytest and
 selenium (pinned) from PyPI.
 
-### Measure retrieval
+### Evaluate
 
 ```bash
-uv run ticket2test eval --set eval_data/standin_retrieval.json --no-llm
-uv run ticket2test eval --set eval_data/httpx_retrieval.json          # needs the httpx clone
+uv run ticket2test eval --set eval_data --no-llm                      # retrieval, deterministic
+uv run ticket2test eval --set eval_data --stage all --judge           # + generation + LLM judge
+uv run ticket2test mine .scratch/standin-history --out eval_data/standin_mined.json \
+    --name standin-mined --repo-path standin --jira-export standin/tickets/export.json
 ```
 
-Reports (JSON + Markdown, recall@k and MRR) go to `output/reports/`. Ground truth for httpx is
-the files changed by each fix PR, fetched from GitHub on first use and cached in `.t2t_cache/`.
+`--set` takes one pair set or the whole `eval_data/` folder. One report per run (JSON +
+Markdown) goes to `output/reports/`:
+
+- **Retrieval** (every set): recall@k and MRR; `--runs N` repeats the run to show the spread
+  of the LLM steps (deterministic runs are identical).
+- **Generation** (the set marked `"generation": true`, i.e. the stand-in): per ticket, draft →
+  retrieve → generate + repair → validate → `pytest --collect-only` in the sandbox. Leave-one-out
+  by default (the ticket's own linked test is removed from the index). Measures the validator
+  pass rate on the first attempt and after repair, the invented-name rate, the collect pass
+  rate, repair rounds, LLM calls, and time. Drafts are cached between runs (`--fresh-drafts`
+  to redo them); the report flags cached drafts.
+- **LLM judge** (`--judge`, one extra call per ticket): does the draft match the ticket? Kept in
+  its own UNVALIDATED section until checked against human labels.
+
+Pairs: public httpx issues with their fix PRs (ground truth: the PR's changed Python files,
+fetched from GitHub on first use and cached in `.t2t_cache/`), the stand-in's fake tickets with
+their linked tests, and pairs mined from git history by `mine` (commits that remove a skip
+citing a ticket id; read-only).
 
 ## Stand-in suite
 
