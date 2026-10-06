@@ -67,7 +67,8 @@ warn_required_dynamic_aliases = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --strict-markers -m 'not live' --basetemp=.scratch/pytest"
+addopts = "-ra --strict-markers -m 'not live and not sandbox' --basetemp=.scratch/pytest"
 markers = [
     "live: calls real external services (network / LLM); skipped by default, run with -m live",
+    "sandbox: runs a real container (Docker / Podman); skipped by default, run with -m sandbox",
 ]

@@ -17,13 +17,14 @@ from tests.conftest import REPO_ROOT
 from ticket2test.adapters.tickets.jira import JiraExportSource
 from ticket2test.config import load_settings
 from ticket2test.draft import generate_drafts
-from ticket2test.generate.generator import first_party, generate_test
+from ticket2test.generate.generator import first_party
 from ticket2test.generate.inspect import computed_test_ids
 from ticket2test.index.indexer import update_index
 from ticket2test.llm.factory import create_llm_client, model_name
 from ticket2test.normalize import normalize
 from ticket2test.retrieve.pipeline import retrieve
 from ticket2test.style import format_entries, format_python
+from ticket2test.validate.repair import generate_with_repair
 
 STANDIN = REPO_ROOT / "standin"
 TICKETS = ["STND-101", "STND-102", "STND-103", "STND-104", "STND-106"]
@@ -44,7 +45,7 @@ def test_generate_pair_for_standin_ticket(key: str) -> None:
     assert drafts.status == "ok", drafts.missing_info
     primary = next(d for d in drafts.drafts if d.kind == "primary")
     retrieval = retrieve(ticket, index, settings, client, primary)
-    generated = generate_test(
+    repaired = generate_with_repair(
         primary,
         retrieval,
         index,
@@ -54,6 +55,11 @@ def test_generate_pair_for_standin_ticket(key: str) -> None:
         model=model,
         conventions=(STANDIN / "CONVENTIONS.md").read_text(encoding="utf-8"),
     )
+    generated = repaired.generated
+
+    # The validators pass (after at most repair.max_attempts repair rounds).
+    assert repaired.report.ok, [f.render() for f in repaired.report.errors]
+    assert repaired.report.repairs <= settings.repair.max_attempts
 
     # Code and data agree, entries come from the base entry, output follows the style rules.
     ids = computed_test_ids(generated.code)

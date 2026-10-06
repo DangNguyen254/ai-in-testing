@@ -21,10 +21,10 @@ def _isolate_env(
 ) -> None:
     """Keep unit tests independent of the developer's shell env and working directory.
 
-    Live tests are exempt: they need the real environment (e.g. the CLI path from
-    `uv run --env-file .env`) and run from the repo root.
+    Live and sandbox tests are exempt: they need the real environment (e.g. the CLI path or
+    the container runtime from `uv run --env-file .env`) and run from the repo root.
     """
-    if request.node.get_closest_marker("live"):
+    if request.node.get_closest_marker("live") or request.node.get_closest_marker("sandbox"):
         return
     for key in list(os.environ):
         if key.startswith("T2T_") or key == "GITHUB_TOKEN":

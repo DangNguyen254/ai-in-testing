@@ -6,10 +6,7 @@
             "tenant":"{tenant_id1}",
             "settings":{
                "capabilities":{
-                  "rules":true,
-                  "profiles":true,
-                  "bulk_delete":false,
-                  "import":true
+                  "rules":true
                }
             },
             "policy":{
@@ -36,10 +33,7 @@
             "tenant":"{tenant_id2}",
             "settings":{
                "capabilities":{
-                  "rules":true,
-                  "profiles":true,
-                  "bulk_delete":false,
-                  "import":true
+                  "rules":true
                }
             },
             "targets":[
@@ -64,10 +58,7 @@
             "tenant":"{tenant_id1}",
             "settings":{
                "capabilities":{
-                  "rules":true,
-                  "profiles":true,
-                  "bulk_delete":false,
-                  "import":true
+                  "rules":true
                }
             },
             "policy":{
@@ -83,10 +74,7 @@
             "tenant":"{tenant_id2}",
             "settings":{
                "capabilities":{
-                  "rules":true,
-                  "profiles":true,
-                  "bulk_delete":false,
-                  "import":true
+                  "rules":true
                }
             },
             "policy":{

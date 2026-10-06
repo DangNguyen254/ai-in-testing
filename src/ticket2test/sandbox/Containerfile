@@ -1,0 +1,11 @@
+# Sandbox image for collecting generated tests (`pytest --collect-only`).
+# Public base image; test-time dependencies pinned to the versions in uv.lock.
+# Build: ticket2test sandbox --build   (or: podman build -t t2t-sandbox:py3.12 -f Containerfile .)
+FROM docker.io/library/python:3.12-slim
+
+RUN pip install --no-cache-dir pytest==9.1.1 selenium==4.50.0 \
+    && useradd --create-home --uid 10001 runner
+
+USER runner
+WORKDIR /work
+ENV PYTHONDONTWRITEBYTECODE=1

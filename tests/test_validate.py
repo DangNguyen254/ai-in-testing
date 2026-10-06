@@ -1,0 +1,517 @@
+"""Deterministic validators (Phase 7): a passing and a failing example for each check.
+
+The generated code is parsed, never run. The catalog comes from indexing the stand-in.
+"""
+
+from __future__ import annotations
+
+import copy
+import json
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from ticket2test.config import Settings
+from ticket2test.generate.generator import first_party
+from ticket2test.generate.inspect import computed_test_ids
+from ticket2test.index.indexer import IndexData, update_index
+from ticket2test.models.draft import TestCaseDraft
+from ticket2test.models.generated import GeneratedTest
+from ticket2test.style import format_entries
+from ticket2test.validate.report import ValidationReport
+from ticket2test.validate.validator import validate_generated
+
+STANDIN = Path(__file__).resolve().parents[1] / "standin"
+
+GOOD_CODE = '''import pytest
+
+from framework.base_test import BaseTest
+from framework.decorators import browsers, data_driven, environments
+
+
+@browsers("chrome", "firefox")
+@environments("cloud", "on_prem")
+@data_driven
+@pytest.mark.project("example-project")
+@pytest.mark.component("rules")
+class TestRulesListFilter(BaseTest):
+   def setup(self):
+      self.base_setup(fresh_driver=False, policy_wait=True)
+
+   @pytest.mark.priority("p2")
+   @pytest.mark.suite("regression")
+   def test_rules_list_filter_next_page(self):
+      """
+      1. Filter the rule list by the allow action.
+      2. Page 1 is full and shows only allow rules.
+      3. Go to the next page.
+      4. Page 2 shows only allow rules and the allow filter stays selected.
+      """
+      rules = self.nav.rules.list
+      rules.open()
+      rules.action_filter = "allow"
+      rules.search()
+
+      self.check.assertEqual(self.params["total_count"], rules.total_count)
+      self.check.assertEqual(rules.page_size, len(rules.rule_names))
+      self.check.assertEqual({"allow"}, set(rules.rule_actions))
+
+      rules.next_page()
+
+      self.check.assertEqual(2, rules.page_number)
+      self.check.assertEqual("allow", rules.action_filter)
+      self.check.assertEqual(self.params["page_2_names"], rules.rule_names)
+      self.check.assertEqual({"allow"}, set(rules.rule_actions))
+'''
+
+_RULES = [
+    {"name": f"{{test_id:12}}-{n}", "action": a}
+    for n, a in [
+        ("alpha-web", "allow"), ("alpha-mail", "allow"), ("Alpha-backup", "deny"),
+        ("beta-api", "allow"), ("beta-dns", "allow"), ("gamma-ftp", "deny"),
+        ("gamma-ssh", "allow"), ("epsilon-vpn", "allow"), ("zeta-cache", "allow"),
+    ]
+]  # fmt: skip
+GOOD_ENTRY: dict[str, Any] = {
+    "test_id": "test_rules_list_filter_next_page",
+    "settings": {"capabilities": {"rules": True}},
+    "policy": {"rules": _RULES},
+    "total_count": 7,
+    "page_2_names": ["{test_id:12}-gamma-ssh", "{test_id:12}-zeta-cache"],
+}
+
+
+@pytest.fixture(scope="module")
+def setup(tmp_path_factory: pytest.TempPathFactory) -> tuple[Settings, IndexData, list[str]]:
+    settings = Settings.model_validate(
+        {"paths": {"cache_dir": str(tmp_path_factory.mktemp("cache"))}}
+    )
+    index, _, _ = update_index(STANDIN, settings)
+    return settings, index, first_party(index, settings)
+
+
+def _validate(
+    setup: tuple[Settings, IndexData, list[str]],
+    code: str = GOOD_CODE,
+    entries: list[dict[str, Any]] | None = None,
+    file_name: str = "tests/rules/test_rules_list_filter.py",
+    ticket_id: str = "STND-106",
+    data_text: str | None = "",
+    draft: TestCaseDraft | None = None,
+    settings: Settings | None = None,
+) -> ValidationReport:
+    base_settings, index, fp = setup
+    settings = settings or base_settings
+    entries = copy.deepcopy([GOOD_ENTRY] if entries is None else entries)
+    try:
+        ids = computed_test_ids(code)
+    except ValueError:
+        ids = []
+    generated = GeneratedTest(
+        code=code,
+        file_name=file_name,
+        data_file_name=file_name.replace(".py", ".json"),
+        data_entries=entries,
+        data_format="array",
+        test_ids=ids,
+        template_entry_ref=None,
+        ticket_id=ticket_id,
+        draft_ref=f"{ticket_id}/d1",
+        retrieved_chunk_ids=[],
+        prompt_version="test",
+        provider="fake",
+        model="fake",
+        attempts=1,
+        context_tokens=0,
+    )
+    if data_text == "":
+        data_text = format_entries(entries, settings.data, settings.style.json_files, "array")
+    return validate_generated(generated, index.catalog, settings, fp, draft, data_text)
+
+
+def _messages(report: ValidationReport, check: str, severity: str = "error") -> list[str]:
+    return [f.message for f in report.findings if f.check == check and f.severity == severity]
+
+
+def _replace(old: str, new: str, code: str = GOOD_CODE) -> str:
+    assert old in code, old
+    return code.replace(old, new)
+
+
+# --- the reference passes ---------------------------------------------------------------------
+
+
+def test_a_good_pair_has_no_findings(setup: Any) -> None:
+    report = _validate(setup)
+    assert report.ok and report.findings == [], [f.render() for f in report.findings]
+    assert {"syntax", "names", "chains", "ids", "data_keys", "claims"} <= set(report.checks_run)
+
+
+def test_the_hand_written_standin_suite_has_no_errors(setup: Any) -> None:
+    for path in sorted((STANDIN / "tests").rglob("test_*.py")):
+        code = path.read_text(encoding="utf-8")
+        data_path = path.with_suffix(".json")
+        data_text = data_path.read_text(encoding="utf-8") if data_path.exists() else None
+        report = _validate(
+            setup,
+            code=code,
+            entries=json.loads(data_text) if data_text else [],
+            file_name=path.relative_to(STANDIN).as_posix(),
+            ticket_id="NONE-0",
+            data_text=data_text,
+        )
+        assert report.ok, (path.name, [f.render() for f in report.errors])
+
+
+# --- code -------------------------------------------------------------------------------------
+
+
+def test_syntax_error_stops_the_other_checks(setup: Any) -> None:
+    report = _validate(setup, code="def test_x(:\n")
+    assert report.checks_run == ["syntax"] and _messages(report, "syntax")
+
+
+def test_unknown_modules_and_names_in_known_modules(setup: Any) -> None:
+    code = _replace(
+        "from framework.decorators import browsers, data_driven, environments",
+        "from framework.decorators import browsers, data_driven, environments, flaky\n"
+        "import requests",
+    )
+    messages = _messages(_validate(setup, code=code), "imports")
+    assert any("has no name 'flaky'" in m for m in messages)
+    assert any("unknown module 'requests'" in m for m in messages)
+
+
+def test_undefined_plain_names(setup: Any) -> None:
+    code = _replace("rules.next_page()", "rules.next_page()\n      wait_for(rules)")
+    assert _messages(_validate(setup, code=code), "names") == ["undefined name 'wait_for'"]
+
+
+def test_a_missing_property_chain_is_caught(setup: Any) -> None:
+    code = _replace("rules.total_count)", "rules.rule_count)")
+    messages = _messages(_validate(setup, code=code), "names")
+    assert messages == ["rules (RuleListPage) has no member 'rule_count' (in rules.rule_count)"]
+    code = _replace("rules = self.nav.rules.list", "rules = self.nav.rule.list")
+    messages = _messages(_validate(setup, code=code), "names")
+    assert messages and "Navigator) has no member 'rule'" in messages[0]
+
+
+def test_page_object_usage_properties_actions_and_no_chaining(setup: Any) -> None:
+    called_property = _replace("rules.total_count)", "rules.total_count())")
+    uncalled_action = _replace("rules.search()", "rules.search")
+    assigned_action = _replace('rules.action_filter = "allow"', 'rules.search = "allow"')
+    chained = _replace(
+        "rules = self.nav.rules.list\n      rules.open()",
+        "rules = self.nav.rules.list\n      self.nav.rules.list.open().search()",
+    )
+    for code, expected in [
+        (called_property, "total_count is a property"),
+        (uncalled_action, "search is an action method: call it"),
+        (assigned_action, "search is an action method; it can't be assigned"),
+        (chained, "no chaining"),
+    ]:
+        messages = _messages(_validate(setup, code=code), "page_objects")
+        assert any(expected in m for m in messages), (expected, messages)
+
+
+def test_assertions_use_the_suite_object(setup: Any) -> None:
+    bare = _replace("self.check.assertEqual(2, rules.page_number)", "assert rules.page_number == 2")
+    assert any("bare assert" in m for m in _messages(_validate(setup, code=bare), "assertions"))
+    unknown = _replace("assertEqual(2, rules.page_number)", "assertEquals(2, rules.page_number)")
+    messages = _messages(_validate(setup, code=unknown), "assertions")
+    assert any("assertEquals is not an allowed assertion" in m for m in messages)
+    start = GOOD_CODE.index("      self.check.assertEqual(self.params")
+    no_checks = GOOD_CODE[:start].rstrip() + "\n"
+    messages = _messages(_validate(setup, code=no_checks, entries=[]), "assertions")
+    assert any("checks nothing" in m for m in messages)
+
+
+def test_base_class_is_required(setup: Any) -> None:
+    code = _replace("class TestRulesListFilter(BaseTest):", "class TestRulesListFilter:")
+    code = _replace(
+        "from framework.base_test import BaseTest\n", "", code
+    )  # unused import gone too
+    messages = _messages(_validate(setup, code=code), "base_class")
+    assert messages == ["class TestRulesListFilter must inherit BaseTest"]
+
+
+def test_required_markers_and_approved_values(setup: Any) -> None:
+    missing = _replace('   @pytest.mark.suite("regression")\n', "")
+    assert _messages(_validate(setup, code=missing), "markers") == [
+        "missing @pytest.mark.suite(...)"
+    ]
+    wrong_case = _replace('priority("p2")', 'priority("P2")')
+    messages = _messages(_validate(setup, code=wrong_case), "markers")
+    assert messages and "priority value 'P2' is not approved" in messages[0]
+    unknown_component = _replace('component("rules")', 'component("firewall")')
+    messages = _messages(_validate(setup, code=unknown_component), "markers")
+    assert messages and "component value 'firewall'" in messages[0]
+
+
+def test_naming_and_no_ticket_numbers(setup: Any) -> None:
+    code = _replace("test_rules_list_filter_next_page", "test_rules_106_filter")
+    entry = {**GOOD_ENTRY, "test_id": "test_rules_106_filter"}
+    messages = _messages(_validate(setup, code=code, entries=[entry]), "naming")
+    assert any("ticket id STND-106" in m for m in messages)
+    camel = _replace("class TestRulesListFilter", "class Test_rules_list")
+    messages = _messages(_validate(setup, code=camel), "naming")
+    assert any("class name 'Test_rules_list'" in m for m in messages)
+    module = _validate(setup, file_name="tests/rules/RulesFilter.py")
+    assert any("module name 'RulesFilter'" in m for m in _messages(module, "naming"))
+
+
+def test_style_rules(setup: Any) -> None:
+    annotated = _replace("def setup(self):", "def setup(self) -> None:")
+    assert any("annotations" in m for m in _messages(_validate(setup, code=annotated), "style"))
+    four_spaces = GOOD_CODE.replace("   ", "    ")
+    messages = _messages(_validate(setup, code=four_spaces), "style")
+    assert any("not formatted" in m for m in messages)
+    crlf = GOOD_CODE.replace("\n", "\r\n")
+    assert any("LF" in m for m in _messages(_validate(setup, code=crlf), "style"))
+
+
+# --- data -------------------------------------------------------------------------------------
+
+STACKED = """import pytest
+
+from framework.base_test import BaseTest
+from framework.decorators import browsers, data_driven, environments
+
+
+@browsers("chrome", "firefox")
+@environments("cloud", "on_prem")
+@data_driven
+@pytest.mark.project("example-project")
+@pytest.mark.component("rules")
+class TestRulesListFilter(BaseTest):
+   @pytest.mark.priority("p2")
+   @pytest.mark.suite("regression")
+   @pytest.mark.parametrize("action", ["allow", "deny"])
+   @pytest.mark.parametrize("page", [1, 2])
+   def test_rules_list_filter_paged(self, action, page):
+      rules = self.nav.rules.list
+      rules.open()
+      rules.action_filter = action
+      rules.search()
+      self.check.assertEqual(self.params["total_count"], rules.total_count)
+"""
+
+
+def test_entries_keyed_in_the_wrong_stacked_order_are_caught(setup: Any) -> None:
+    right = [
+        {"test_id": f"test_rules_list_filter_paged[{p}-{a}]", "total_count": 1}
+        for a in ("allow", "deny")
+        for p in (1, 2)
+    ]
+    assert _messages(_validate(setup, code=STACKED, entries=right), "ids") == []
+    wrong = [
+        {"test_id": f"test_rules_list_filter_paged[{a}-{p}]", "total_count": 1}
+        for a in ("allow", "deny")
+        for p in (1, 2)
+    ]  # top decorator first: the wrong order
+    messages = _messages(_validate(setup, code=STACKED, entries=wrong), "ids")
+    assert any("entries for ids the code doesn't produce" in m for m in messages)
+    missing = [f for f in _validate(setup, code=STACKED, entries=wrong).errors if f.test]
+    assert {f.test for f in missing} == {
+        "test_rules_list_filter_paged[1-allow]",
+        "test_rules_list_filter_paged[2-allow]",
+        "test_rules_list_filter_paged[1-deny]",
+        "test_rules_list_filter_paged[2-deny]",
+    }
+
+
+def test_data_keys_read_must_exist_and_every_key_must_be_used(setup: Any) -> None:
+    lacking = {k: v for k, v in GOOD_ENTRY.items() if k != "page_2_names"}
+    messages = _messages(_validate(setup, entries=[lacking]), "data_keys")
+    assert messages == ["reads keys its entry lacks: ['page_2_names']"]
+    unread = {**GOOD_ENTRY, "last_page_count": 2}
+    messages = _messages(_validate(setup, entries=[unread]), "data_keys")
+    assert messages and "custom key 'last_page_count' is never read" in messages[0]
+    unread_target = {**GOOD_ENTRY, "targets": []}
+    messages = _messages(_validate(setup, entries=[unread_target]), "data_keys")
+    assert messages and "only read by self.verify_targets()" in messages[0]
+    both = {**GOOD_ENTRY, "targets": [], "interactions": []}
+    messages = _messages(_validate(setup, entries=[both]), "data_keys")
+    assert messages and "one expectation section" in messages[0]
+
+
+def test_data_file_formatting(setup: Any) -> None:
+    text = json.dumps([GOOD_ENTRY], indent=2)
+    messages = _messages(_validate(setup, data_text=text), "data_file")
+    assert messages == ["the data file is not formatted to the suite's JSON style"]
+
+
+def test_seeded_names_use_the_placeholder_and_fit_the_cap(setup: Any) -> None:
+    literal = copy.deepcopy(GOOD_ENTRY)
+    literal["policy"]["rules"][0]["name"] = "web-access"
+    messages = _messages(_validate(setup, entries=[literal]), "names_unique")
+    assert messages and "'web-access' is a literal" in messages[0]
+    long = copy.deepcopy(GOOD_ENTRY)
+    long["policy"]["rules"][0]["name"] = "{test_id:24}-alpha-web"
+    messages = _messages(_validate(setup, entries=[long]), "name_length")
+    assert messages == ["'{test_id:24}-alpha-web' can be 34 characters; the limit is 32"]
+    typed = _replace('rules.action_filter = "allow"', 'rules.search_text = "x"')
+    typed = typed.replace("rules.search()", "rules.search()\n      self.unique_name(40)")
+    messages = _messages(_validate(setup, code=typed), "name_length")
+    assert messages == ["self.unique_name(40) exceeds the name limit 32"]
+
+
+def test_typed_literal_names_are_caught(setup: Any) -> None:
+    code = _replace(
+        "rules.next_page()",
+        'rules.add_rule()\n      wizard = self.nav.rules.wizard\n      wizard.name = "web-access"',
+    )
+    messages = _messages(_validate(setup, code=code), "names_unique")
+    assert messages and "typed name 'web-access' is a literal" in messages[0]
+
+
+# --- heuristics (warnings) ---------------------------------------------------------------------
+
+
+def test_unused_capability_gates_are_a_warning(setup: Any) -> None:
+    entry = copy.deepcopy(GOOD_ENTRY)
+    entry["settings"]["capabilities"] = {"rules": True, "profiles": True}
+    report = _validate(setup, entries=[entry])
+    assert report.ok
+    assert _messages(report, "capabilities", "warning") == [
+        "seeds capability gates 'rules' features don't use: ['profiles']"
+    ]
+
+
+V3_CHECKS = """      rules.next_page()
+
+      self.check.assertEqual(2, rules.page_number)
+      self.check.assertEqual("allow", rules.action_filter)
+      self.check.assertEqual(self.params["total_count"], rules.total_count)
+      self.check.assertEqual(self.params["last_page_count"], len(rules.rule_names))
+"""
+
+
+def _v3_code() -> str:
+    """The third style check's STND-106 shape: page 2 is checked only by counts."""
+    start = GOOD_CODE.index('      self.check.assertEqual(self.params["total_count"]')
+    head = GOOD_CODE[:start].replace("      2. Page 1 is full and shows only allow rules.\n", "")
+    head = head.replace("3. Go to", "2. Go to").replace("4. Page 2", "3. Page 2")
+    return head + V3_CHECKS
+
+
+def test_claims_checked_only_by_counts_are_flagged(setup: Any) -> None:
+    entry = {**GOOD_ENTRY, "last_page_count": 2}
+    del entry["page_2_names"]
+    report = _validate(setup, code=_v3_code(), entries=[entry])
+    assert report.ok
+    assert _messages(report, "claims", "warning") == [
+        "docstring claims 'Page 2 shows only allow rules': checked only by a count or a "
+        "single value"
+    ]
+    assert any("never reads page_size" in m for m in _messages(report, "constants", "warning"))
+
+
+def test_claims_nobody_checks_are_flagged(setup: Any) -> None:
+    code = _replace(
+        "4. Page 2 shows only allow rules and the allow filter stays selected.",
+        "4. Page 2 shows only allow rules and the export button is hidden.",
+    )
+    messages = _messages(_validate(setup, code=code), "claims", "warning")
+    assert messages == ["docstring claims 'the export button is hidden': not checked"]
+
+
+def test_the_drafts_expected_outcome_is_a_claim(setup: Any) -> None:
+    draft = TestCaseDraft.model_validate(
+        {
+            "id": "STND-106/d1",
+            "ticket_id": "STND-106",
+            "kind": "primary",
+            "intent": "Filter kept on the next page",
+            "markers": {"priority": "p2", "component": "rules", "suite": "regression"},
+            "test_kind": "ui",
+            "deployment_type": "both",
+            "preconditions": [],
+            "steps": ["Filter by allow", "Next page"],
+            "expected_outcome": "An audit entry is written",
+            "variants": [],
+            "confidence": 0.9,
+            "prompt_version": "draft_v1",
+        }
+    )
+    messages = _messages(_validate(setup, draft=draft), "claims", "warning")
+    assert messages == ["expected outcome claims 'An audit entry is written': not checked"]
+
+
+# --- CLI ----------------------------------------------------------------------------------------
+
+
+def _write_generated(folder: Path, code: str = GOOD_CODE) -> Path:
+    from ticket2test.config import Settings as _S
+
+    settings = _S()
+    generated = GeneratedTest(
+        code=code,
+        file_name="tests/rules/test_rules_list_filter.py",
+        data_file_name="tests/rules/test_rules_list_filter.json",
+        data_entries=[GOOD_ENTRY],
+        data_format="array",
+        test_ids=computed_test_ids(code),
+        template_entry_ref=None,
+        ticket_id="STND-106",
+        draft_ref="STND-106/d1",
+        retrieved_chunk_ids=[],
+        prompt_version="test",
+        provider="fake",
+        model="fake",
+        attempts=1,
+        context_tokens=0,
+    )
+    target = folder / "STND-106_d1"
+    (target / "tests/rules").mkdir(parents=True)
+    (target / generated.file_name).write_text(code, encoding="utf-8")
+    (target / generated.data_file_name).write_text(
+        format_entries([GOOD_ENTRY], settings.data, settings.style.json_files, "array"),
+        encoding="utf-8",
+    )
+    path = target / "generated.json"
+    path.write_text(generated.model_dump_json(indent=2), encoding="utf-8")
+    return path
+
+
+def test_cli_validate_writes_the_report_and_sets_the_exit_code(tmp_path: Path) -> None:
+    from typer.testing import CliRunner
+
+    from ticket2test.cli import app
+
+    runner = CliRunner()
+    good = _write_generated(tmp_path / "good")
+    result = runner.invoke(app, ["validate", str(tmp_path / "good"), "--repo", str(STANDIN)])
+    assert result.exit_code == 0, result.output
+    assert "1/1 passed" in result.output
+    stored = GeneratedTest.model_validate_json(good.read_text(encoding="utf-8"))
+    assert stored.validation_report is not None and stored.validation_report["findings"] == []
+
+    _write_generated(tmp_path / "bad", GOOD_CODE.replace("rules.total_count)", "rules.rule_count)"))
+    result = runner.invoke(app, ["validate", str(tmp_path / "bad"), "--repo", str(STANDIN)])
+    assert result.exit_code == 1 and "no member 'rule_count'" in result.output
+
+    result = runner.invoke(
+        app, ["validate", str(tmp_path / "good"), "--repo", str(STANDIN), "--run"]
+    )
+    assert result.exit_code == 2 and "not available yet" in result.output
+
+
+def test_cli_collect_without_a_runtime_fails_clearly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import shutil
+
+    from typer.testing import CliRunner
+
+    from ticket2test.cli import app
+
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    _write_generated(tmp_path / "good")
+    runner = CliRunner()
+    args = ["validate", str(tmp_path / "good"), "--repo", str(STANDIN), "--collect"]
+    result = runner.invoke(app, args)
+    assert result.exit_code == 2 and "never collected on the host" in result.output
+    result = runner.invoke(app, ["sandbox"])
+    assert result.exit_code == 2 and "not found" in result.output

@@ -1,4 +1,4 @@
-"""Command-line entry point. Subcommands are placeholders until their phase lands."""
+"""Command-line entry point: one subcommand per pipeline stage."""
 
 from __future__ import annotations
 
@@ -56,11 +56,6 @@ def main(
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=2) from exc
     ctx.obj = AppState(settings=settings, debug_log=debug_log)
-
-
-def _not_implemented(phase: int) -> None:
-    typer.echo(f"Not implemented yet (planned for Phase {phase}).", err=True)
-    raise typer.Exit(code=1)
 
 
 @app.command()
@@ -339,7 +334,6 @@ def generate(
     from pydantic import ValidationError
 
     from ticket2test.generate.context import ContextBudgetError
-    from ticket2test.generate.generator import generate_test
     from ticket2test.index.indexer import update_index
     from ticket2test.llm.base import LLMError
     from ticket2test.llm.factory import create_llm_client, model_name
@@ -347,6 +341,7 @@ def generate(
     from ticket2test.models.retrieval import RetrievalResult
     from ticket2test.prompts import PromptError
     from ticket2test.style import format_entries
+    from ticket2test.validate.repair import generate_with_repair
 
     state: AppState = ctx.obj
     settings = state.settings
@@ -384,7 +379,7 @@ def generate(
     index, _, _ = update_index(repo_root, settings)
     try:
         client = create_llm_client(settings, debug_log=state.debug_log)
-        generated = generate_test(
+        repaired = generate_with_repair(
             chosen,
             retrieval,
             index,
@@ -394,6 +389,7 @@ def generate(
             model=model_name(settings),
             conventions=conventions_text,
         )
+        generated, report = repaired.generated, repaired.report
     except (PromptError, ContextBudgetError) as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=2) from exc
@@ -417,6 +413,12 @@ def generate(
         f"{generated.attempts} LLM call(s), ~{generated.context_tokens} context tokens"
     )
     typer.echo(f"Wrote {code_path}\nWrote {data_path}\nWrote {folder / 'generated.json'}")
+    typer.echo(
+        f"Validation: {'ok' if report.ok else 'FAILED'} after {report.repairs} repair round(s), "
+        f"{len(report.errors)} error(s), {len(report.warnings)} warning(s)"
+    )
+    for finding in report.findings:
+        typer.echo(f"  {finding.severity}: {finding.render()}")
     if generated.review_checklist:
         typer.echo("Review checklist (needs a real run):")
         for item in generated.review_checklist:
@@ -424,9 +426,106 @@ def generate(
 
 
 @app.command()
-def validate() -> None:
-    """Validate generated tests; collect them in a sandbox (Phase 7)."""
-    _not_implemented(7)
+def validate(
+    ctx: typer.Context,
+    generated_dir: Annotated[
+        Path, typer.Argument(help="Output of `generate` (folders with generated.json).")
+    ],
+    repo: Annotated[Path, typer.Option(help="The target repo the tests were generated for.")],
+    collect: Annotated[
+        bool, typer.Option("--collect", help="Also run `pytest --collect-only` in the sandbox.")
+    ] = False,
+    run: Annotated[
+        bool, typer.Option("--run", help="Execute the tests in the sandbox (not available yet).")
+    ] = False,
+) -> None:
+    """Validate generated tests; with --collect, collect them in a container sandbox."""
+    from ticket2test.generate.generator import first_party
+    from ticket2test.index.indexer import update_index
+    from ticket2test.models.generated import GeneratedTest
+    from ticket2test.sandbox.runner import SandboxError, collect_generated
+    from ticket2test.validate.validator import validate_generated
+
+    state: AppState = ctx.obj
+    settings = state.settings
+    if run:
+        typer.echo("Error: --run is not available yet (optional, after Phase 7).", err=True)
+        raise typer.Exit(code=2)
+    files = sorted(generated_dir.rglob("generated.json"))
+    if not files:
+        typer.echo(f"Error: no generated.json under {generated_dir}", err=True)
+        raise typer.Exit(code=2)
+    if not repo.is_dir():
+        typer.echo(f"Error: repo not found: {repo}", err=True)
+        raise typer.Exit(code=2)
+    index, _, _ = update_index(repo, settings)
+    roots = first_party(index, settings)
+    failed = 0
+    for path in files:
+        generated = GeneratedTest.model_validate_json(path.read_text(encoding="utf-8"))
+        data_path = path.parent / generated.data_file_name
+        data_text = data_path.read_text(encoding="utf-8") if data_path.is_file() else None
+        report = validate_generated(generated, index.catalog, settings, roots, data_text=data_text)
+        update: dict[str, object] = {"validation_report": report.model_dump(mode="json")}
+        typer.echo(
+            f"{generated.ticket_id} {generated.file_name}: {'ok' if report.ok else 'FAILED'} "
+            f"({len(report.errors)} error(s), {len(report.warnings)} warning(s))"
+        )
+        for finding in report.findings:
+            typer.echo(f"  {finding.severity}: {finding.render()}")
+        collect_ok = True
+        if collect:
+            try:
+                collected = collect_generated(generated, repo, settings)
+            except SandboxError as exc:
+                typer.echo(f"Error: {exc}", err=True)
+                raise typer.Exit(code=2) from exc
+            update["collect_report"] = collected.model_dump(mode="json")
+            collect_ok = collected.ok
+            details = [
+                f"missing {collected.missing}" if collected.missing else "",
+                f"unexpected {collected.unexpected}" if collected.unexpected else "",
+                "timed out" if collected.timed_out else "",
+            ]
+            typer.echo(
+                f"  collect ({collected.runtime}, {collected.duration_seconds}s): "
+                + ", ".join(["ok" if collected.ok else "FAILED", *filter(None, details)])
+            )
+            if not collected.ok and collected.output_tail:
+                typer.echo(collected.output_tail[-800:])
+        failed += int(not report.ok or not collect_ok)
+        path.write_text(
+            generated.model_copy(update=update).model_dump_json(indent=2), encoding="utf-8"
+        )
+    typer.echo(f"{len(files) - failed}/{len(files)} passed")
+    if failed:
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def sandbox(
+    ctx: typer.Context,
+    build: Annotated[
+        bool, typer.Option("--build", help="Build the sandbox image (pulls a public base image).")
+    ] = False,
+) -> None:
+    """Show (or build) the container sandbox used to collect generated tests."""
+    from ticket2test.sandbox.runner import SandboxError, build_image, find_runtime, image_exists
+
+    state: AppState = ctx.obj
+    settings = state.settings
+    try:
+        exe = find_runtime(settings.sandbox)
+        if build:
+            build_image(settings)
+        ready = image_exists(settings)
+    except SandboxError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(f"Runtime: {exe}")
+    typer.echo(f"Image {settings.sandbox.image}: {'ready' if ready else 'missing (use --build)'}")
+    if not ready:
+        raise typer.Exit(code=1)
 
 
 @app.command(name="eval")

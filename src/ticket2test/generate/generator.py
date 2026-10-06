@@ -9,6 +9,7 @@ the base entry, re-labelling, and formatting code and data to the suite's style 
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -64,6 +65,42 @@ def generate_test(
     model: str,
     conventions: str | None = None,
 ) -> GeneratedTest:
+    setup = prepare_generation(draft, retrieval, index, settings, conventions)
+    result = complete_structured(
+        client,
+        setup.request,
+        GenerationResponse,
+        max_retries=settings.llm.max_retries_on_bad_json,
+        context=setup.validation_context,
+    )
+    return assemble(setup, result.value, result.attempts, provider, model)
+
+
+@dataclass(frozen=True)
+class GenerationSetup:
+    """Everything one generation conversation needs, built before the first LLM call."""
+
+    draft: TestCaseDraft
+    settings: Settings
+    index: IndexData
+    request: LLMRequest
+    validation_context: dict[str, Any]
+    template_chunk: Chunk
+    entry_key: str
+    base_entry: dict[str, Any]
+    layout: DataFormat
+    context: BuiltContext
+    prompt_version: str
+    input_redactions: int
+
+
+def prepare_generation(
+    draft: TestCaseDraft,
+    retrieval: RetrievalResult,
+    index: IndexData,
+    settings: Settings,
+    conventions: str | None = None,
+) -> GenerationSetup:
     gen, data = settings.generate, settings.data
     chunks = {c.id: c for c in index.chunks}
     template_chunk, entry_key = _template(retrieval, chunks)
@@ -96,12 +133,12 @@ def generate_test(
         json_schema=strict_schema(GenerationResponse),
         model=model_name(settings, "generate"),
     )
-    result = complete_structured(
-        client,
-        request,
-        GenerationResponse,
-        max_retries=settings.llm.max_retries_on_bad_json,
-        context={
+    return GenerationSetup(
+        draft=draft,
+        settings=settings,
+        index=index,
+        request=request,
+        validation_context={
             CTX_TEST_PREFIX: settings.index.test_function_prefix,
             CTX_CLASS_PREFIX: settings.index.test_class_prefix,
             CTX_BASE_ENTRY: base_entry,
@@ -113,13 +150,31 @@ def generate_test(
             CTX_SEED_SECTIONS: data.seed_sections,
             CTX_TICKET_ID: draft.ticket_id,
         },
+        template_chunk=template_chunk,
+        entry_key=entry_key,
+        base_entry=base_entry,
+        layout=layout,
+        context=context,
+        prompt_version=prompt.version,
+        input_redactions=draft_scrub.redacted + context_scrub.redacted,
     )
-    response = result.value
 
+
+def assemble(
+    setup: GenerationSetup,
+    response: GenerationResponse,
+    attempts: int,
+    provider: str,
+    model: str,
+) -> GeneratedTest:
+    """Deterministic part after the LLM: scrub, format, build the entries, record traceability."""
+    settings, data, gen = setup.settings, setup.settings.data, setup.settings.generate
     code_scrub = scrub(response.code)
     notes = response.notes
     try:
-        code = format_python(code_scrub.text, settings.style.python, first_party(index, settings))
+        code = format_python(
+            code_scrub.text, settings.style.python, first_party(setup.index, settings)
+        )
     except FormatError as exc:
         code = code_scrub.text
         notes = f"{notes} (not formatted: {exc})".strip()
@@ -129,8 +184,8 @@ def generate_test(
     output_redactions = code_scrub.redacted
     for plan in sorted(response.entries, key=lambda p: order.get(p.test_id, len(order))):
         entry = build_entry(
-            base_entry,
-            entry_key,
+            setup.base_entry,
+            setup.entry_key,
             plan.test_id,
             plan.copy_sections,
             plan.change_tuples(),
@@ -142,7 +197,7 @@ def generate_test(
         output_redactions += redacted
         entries.append(cleaned)
 
-    folder = PurePosixPath(template_chunk.file_path).parent
+    folder = PurePosixPath(setup.template_chunk.file_path).parent
     file_name = str(folder / f"{response.module_name}.py")
     checklist = list(dict.fromkeys([*gen.review_checklist_defaults, *response.review_checklist]))
     return GeneratedTest(
@@ -150,18 +205,20 @@ def generate_test(
         file_name=file_name,
         data_file_name=str(PurePosixPath(file_name).with_suffix(settings.index.data_file_suffix)),
         data_entries=entries,
-        data_format=layout,
+        data_format=setup.layout,
         test_ids=list(order),
-        template_entry_ref=TemplateEntryRef(chunk_id=template_chunk.id, entry_key=entry_key),
-        ticket_id=draft.ticket_id,
-        draft_ref=draft.id,
-        retrieved_chunk_ids=context.chunk_ids,
-        prompt_version=prompt.version,
+        template_entry_ref=TemplateEntryRef(
+            chunk_id=setup.template_chunk.id, entry_key=setup.entry_key
+        ),
+        ticket_id=setup.draft.ticket_id,
+        draft_ref=setup.draft.id,
+        retrieved_chunk_ids=setup.context.chunk_ids,
+        prompt_version=setup.prompt_version,
         provider=provider,
         model=model,
-        attempts=result.attempts,
-        context_tokens=context.tokens,
-        redactions=draft_scrub.redacted + context_scrub.redacted + output_redactions,
+        attempts=attempts,
+        context_tokens=setup.context.tokens,
+        redactions=setup.input_redactions + output_redactions,
         notes=notes,
         review_checklist=checklist,
         entry_plans=list(response.entries),

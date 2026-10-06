@@ -138,12 +138,40 @@ generate:
   max_example_tests: 4
   deployment_decorators: {cloud: cloud_only, on_prem: on_prem_only}
 
-repair:
-  max_attempts: 3
+validation:                     # deterministic checks of generated tests (Phase 7)
+  base_class: BaseTest            # every test class inherits it
+  assertion_object: self.check    # a unittest.TestCase instance
+  assertion_methods: [assertEqual, assertNotEqual, assertTrue, assertFalse, assertIn,
+                      assertNotIn, assertIsNone, assertIsNotNone, assertGreater, assertLess,
+                      assertRaises]
+  external_modules: [pytest, selenium]   # importable besides stdlib and the target repo
+  naming:                         # full-match regexes
+    module: "test_[a-z0-9_]+"
+    test_class: "Test[A-Z][A-Za-z0-9]*"
+    test_function: "test_[a-z0-9_]+"
+  name_keys: [name]               # seeded names must use the unique-name placeholder
+  name_max_length: 32             # the app's name length limit ({test_id:N} + suffix)
+  unique_name_helper: self.unique_name
+  capability_path: settings.capabilities
+  capability_gates:               # component -> gates its features use (warning otherwise)
+    rules: [rules, bulk_delete, import]
+    profiles: [profiles]
+    settings: [rules, profiles, bulk_delete, import]
+    tenants: [rules, profiles]
+  paging_actions: [next_page, previous_page]   # with count checks, expect a page-size read
+  constant_properties: [page_size]
 
-sandbox:
-  runtime: docker         # docker | podman
+repair:
+  max_attempts: 3                 # repair rounds after the first generation (errors only)
+  prompt_version: repair_v1
+
+sandbox:                          # `pytest --collect-only` in a container (Hard Constraint 3)
+  runtime: docker                 # docker | podman (or T2T_SANDBOX__RUNTIME)
   timeout_seconds: 120
+  image: t2t-sandbox:py3.12       # build: ticket2test sandbox --build
+  memory: 1g
+  pids_limit: 256
+  work_dir: .scratch/sandbox      # staging folder per run (git-ignored)
 
 paths:
   output_dir: output

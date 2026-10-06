@@ -12,7 +12,9 @@ from ticket2test.adapters.tickets.github import GitHubIssueSource
 from ticket2test.cli import app
 from ticket2test.models import Ticket
 
-SUBCOMMANDS = ["normalize", "draft", "index", "search", "retrieve", "generate", "validate", "eval"]
+SUBCOMMANDS = [
+    "normalize", "draft", "index", "search", "retrieve", "generate", "validate", "sandbox", "eval",
+]  # fmt: skip
 
 runner = CliRunner()
 
@@ -29,16 +31,6 @@ def test_version() -> None:
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
     assert __version__ in result.output
-
-
-PLACEHOLDERS = ["validate"]
-
-
-@pytest.mark.parametrize("name", PLACEHOLDERS)
-def test_placeholder_subcommands_fail_clearly(name: str) -> None:
-    result = runner.invoke(app, [name])
-    assert result.exit_code == 1
-    assert "Not implemented yet" in result.output
 
 
 def test_missing_config_file_is_reported(tmp_path: Path) -> None:

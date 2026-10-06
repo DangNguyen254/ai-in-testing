@@ -23,8 +23,8 @@ Tracks progress, scope, and acceptance criteria for each phase. Read together wi
 | 3b | Stand-in v2/v3 (real-framework patterns) | ✅ | 3 |
 | 4 | Indexer (Python) | ✅ | 3 |
 | 5 | Retrieval | ✅ | 2, 4 |
-| 6 | Code generation (code + JSON pair) | 🟡 (style check of v4 pending) | 5, 3b |
-| 7 | Validators, repair, sandbox | ⬜ | 6 |
+| 6 | Code generation (code + JSON pair) | ✅ (real-codebase style check deferred to integration) | 5, 3b |
+| 7 | Validators, repair, sandbox | ✅ | 6 |
 | 8 | Eval harness | ⬜ | 5 (minimal), 7 (full) |
 | 9 | Rust support | ⬜ | 8 |
 
@@ -36,19 +36,14 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 
 Read this first when resuming in a new session.
 
-**Where we are:** Phase 6 is 🟡. The human's third style check (STND-106 from `live-v3/`) found semantic errors, which were traced to the stand-in's own pagination test. The stand-in, the conventions, and the prompt (`generate_v4`) are now fixed; the v4 live run is done (5/5, `output/generated/live-v4/`), and the **fourth style check** is next. Earlier runs are in `live-v1/` to `live-v3/`.
+**Where we are:** Phases 0–7 are ✅. Phase 6 closed on 2026-10-06 (the real-codebase style check is deferred to integration). Phase 7 (validators, repair loop, container sandbox) is built and verified; **Phase 8 (eval harness) is next**.
 
-**Decision (2026-10-06, human):** keep LLM use to a minimum. No LLM reviewer step: semantic gaps are handled by a stronger generation prompt and by deterministic heuristics in Phase 7 that flag for the reviewer.
+**Decision (2026-10-06, human):** keep LLM use to a minimum. No LLM reviewer step: semantic gaps are handled by a stronger generation prompt and by deterministic heuristics (Phase 7 warnings). Sonnet 5.5 for every LLM step (the Haiku trial for retrieval was worse).
 
 **Next steps, in order:**
-1. Human style check of the v4 pairs → fix and rerun if needed.
-2. Close Phase 6 (the last DoD item is the human style check).
-3. Phase 7: validators, repair loop, sandbox. Use the validator list in `CLAUDE.md`, which includes rule (1) (every seed/expectation key is read or consumed; never both `targets` and `interactions`) and the name-claim heuristic. Also add:
-   - names of seeded objects must use `{test_id:N}`; STND-103 used the literal `web-access`;
-   - **claims vs. checks** (deterministic, flags only): take the outcome nouns from the docstring's last steps and the draft's `expected_outcome` (e.g. "page 2", "only allow", "filter stays selected") and flag any without a matching check; flag a test whose only checks are counts when the outcome names which items are shown;
-   - **name length:** `{test_id:N}` + literal suffix ≤ the name cap (config; stand-in 32), and `unique_name(N)` with N ≤ cap;
-   - **unused capability gates:** capability keys in `settings` must be gates the feature uses (a per-component gate map in config);
-   - **unstated constants:** flag arithmetic on page counts when the test reads no page size (heuristic).
+1. Phase 8: eval harness. Mine ticket ↔ test pairs from the stand-in history; reach 30+ pairs; metrics: retrieval, invented-name rate (from the Phase 7 validators), `--collect` pass rate in the sandbox, cost/time; leave-one-out for the stand-in (exclude each ticket's linked test), so results aren't circular.
+2. Optional: a live end-to-end run of generate → validate → repair → collect (about 15–20 LLM calls; ask first). Not run yet with the repair loop in place.
+3. A porting checklist for the company environment (adapters, LLM endpoint, `markers` / `style` / `data` / `validation` config, conventions doc, dependency review).
 
 **Known open points (not blocking):**
 - Template choice: STND-106 used `test_rules_add_basic[allow]` as the base instead of a list or pagination test. Ranking is same component first, then the retrieval score.
@@ -60,6 +55,9 @@ Read this first when resuming in a new session.
 - Live generation (real LLM calls via the Claude Code CLI, about 15 calls, about 2.5 minutes): `.venv/Scripts/uv.exe run --env-file .env pytest -m live tests/test_generate_live.py -q`. It writes to `output/generated/live-<prompt version>/`.
 - Stand-in: `cd standin && ../.venv/Scripts/python.exe -m pytest --collect-only -q`; history: `python standin/tools/build_history.py --out .scratch/standin-history --force`.
 - `uv` is installed in the venv (`.venv/Scripts/uv.exe`).
+- Validate generated tests: `.venv/Scripts/ticket2test.exe validate output/generated/live-v4 --repo standin` (add `--collect` for the sandbox).
+- Sandbox: Podman runs here (Docker's daemon doesn't), so set `T2T_SANDBOX__RUNTIME=podman`. The image `t2t-sandbox:py3.12` is built (`ticket2test sandbox --build`, approved by the human on 2026-10-06: public `python:3.12-slim` + pytest/selenium from PyPI). Real-container tests: `T2T_SANDBOX__RUNTIME=podman .venv/Scripts/python.exe -m pytest -m sandbox`.
+- The machine's Podman store also holds an unrelated image from a private registry. Never use or reference it (Hard Constraint 1); the sandbox uses only its own image.
 
 **Working notes for Claude Code:**
 - **Rules:**
@@ -438,7 +436,7 @@ Read this first when resuming in a new session.
 ---
 
 ## Phase 6: Code generation (code + JSON pair)
-**Status:** 🟡 In progress
+**Status:** ✅ Done (2026-10-06; the final style check against the real codebase is deferred to integration)
 
 **Goal:** Generate a test (code file + JSON data entries) from a draft, in the style of the existing tests.
 
@@ -465,7 +463,7 @@ Read this first when resuming in a new session.
 - [x] Every `GeneratedTest` has complete traceability fields, incl. `template_entry_ref`
 - [x] Output is formatted to the `style` rules (tested; stand-in files are a fixed point)
 - [x] Live run on v2 (5 stand-in tickets; 5/5, first attempt)
-- [ ] Generated code follows the real framework's style (spot-checked by a human)
+- [x] Generated code follows the real framework's style (spot-checked by a human): checked against the real framework four times (v1, v2, v3, and v3 STND-106). The remaining semantic gaps go to the Phase 7 validators, and the final style check happens at integration with the real codebase (the human's decision, 2026-10-06)
 
 **Open questions:** –
 
@@ -550,11 +548,12 @@ Read this first when resuming in a new session.
 
     One rewrite call per ticket in every run (no follow-up rounds, no retries). On httpx, Haiku was worse or equal on every pair. One probe call each (STND-106 rewrite, CLI's own numbers): Haiku 15.6 s, 1,065 output tokens, $0.0074; Sonnet 5.7 s, 216 output tokens, $0.0062. The CLI's fixed prompt overhead dominates, so a cheaper per-token rate saves nothing here.
   - **Decision (human):** keep Sonnet for every step; `step_models` stays empty (the mechanism stays for later).
+- 2026-10-06: **Closed** (the human's decision). Tuning the style further against the synthetic stand-in would fit the prompt to an invented codebase; what still varies (decorators, setup options, name cap, capability gates, save flows) is config and a conventions doc, written once against the real code at integration. The v4 pairs (`output/generated/live-v4/`) were not style-checked separately.
 
 ---
 
 ## Phase 7: Validators, repair loop, sandbox
-**Status:** ⬜ Not started
+**Status:** ✅ Done (2026-10-06)
 
 **Goal:** Catch bad generated tests cheaply before a human sees them, and fix them automatically when possible.
 
@@ -590,16 +589,31 @@ Read this first when resuming in a new session.
 - If the container runtime isn't available, `--collect` / `--run` fail clearly. They never fall back to host execution.
 
 **Definition of Done:**
-- [ ] Each validator has unit tests with passing and failing examples
-- [ ] A test using a non-existent function or property chain is caught and reported
-- [ ] A JSON key mismatch caused by wrong stacked-decorator order is caught
-- [ ] Repair loop stops at the cap (tested with the fake LLM)
-- [ ] `pytest --collect-only` runs in the sandbox on a generated stand-in test, with no network and a timeout (tested)
-- [ ] Missing container runtime produces a clear error, not host execution
+- [x] Each validator has unit tests with passing and failing examples (`tests/test_validate.py`)
+- [x] A test using a non-existent function or property chain is caught and reported
+- [x] A JSON key mismatch caused by wrong stacked-decorator order is caught
+- [x] Repair loop stops at the cap (tested with the fake LLM)
+- [x] `pytest --collect-only` runs in the sandbox on a generated stand-in test, with no network and a timeout (tested)
+- [x] Missing container runtime produces a clear error, not host execution
 
 **Open questions:** –
 
-**Log:** –
+**Log:**
+- 2026-10-06: Started after Phase 6 closed. Human decisions: no LLM reviewer step (heuristics are deterministic warnings); permission to pull the public `python:3.12-slim` image and build the sandbox image into Podman's store (outside the repo).
+- 2026-10-06: Built.
+  - **Validators (`validate/`):** `code.py` resolves `self.` chains and locals bound to them (`rules = self.nav.rules.list`) through the catalog, with the kind of every step; `validator.py` runs the checks; `claims.py` is the claims-vs-checks heuristic; `report.py` has `Finding` (error / warning) and `ValidationReport`.
+  - **Errors (block, feed the repair loop):** syntax; imports (stdlib, `validation.external_modules`, or names in the repo's modules); undefined names; base class; page-object chains (missing members, a property called, an action not called or assigned, chained calls); assertions (no bare `assert`, allowed methods only, every test checks something); required markers with approved values (case-sensitive; components from the catalog); naming regexes and no ticket numbers; style (LF, final newline, no annotations, ruff-formatted); ids vs. entries (orphans, duplicates, missing entries, recorded ids); data keys read exist, and every key is read or consumed (rule 1, never both expectation sections); the data file's JSON style; seeded and typed names use the placeholder; `{test_id:N}` + suffix and `unique_name(N)` within `validation.name_max_length` (32).
+  - **Warnings (reviewer only):** claims vs. checks (outcome steps of the docstring, the draft's expected outcome per module, or the test name when there is no docstring; "only / remaining / every / all" clauses need an item-level check, not just a count); capability gates the component doesn't use (`validation.capability_gates`); paging with count checks but no page-size read.
+  - **Repair (`validate/repair.py`, prompt `repair_v1`):** continues the generation conversation (previous reply as the assistant turn, then the errors and warnings); only errors trigger a round; at most `repair.max_attempts` (3); an unusable repair reply keeps the last valid version. `generate` (CLI) now runs generate → validate → repair; the report (with `repairs` and the per-round `history`) is stored in `generated.json`. `generate_test` was split into `prepare_generation` + `assemble` (same behavior).
+  - **Sandbox (`sandbox/runner.py`, `sandbox/Containerfile`):** `podman`/`docker run --rm --network=none --read-only --tmpfs /tmp --cap-drop=ALL --security-opt no-new-privileges --pids-limit --memory`, the target repo `:ro` at `/repo`, a staging folder under `.scratch/sandbox/` at `/work` (removed afterwards); inside, the repo is copied, the generated pair placed at its repo path, and `pytest --collect-only` collects only the generated module; collected ids are compared with the generator's. Timeout kills the container (`rm -f`). Missing runtime or image is a `SandboxError`; never a host run. Image: public `python:3.12-slim` + pytest 9.1.1 + selenium 4.50.0 (pinned to `uv.lock`), non-root user.
+  - **CLI:** `validate <dir> --repo <path> [--collect] [--run]` (`--run` not available yet) writes `validation_report` / `collect_report` into each `generated.json`; `sandbox [--build]`.
+  - **Config:** new section `validation` (all values above); `repair.prompt_version`; `sandbox.image` / `memory` / `pids_limit` / `work_dir`. Pytest marker `sandbox` (deselected by default).
+  - **Stand-in:** the tenants entries still pasted all four capability gates; trimmed to `rules`.
+- 2026-10-06: Verified. ruff, mypy strict (70 files), pytest 473 passed, 14 deselected (12 live, 2 sandbox); `-m sandbox` 2 passed with Podman.
+  - **Isolation probe** (same container flags): network blocked, `/repo` read-only, root file system read-only, only `/work` writable, uid 10001.
+  - **Hand-written stand-in suite:** no errors; one warning (`test_rules_list_api_created`: the name claims "api created", the check only looks for the name in the list).
+  - **Earlier outputs through the CLI with `--collect`:** `live-v4` 5/5 pass (one claims warning on STND-102: "whatever their capitalization"). `live-v3` 3/5: STND-103's literal `web-access` (seeded and typed), and STND-106's `rules.rule_count` (no longer exists) plus the two warnings from the third style check ("Page 2 shows only allow rules" checked only by counts; no page-size read). All ten collect in the sandbox, about 6–8 s each, including v3 STND-106: a missing property only fails at run time, so the catalog check catches what `--collect-only` can't.
+  - **Not run:** a live generation with the repair loop (real LLM calls).
 
 ---
 
@@ -699,4 +713,6 @@ Read this first when resuming in a new session.
 | 2026-10-06 | 3b | Stand-in v3 built and verified (policy app with top bar, four test shapes, targets/interactions replayed, rule (1) checked on the stand-in); generate_v3 prompt and self-checks |
 | 2026-10-06 | 6 | Third style check (STND-106): semantic gaps traced to the stand-in; stand-in patched (sorting, page size, name cap, `total_count`), `generate_v4`; no LLM reviewer step (human decision) |
 | 2026-10-06 | 6 | Per-step models (`step_models`, `LLMRequest.model`); Haiku 4.5 trial for the retrieval steps was worse, slower, not cheaper; kept Sonnet (human decision) |
+| 2026-10-06 | 6 | Closed (real-codebase style check deferred to integration; human decision) |
+| 2026-10-06 | 7 | Validators (errors + reviewer warnings), repair loop, container sandbox (Podman verified); marked ✅ Done |
 | 2026-10-06 | 3b | Stand-in v2 built and verified (patterns checked by project tests; indexer reads array data and infers unannotated types; config `data`; `Chunk.data_format`); marked ✅ Done. v1 generator tests skipped until `generate_v2` |

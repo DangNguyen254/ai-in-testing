@@ -233,13 +233,62 @@ class GenerateSettings(_Section):
     )
 
 
+class NamingSettings(_Section):
+    """Regexes for names in generated tests (full match)."""
+
+    module: str = r"test_[a-z0-9_]+"
+    test_class: str = r"Test[A-Z][A-Za-z0-9]*"
+    test_function: str = r"test_[a-z0-9_]+"
+
+
+class ValidateSettings(_Section):
+    """Deterministic checks of a generated test (Phase 7). Values describe the target suite."""
+
+    base_class: str = "BaseTest"  # every test class must inherit it (directly or not)
+    assertion_object: str = "self.check"
+    assertion_methods: list[str] = Field(
+        default_factory=lambda: [
+            "assertEqual", "assertNotEqual", "assertTrue", "assertFalse", "assertIn",
+            "assertNotIn", "assertIsNone", "assertIsNotNone", "assertGreater", "assertLess",
+            "assertRaises",
+        ]
+    )  # fmt: skip
+    # Importable besides the standard library and the target repo's own modules.
+    external_modules: list[str] = Field(default_factory=lambda: ["pytest", "selenium"])
+    naming: NamingSettings = NamingSettings()
+    # Seeded object names: these keys in seed sections must use the unique-name placeholder.
+    name_keys: list[str] = Field(default_factory=lambda: ["name"])
+    name_max_length: int = Field(default=32, ge=1)  # the app's name length limit
+    unique_name_helper: str = "self.unique_name"
+    # Capability gates: where they sit in a seed section, and the gates each component's
+    # features use. A component missing here is not checked.
+    capability_path: str = "settings.capabilities"
+    capability_gates: dict[str, list[str]] = Field(
+        default_factory=lambda: {
+            "rules": ["rules", "bulk_delete", "import"],
+            "profiles": ["profiles"],
+            "settings": ["rules", "profiles", "bulk_delete", "import"],
+            "tenants": ["rules", "profiles"],
+        }
+    )
+    # Heuristic: a test that pages and checks counts should read the page size.
+    paging_actions: list[str] = Field(default_factory=lambda: ["next_page", "previous_page"])
+    constant_properties: list[str] = Field(default_factory=lambda: ["page_size"])
+
+
 class RepairSettings(_Section):
     max_attempts: int = Field(default=3, ge=0)
+    prompt_version: str = "repair_v1"
 
 
 class SandboxSettings(_Section):
     runtime: Literal["docker", "podman"] = "docker"
     timeout_seconds: int = Field(default=120, ge=1)
+    image: str = "t2t-sandbox:py3.12"  # built from sandbox/Containerfile (`ticket2test sandbox`)
+    memory: str = "1g"
+    pids_limit: int = Field(default=256, ge=16)
+    # Staging folder for each run (inside the repo, git-ignored).
+    work_dir: Path = Path(".scratch/sandbox")
 
 
 class GitHubSettings(_Section):
@@ -300,6 +349,7 @@ class Settings(BaseSettings):
     retrieval: RetrievalSettings = RetrievalSettings()
     context: ContextSettings = ContextSettings()
     generate: GenerateSettings = GenerateSettings()
+    validation: ValidateSettings = ValidateSettings()
     repair: RepairSettings = RepairSettings()
     sandbox: SandboxSettings = SandboxSettings()
     paths: PathSettings = PathSettings()

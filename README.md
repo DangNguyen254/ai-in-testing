@@ -123,11 +123,34 @@ uv run --env-file .env ticket2test generate drafts/X.drafts.json --retrieval X.r
     --conventions standin/CONVENTIONS.md --out output/generated
 ```
 
-Writes `<draft id>/<path>/test_<ticket>.py`, its JSON data file, and `generated.json`
+Writes `<draft id>/<path>/test_<area>_<action>.py`, its JSON data file, and `generated.json`
 (traceability) under the output directory, never into the target repo. The LLM writes the code
-and the unique parts of each entry; the shared blocks (e.g. `config`) are copied verbatim from
-the template entry, and the entry keys are the pytest ids computed from the code.
-Generated code is not run or validated against the catalog yet (Phase 7).
+and a plan per entry (sections to copy from the nearest existing entry, values to change); the
+entries are built from that plan deterministically, keyed by the pytest ids computed from the
+code. The result is then validated, and validator errors go back to the LLM for repair (at most
+`repair.max_attempts` rounds). The validation report is stored in `generated.json`.
+
+### Validate generated tests, and collect them in a sandbox
+
+```bash
+uv run ticket2test validate output/generated --repo standin
+uv run ticket2test sandbox --build                 # once: builds the container image
+uv run ticket2test validate output/generated --repo standin --collect
+```
+
+The validators are deterministic and never run the code. **Errors** block a test: invented
+names or page-object chains, unresolved imports, data keys and ids that don't match the code,
+missing or unapproved markers, style, literal or too-long seeded names, unread data keys.
+**Warnings** are heuristics for the reviewer: checks that don't cover what the docstring or
+draft claims (e.g. "only allow rules" checked only by a count), unused capability gates, and
+page arithmetic without a page-size read.
+
+`--collect` runs `pytest --collect-only` on each generated module inside a container (Docker or
+Podman, `sandbox.runtime`): no network, read-only root file system, no capabilities, the
+target repo mounted read-only, and one writable staging folder under `.scratch/sandbox/`. If
+the runtime or the image is missing, the command fails; it never falls back to the host.
+Building the image pulls the public `python:3.12-slim` base image and installs pytest and
+selenium (pinned) from PyPI.
 
 ### Measure retrieval
 
@@ -169,6 +192,9 @@ If `uv` isn't on PATH at all, `py -m uv ...` works when uv was installed with `p
 - `uv run pytest` runs unit tests only. The LLM is always mocked (`FakeLLMClient`).
 - Tests that hit real services are marked `@pytest.mark.live` and run only with
   `uv run pytest -m live` (GitHub API, and real LLM calls with the configured provider).
+- Tests that start a real container are marked `@pytest.mark.sandbox` and run only with
+  `uv run pytest -m sandbox` (needs the runtime and the image; set `T2T_SANDBOX__RUNTIME=podman`
+  for Podman).
 
 ## Safety
 
