@@ -1,78 +1,144 @@
-"""Generated tests: what the LLM returns (wire model) and the stored code + data pair."""
+"""Generated tests: what the LLM returns (wire model) and the stored code + data pair.
+
+Wire model (``generate_v2``): the code, a module name, and for each data entry a *plan*
+(which sections of the base entry to keep, and which values to change). The entries
+themselves are built deterministically from the base entry (``generate/entries.py``).
+"""
 
 from __future__ import annotations
 
-import json
-from typing import Any
+import re
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, model_validator
+
+from ticket2test.models.chunk import DataFormat
 
 # Validation context keys (set by the generator).
 CTX_TEST_PREFIX = "test_function_prefix"
 CTX_CLASS_PREFIX = "test_class_prefix"
+CTX_BASE_ENTRY = "base_entry"
+CTX_BASE_ID = "base_id"
+CTX_ID_FIELD = "id_field"
+CTX_PER_ENTRY_KEYS = "per_entry_keys"
+CTX_DATA_ACCESS = "data_access"
+CTX_DATA_HELPERS = "data_helpers"
+CTX_TICKET_ID = "ticket_id"
 
 
-class EntryParts(BaseModel):
-    """The unique parts of one JSON data entry, as JSON text (the schema can't describe
-    free-form objects, so they arrive as strings and are parsed here)."""
+class EntryChange(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
+    op: Literal["set", "delete"]
+    path: str  # dotted; list items by index, e.g. "interactions.0.response.body.quantity"
+    value_json: str  # the new value as JSON text ("" for delete)
+
+
+class EntryPlan(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     test_id: str
-    seed_json: str
-    inputs_json: str
-    expected_json: str
+    copy_sections: list[str]  # top-level keys of the base entry to keep
+    changes: list[EntryChange]
 
-    def parts(self) -> dict[str, dict[str, Any]]:
-        return {
-            "seed": _object(self.seed_json, "seed_json"),
-            "inputs": _object(self.inputs_json, "inputs_json"),
-            "expected": _object(self.expected_json, "expected_json"),
-        }
-
-
-def _object(text: str, field: str) -> dict[str, Any]:
-    try:
-        value = json.loads(text) if text.strip() else {}
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"{field} is not valid JSON: {exc}") from exc
-    if not isinstance(value, dict):
-        raise ValueError(f"{field} must be a JSON object")
-    return value
+    def change_tuples(self) -> list[tuple[str, str, str]]:
+        return [(c.op, c.path, c.value_json) for c in self.changes]
 
 
 class GenerationResponse(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    module_name: str  # file name stem, e.g. "test_orders_detail_restock"
     code: str
-    entries: list[EntryParts]
+    entries: list[EntryPlan]
+    review_checklist: list[str]  # things only a real run can confirm
     notes: str
 
     @model_validator(mode="after")
     def _consistent(self, info: ValidationInfo) -> GenerationResponse:
-        """The code must parse, define a test, and its pytest ids must equal the entry keys."""
-        from ticket2test.generate.inspect import computed_test_ids  # avoid an import cycle
+        """Ids, entries, data keys, and names must agree, so mistakes go back to the LLM."""
+        from ticket2test.generate.entries import EntryError, build_entry, function_of
+        from ticket2test.generate.inspect import computed_test_ids, data_use, defined_names
 
-        context: Any = info.context if isinstance(info.context, dict) else {}
-        ids = computed_test_ids(
-            self.code,
-            context.get(CTX_TEST_PREFIX, "test"),
-            context.get(CTX_CLASS_PREFIX, "Test"),
+        ctx: dict[str, Any] = info.context if isinstance(info.context, dict) else {}
+        test_prefix = ctx.get(CTX_TEST_PREFIX, "test")
+        class_prefix = ctx.get(CTX_CLASS_PREFIX, "Test")
+        ids = computed_test_ids(self.code, test_prefix, class_prefix)
+
+        problems = _name_problems(
+            [self.module_name, *defined_names(self.code, test_prefix, class_prefix)],
+            ctx.get(CTX_TICKET_ID),
         )
+        if not re.fullmatch(rf"{re.escape(test_prefix)}_[a-z0-9_]+", self.module_name):
+            problems.append(
+                f"module_name {self.module_name!r} must look like {test_prefix}_area_action"
+            )
+        if problems:
+            raise ValueError("; ".join(problems))
+
         keys = [e.test_id for e in self.entries]
         if len(keys) != len(set(keys)):
             raise ValueError("entries contain duplicate test_id values")
-        missing = [i for i in ids if i not in keys]
         extra = [k for k in keys if k not in ids]
-        if missing or extra:
+        if extra:
             raise ValueError(
-                "entry test_ids must equal the pytest ids of the generated tests. "
-                f"Computed from the code: {ids}. Missing entries: {missing}. "
-                f"Entries for ids the code doesn't produce: {extra}."
+                f"entries for ids the code doesn't produce: {extra}. Computed from the code: {ids}."
             )
-        for entry in self.entries:
-            entry.parts()  # raises on invalid JSON parts
+
+        uses = data_use(
+            self.code,
+            ctx.get(CTX_DATA_ACCESS, ["self.params", "params"]),
+            ctx.get(CTX_DATA_HELPERS, []),
+            test_prefix,
+        )
+        missing = [
+            i for i in ids if uses.get(function_of(i)) and uses[function_of(i)].reads_data
+            and i not in keys
+        ]  # fmt: skip
+        if missing:
+            raise ValueError(
+                f"these tests read their data entry but have no entry: {missing}. "
+                "Give one entry per pytest id of every test that reads data."
+            )
+
+        base = ctx.get(CTX_BASE_ENTRY)
+        if base is None:
+            return self
+        for plan in self.entries:
+            try:
+                entry = build_entry(
+                    base,
+                    ctx.get(CTX_BASE_ID, ""),
+                    plan.test_id,
+                    plan.copy_sections,
+                    plan.change_tuples(),
+                    id_field=ctx.get(CTX_ID_FIELD, "id"),
+                    per_entry_keys=ctx.get(CTX_PER_ENTRY_KEYS, []),
+                    test_prefix=test_prefix,
+                )
+            except EntryError as exc:
+                raise ValueError(str(exc)) from exc
+            use = uses.get(function_of(plan.test_id))
+            absent = sorted(use.keys - set(entry)) if use else []
+            if absent:
+                raise ValueError(
+                    f"{plan.test_id} reads keys its entry lacks: {absent}. Add them with "
+                    "changes (op set) or copy them from the base entry."
+                )
         return self
+
+
+def _name_problems(names: list[str], ticket_id: str | None) -> list[str]:
+    """Names must not contain the ticket key or its number."""
+    if not ticket_id:
+        return []
+    number = re.findall(r"\d+", ticket_id)
+    slug = re.sub(r"[^a-z0-9]+", "_", ticket_id.lower()).strip("_")
+    bad = [
+        n for n in names
+        if slug in n.lower() or any(re.search(rf"(?<!\d){d}(?!\d)", n) for d in number)
+    ]  # fmt: skip
+    return [f"names must not contain the ticket id {ticket_id}: {bad}"] if bad else []
 
 
 class TemplateEntryRef(BaseModel):
@@ -90,9 +156,10 @@ class GeneratedTest(BaseModel):
     code: str
     file_name: str  # where it would go in the target repo (repo-relative); never written there
     data_file_name: str
-    data_entries: dict[str, dict[str, Any]]  # pytest id -> entry
+    data_entries: list[dict[str, Any]]  # each with its id field, in code order
+    data_format: DataFormat  # how the data file is written
     test_ids: list[str]
-    template_entry_ref: TemplateEntryRef | None
+    template_entry_ref: TemplateEntryRef | None  # the base entry
     ticket_id: str
     draft_ref: str
     retrieved_chunk_ids: list[str]  # chunks actually placed in the context
@@ -103,5 +170,7 @@ class GeneratedTest(BaseModel):
     context_tokens: int = Field(ge=0)  # estimated
     redactions: int = Field(default=0, ge=0)
     notes: str = ""
+    review_checklist: list[str] = Field(default_factory=list)  # "needs a real run" items
+    entry_plans: list[EntryPlan] = Field(default_factory=list)  # as the LLM chose them
     validation_report: dict[str, Any] | None = None  # Phase 7
     collect_report: dict[str, Any] | None = None  # Phase 7

@@ -1,15 +1,14 @@
 """Draft + retrieval -> GeneratedTest (code file + JSON data entries).
 
-The LLM writes the code and the unique parts of each entry. Everything else is deterministic:
-the context (whole pieces within the token budget), the entry keys (computed pytest ids), and
-the entries themselves (template entry copied verbatim, unique parts swapped in).
+The LLM writes the code and, per data entry, a plan: which sections of the base entry (the
+template test's entry) to keep and which values to change. Everything else is deterministic:
+the context (whole pieces within the token budget), the pytest ids, building the entries from
+the base entry, re-labelling, and formatting code and data to the suite's style rules.
 """
 
 from __future__ import annotations
 
-import copy
 import json
-import re
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -22,15 +21,23 @@ from ticket2test.generate.context import (
     chunk_piece,
     template_piece,
 )
+from ticket2test.generate.entries import build_entry
 from ticket2test.index.indexer import IndexData
 from ticket2test.llm.base import LLMClient, LLMError, LLMRequest, Message
 from ticket2test.llm.schema import strict_schema
 from ticket2test.llm.structured import complete_structured
-from ticket2test.models.chunk import Chunk
+from ticket2test.models.chunk import Chunk, DataFormat
 from ticket2test.models.draft import TestCaseDraft
 from ticket2test.models.generated import (
+    CTX_BASE_ENTRY,
+    CTX_BASE_ID,
     CTX_CLASS_PREFIX,
+    CTX_DATA_ACCESS,
+    CTX_DATA_HELPERS,
+    CTX_ID_FIELD,
+    CTX_PER_ENTRY_KEYS,
     CTX_TEST_PREFIX,
+    CTX_TICKET_ID,
     GeneratedTest,
     GenerationResponse,
     TemplateEntryRef,
@@ -38,6 +45,7 @@ from ticket2test.models.generated import (
 from ticket2test.models.retrieval import RetrievalResult
 from ticket2test.prompts import load_prompt
 from ticket2test.security import scrub
+from ticket2test.style import FormatError, format_json, format_python
 
 
 class GenerationError(LLMError):
@@ -54,11 +62,11 @@ def generate_test(
     model: str,
     conventions: str | None = None,
 ) -> GeneratedTest:
-    gen = settings.generate
+    gen, data = settings.generate, settings.data
     chunks = {c.id: c for c in index.chunks}
     template_chunk, entry_key = _template(retrieval, chunks)
-    file_name = target_file_name(draft, template_chunk)
-    data_file_name = str(PurePosixPath(file_name).with_suffix(settings.index.data_file_suffix))
+    base_entry = template_chunk.data_entries[entry_key]
+    layout: DataFormat = template_chunk.data_format or data.format
 
     context = build_generation_context(
         draft, retrieval, index, settings, template_chunk, entry_key, conventions
@@ -68,7 +76,7 @@ def generate_test(
     draft_scrub = scrub(draft.model_dump_json(indent=2))
     context_scrub = scrub(context.render())
     user = prompt.render_user(
-        file_name=file_name,
+        template_file=template_chunk.file_path,
         draft_json=draft_scrub.text,
         markers=_markers_text(draft, settings, template_chunk, index),
         deployment_decorator=f"@{deployment}" if deployment else "none (runs on all deployments)",
@@ -93,30 +101,53 @@ def generate_test(
         context={
             CTX_TEST_PREFIX: settings.index.test_function_prefix,
             CTX_CLASS_PREFIX: settings.index.test_class_prefix,
+            CTX_BASE_ENTRY: base_entry,
+            CTX_BASE_ID: entry_key,
+            CTX_ID_FIELD: data.id_field,
+            CTX_PER_ENTRY_KEYS: data.per_entry_keys,
+            CTX_DATA_ACCESS: data.access,
+            CTX_DATA_HELPERS: data.reading_helpers,
+            CTX_TICKET_ID: draft.ticket_id,
         },
     )
     response = result.value
 
     code_scrub = scrub(response.code)
-    template_entry = template_chunk.data_entries[entry_key]
-    entries: dict[str, dict[str, Any]] = {}
-    output_redactions = code_scrub.redacted
-    for parts in response.entries:
-        unique = {k: _scrub_json(v) for k, v in parts.parts().items()}
-        output_redactions += sum(n for _, n in unique.values())
-        entries[parts.test_id] = assemble_entry(
-            template_entry,
-            {k: v for k, (v, _) in unique.items()},
-            gen.unique_entry_keys,
-            gen.drop_template_keys,
-        )
+    notes = response.notes
+    try:
+        code = format_python(code_scrub.text, settings.style.python, first_party(index, settings))
+    except FormatError as exc:
+        code = code_scrub.text
+        notes = f"{notes} (not formatted: {exc})".strip()
 
+    order = {test_id: n for n, test_id in enumerate(_ids(code, settings))}
+    entries: list[dict[str, Any]] = []
+    output_redactions = code_scrub.redacted
+    for plan in sorted(response.entries, key=lambda p: order.get(p.test_id, len(order))):
+        entry = build_entry(
+            base_entry,
+            entry_key,
+            plan.test_id,
+            plan.copy_sections,
+            plan.change_tuples(),
+            id_field=data.id_field,
+            per_entry_keys=data.per_entry_keys,
+            test_prefix=settings.index.test_function_prefix,
+        )
+        cleaned, redacted = _scrub_json(entry)
+        output_redactions += redacted
+        entries.append(cleaned)
+
+    folder = PurePosixPath(template_chunk.file_path).parent
+    file_name = str(folder / f"{response.module_name}.py")
+    checklist = list(dict.fromkeys([*gen.review_checklist_defaults, *response.review_checklist]))
     return GeneratedTest(
-        code=code_scrub.text,
+        code=code,
         file_name=file_name,
-        data_file_name=data_file_name,
+        data_file_name=str(PurePosixPath(file_name).with_suffix(settings.index.data_file_suffix)),
         data_entries=entries,
-        test_ids=[e.test_id for e in response.entries],
+        data_format=layout,
+        test_ids=list(order),
         template_entry_ref=TemplateEntryRef(chunk_id=template_chunk.id, entry_key=entry_key),
         ticket_id=draft.ticket_id,
         draft_ref=draft.id,
@@ -127,44 +158,37 @@ def generate_test(
         attempts=result.attempts,
         context_tokens=context.tokens,
         redactions=draft_scrub.redacted + context_scrub.redacted + output_redactions,
-        notes=response.notes,
+        notes=notes,
+        review_checklist=checklist,
+        entry_plans=list(response.entries),
     )
 
 
 # --- deterministic parts --------------------------------------------------------------------
 
 
-def assemble_entry(
-    template: dict[str, Any],
-    unique: dict[str, Any],
-    unique_keys: list[str],
-    drop_keys: list[str],
-) -> dict[str, Any]:
-    """New entry = the template entry with its unique parts replaced.
-
-    Shared blocks (e.g. ``config``) are deep-copied unchanged, in the template's key order.
-    Per-entry overrides (``drop_keys``) are not inherited.
-    """
-    entry: dict[str, Any] = {}
-    for key, value in template.items():
-        if key in drop_keys:
-            continue
-        entry[key] = (
-            copy.deepcopy(unique[key])
-            if key in unique_keys and key in unique
-            else copy.deepcopy(value)
-        )
-    for key in unique_keys:
-        if key not in entry and key in unique:
-            entry[key] = copy.deepcopy(unique[key])
-    return entry
+def first_party(index: IndexData, settings: Settings) -> list[str]:
+    """Import-sorting roots: configured, else the target repo's top-level packages."""
+    if settings.style.python.first_party:
+        return list(settings.style.python.first_party)
+    roots = {
+        record.info.module.split(".", 1)[0]
+        for record in index.files.values()
+        if record.info is not None and "." in record.info.module
+    }
+    return sorted(roots)
 
 
-def target_file_name(draft: TestCaseDraft, template: Chunk) -> str:
-    """``<template's folder>/test_<ticket>.py`` (repo-relative; only written to the output dir)."""
-    slug = re.sub(r"[^a-z0-9]+", "_", draft.ticket_id.lower()).strip("_") or "ticket"
-    folder = PurePosixPath(template.file_path).parent
-    return str(folder / f"test_{slug}.py")
+def class_scaffold(chunk: Chunk, index: IndexData) -> str | None:
+    """The template class's decorators and class line, as written."""
+    record = index.files.get(chunk.file_path)
+    if record is None or record.info is None or chunk.class_name is None:
+        return None
+    cls = next((c for c in record.info.classes if c.name == chunk.class_name), None)
+    if cls is None:
+        return None
+    bases = f"({', '.join(cls.bases)})" if cls.bases else ""
+    return "\n".join([*(f"@{d}" for d in cls.decorators), f"class {cls.name}{bases}:"])
 
 
 def build_generation_context(
@@ -181,7 +205,10 @@ def build_generation_context(
     pieces: list[Piece] = []
     if conventions:
         pieces.append(Piece("Team conventions for tests", conventions, required=True))
-    pieces.append(template_piece(template_chunk, entry_key))
+    entry_json = format_json(template_chunk.data_entries[entry_key], settings.style.json_files)
+    pieces.append(
+        template_piece(template_chunk, entry_key, entry_json, class_scaffold(template_chunk, index))
+    )
 
     # The base test class (and its in-repo bases), so inherited helpers are visible.
     used: set[str] = {template_chunk.id}
@@ -308,10 +335,18 @@ def _scrub_json(value: dict[str, Any]) -> tuple[dict[str, Any], int]:
     return cleaned, result.redacted
 
 
+def _ids(code: str, settings: Settings) -> list[str]:
+    from ticket2test.generate.inspect import computed_test_ids
+
+    return computed_test_ids(
+        code, settings.index.test_function_prefix, settings.index.test_class_prefix
+    )
+
+
 __all__ = [
     "GenerationError",
-    "assemble_entry",
     "build_generation_context",
+    "class_scaffold",
+    "first_party",
     "generate_test",
-    "target_file_name",
 ]

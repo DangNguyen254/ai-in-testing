@@ -69,6 +69,25 @@ index:
 data:                            # per-test JSON data files (reading accepts both layouts)
   format: array                  # array: [{"id": "<pytest id>", ...}]; object: {"<pytest id>": {...}}
   id_field: id
+  access: ["self.params", params]        # tests index these to read their entry
+  reading_helpers: [self.validate_backend]  # calls that read the entry for the test
+  per_entry_keys: [priority, skip]       # never inherited from the base entry
+
+style:                           # the target suite's style; generated output is formatted to it
+  python:
+    indent_width: 3
+    line_length: 100
+    line_ending: lf
+    quote_style: double
+    strip_annotations: true
+    final_newline: true
+    first_party: []              # import-sorting roots; empty = the target repo's top-level packages
+  json:
+    indent: 3
+    key_separator: ":"
+    item_separator: ","
+    ensure_ascii: false
+    final_newline: true
 
 retrieval:
   top_k: 10
@@ -100,10 +119,11 @@ context:
   chars_per_token: 3.0           # token estimate = ceil(chars / 3.0); over-counts on purpose
 
 generate:
-  prompt_version: generate_v1
+  prompt_version: generate_v2
   conventions_doc: null          # e.g. standin/CONVENTIONS.md; always included when set
-  unique_entry_keys: [seed, inputs, expected]   # written by the LLM; the rest is copied
-  drop_template_keys: [priority, skip]          # per-entry overrides, never inherited
+  review_checklist_defaults:      # always on the reviewer checklist ("needs a real run")
+    - Expected responses in `interactions` are not from a real capture; confirm them in a real run.
+    - Check whether the page needs a refresh before a field is read again after saving.
   placeholder_token: "{{unique}}"
   max_example_tests: 4
   deployment_decorators: {cloud: cloud_only, on_prem: on_prem_only}

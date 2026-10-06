@@ -15,6 +15,7 @@ dependencies = [
     "pydantic-settings>=2.4",
     "pyyaml>=6.0",
     "rank-bm25>=0.2.2",
+    "ruff>=0.5",
     "tree-sitter>=0.23",
     "tree-sitter-python>=0.23",
     "typer>=0.12",
@@ -27,7 +28,6 @@ ticket2test = "ticket2test.cli:app"
 dev = [
     "mypy>=1.10",
     "pytest>=8.0",
-    "ruff>=0.5",
     "selenium>=4.20",
     "types-pyyaml>=6.0",
     "uv>=0.12",
@@ -57,7 +57,7 @@ files = ["src"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["rank_bm25"]
+module = ["rank_bm25", "ruff.*"]
 ignore_missing_imports = true
 
 [tool.pydantic-mypy]

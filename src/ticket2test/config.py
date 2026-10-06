@@ -119,6 +119,40 @@ class DataSettings(_Section):
 
     format: Literal["array", "object"] = "array"
     id_field: str = "id"
+    # How a test reads its entry: these expressions are indexed (``self.params["key"]``).
+    access: list[str] = Field(default_factory=lambda: ["self.params", "params"])
+    # Calls that read the entry on the test's behalf (e.g. a backend-validation helper).
+    reading_helpers: list[str] = Field(default_factory=lambda: ["self.validate_backend"])
+    # Per-entry overrides that a new entry never inherits from its base entry.
+    per_entry_keys: list[str] = Field(default_factory=lambda: ["priority", "skip"])
+
+
+class PythonStyle(_Section):
+    indent_width: int = Field(default=3, ge=1, le=8)
+    line_length: int = Field(default=100, ge=40)
+    line_ending: Literal["lf", "cr-lf"] = "lf"
+    quote_style: Literal["double", "single"] = "double"
+    strip_annotations: bool = True
+    final_newline: bool = True
+    # First-party import roots for import sorting; empty: the target repo's top-level packages.
+    first_party: list[str] = Field(default_factory=list)
+
+
+class JsonStyle(_Section):
+    indent: int = Field(default=3, ge=0, le=8)
+    key_separator: str = ":"
+    item_separator: str = ","
+    ensure_ascii: bool = False
+    final_newline: bool = True
+
+
+class StyleSettings(_Section):
+    """The target suite's style rules, applied to generated code and data by a formatter."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    python: PythonStyle = PythonStyle()
+    json_files: JsonStyle = Field(default_factory=JsonStyle, alias="json")
 
 
 class RerankSettings(_Section):
@@ -161,13 +195,17 @@ class ContextSettings(_Section):
 
 
 class GenerateSettings(_Section):
-    prompt_version: str = "generate_v1"
+    prompt_version: str = "generate_v2"
     # Team conventions for tests (Markdown). Always placed in the context when set.
     conventions_doc: Path | None = None
-    # JSON entry keys the LLM writes; everything else is copied from the template entry.
-    unique_entry_keys: list[str] = Field(default_factory=lambda: ["seed", "inputs", "expected"])
-    # Template keys that are per-entry overrides and must not be inherited.
-    drop_template_keys: list[str] = Field(default_factory=lambda: ["priority", "skip"])
+    # Always on the reviewer checklist: things only a real run can confirm.
+    review_checklist_defaults: list[str] = Field(
+        default_factory=lambda: [
+            "Expected responses in `interactions` are not from a real capture; "
+            "confirm them in a real run.",
+            "Check whether the page needs a refresh before a field is read again after saving.",
+        ]
+    )
     placeholder_token: str = "{{unique}}"
     max_example_tests: int = Field(default=4, ge=0)  # similar tests shown as style examples
     # Suite-specific decorator names for deployment-type skips (cloud-only / on-prem-only).
@@ -236,6 +274,7 @@ class Settings(BaseSettings):
     normalize: NormalizeSettings = NormalizeSettings()
     index: IndexSettings = IndexSettings()
     data: DataSettings = DataSettings()
+    style: StyleSettings = StyleSettings()
     draft: DraftSettings = DraftSettings()
     markers: MarkerSettings = MarkerSettings()
     eval: EvalSettings = EvalSettings()

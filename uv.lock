@@ -1525,6 +1525,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "pyyaml" },
     { name = "rank-bm25" },
+    { name = "ruff" },
     { name = "tree-sitter" },
     { name = "tree-sitter-python" },
     { name = "typer" },
@@ -1534,7 +1535,6 @@ dependencies = [
 dev = [
     { name = "mypy" },
     { name = "pytest" },
-    { name = "ruff" },
     { name = "selenium" },
     { name = "types-pyyaml" },
     { name = "uv" },
@@ -1549,6 +1549,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.4" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rank-bm25", specifier = ">=0.2.2" },
+    { name = "ruff", specifier = ">=0.5" },
     { name = "tree-sitter", specifier = ">=0.23" },
     { name = "tree-sitter-python", specifier = ">=0.23" },
     { name = "typer", specifier = ">=0.12" },
@@ -1558,7 +1559,6 @@ requires-dist = [
 dev = [
     { name = "mypy", specifier = ">=1.10" },
     { name = "pytest", specifier = ">=8.0" },
-    { name = "ruff", specifier = ">=0.5" },
     { name = "selenium", specifier = ">=4.20" },
     { name = "types-pyyaml", specifier = ">=6.0" },
     { name = "uv", specifier = ">=0.12" },

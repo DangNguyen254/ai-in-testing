@@ -131,6 +131,7 @@ requests==2.34.2
 rich==15.0.0
     # via typer
 ruff==0.16.10
+    # via ticket2test
 selenium==4.50.0
 shellingham==1.5.4
     # via typer

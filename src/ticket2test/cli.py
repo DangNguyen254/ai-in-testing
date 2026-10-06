@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
@@ -347,6 +346,7 @@ def generate(
     from ticket2test.models import DraftResult
     from ticket2test.models.retrieval import RetrievalResult
     from ticket2test.prompts import PromptError
+    from ticket2test.style import format_entries
 
     state: AppState = ctx.obj
     settings = state.settings
@@ -405,8 +405,11 @@ def generate(
     code_path = folder / generated.file_name
     data_path = folder / generated.data_file_name
     code_path.parent.mkdir(parents=True, exist_ok=True)
-    code_path.write_text(generated.code, encoding="utf-8")
-    data_path.write_text(json.dumps(generated.data_entries, indent=2) + "\n", encoding="utf-8")
+    data_text = format_entries(
+        generated.data_entries, settings.data, settings.style.json_files, generated.data_format
+    )
+    code_path.write_text(generated.code, encoding="utf-8", newline="\n")
+    data_path.write_text(data_text, encoding="utf-8", newline="\n")
     (folder / "generated.json").write_text(generated.model_dump_json(indent=2), encoding="utf-8")
     typer.echo(
         f"{chosen.id}: {len(generated.test_ids)} test id(s), template "
@@ -414,6 +417,10 @@ def generate(
         f"{generated.attempts} LLM call(s), ~{generated.context_tokens} context tokens"
     )
     typer.echo(f"Wrote {code_path}\nWrote {data_path}\nWrote {folder / 'generated.json'}")
+    if generated.review_checklist:
+        typer.echo("Review checklist (needs a real run):")
+        for item in generated.review_checklist:
+            typer.echo(f"  - {item}")
 
 
 @app.command()

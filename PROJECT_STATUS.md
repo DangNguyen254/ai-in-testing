@@ -389,11 +389,13 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 - Output files go only to the project's output dir, never into the target repo
 
 **Definition of Done:**
-- [x] Generates a code + JSON pair for each of 5 stand-in drafts (live test)
-- [x] Copied config blocks are byte-identical to the template entry (tested)
+- [x] Generates a code + JSON pair for each of 5 stand-in drafts (live test, v1; repeat on v2 below)
+- [x] Entries are built from the base entry: copied sections identical except re-labelled names, per-variant changes only (tested)
 - [x] Context never exceeds the token budget (tested)
 - [x] Every `GeneratedTest` has complete traceability fields, incl. `template_entry_ref`
-- [ ] Generated code follows the style of retrieved examples (spot-checked by a human)
+- [x] Output is formatted to the `style` rules (tested; stand-in files are a fixed point)
+- [ ] Live run on v2 (5 stand-in tickets)
+- [ ] Generated code follows the real framework's style (spot-checked by a human)
 
 **Open questions:** –
 
@@ -403,6 +405,18 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 - 2026-10-05: Verified offline. 21 new tests with the fake LLM: traceable pair, byte-identical `config` with the template's key order and no inherited overrides, prompt contents (conventions, template, markers, placeholder), retries with the error for id mismatch / non-literal parametrize / syntax error / no test / non-object parts, retry cap, output scrubbing (code and JSON), missing template, budget never exceeded at 3k–30k tokens with whole chunks, bigger budget includes more, CLI writes the pair outside the repo and leaves the stand-in unchanged. ruff, mypy strict (60 files), pytest 362 passed, 12 live deselected. **Pending:** the live run (`tests/test_generate_live.py`, 5 stand-in tickets, ~15–20 LLM calls; saves pairs to `output/generated/live/`) and the human style spot-check.
 - 2026-10-05: Live run (`tests/test_generate_live.py`, run by Claude with the human's OK): 5/5 passed in 1m53s for STND-101, -102, -103, -104, -106 (draft -> retrieve -> generate, about 15 LLM calls; every generation accepted on the first attempt; context 4.4k-7.0k of 12k estimated tokens). Pairs saved to `output/generated/live/` for the human style check. Claude's own read: STND-103 and STND-101 follow the template closely (base class, markers, `self.nav...` chains, data via `self.inputs` / `self.expected`, backend checks via helpers). **Defect found in STND-104:** the code reads `self.data["seed_check"]`, but the entry has no `seed_check` key, so the test would fail with a KeyError (the model flagged it in its notes). No planned Phase 7 validator catches this; proposed addition: a validator that every `self.inputs[...]` / `self.expected[...]` / `self.data[...]` key used in the code exists in every entry.
 - 2026-10-06: Human style review against the real framework → ten generic differences (see Phase 3b). Phase 6 stays 🟡: after Phase 3b, generation moves to `generate_v2` (base entry + per-variant changes per the 5-step rule, sections chosen by the LLM and copied deterministically, self-referencing names re-labeled, names without ticket numbers, entries written as an array with `id`), output is formatted to `style` (ruff for code, own JSON writer), and the live run and style check are repeated.
+- 2026-10-06: Step C (`generate_v2`) built.
+  - **Wire model:** the LLM returns `module_name`, the code, one entry *plan* per pytest id (`copy_sections` from the base entry, plus `changes` as set/delete on dotted paths), a `review_checklist`, and notes.
+  - **Entry building (`generate/entries.py`):** deterministic, per the 5-step rule. It never copies `id` / `priority` / `skip`, and re-labels strings that embed the base test's name (`policy-orders-detail-cancel` → `policy-orders-detail-cancel-restock`).
+  - **Self-checks, fed back through the capped retry:**
+    - pytest ids are computed;
+    - every test that reads data has entries, and every key it reads exists (Python `ast`; the STND-104 defect class);
+    - copy sections and paths are valid;
+    - names contain neither the ticket key nor its number.
+  - **Formatting:** new `style/` module, config section `style`. Code: annotations stripped (tree-sitter), then ruff `--isolated` with only the configured values: imports sorted, unused imports dropped, formatted. The first-party roots default to the repo's top-level packages. JSON: our own writer, array or object layout.
+  - **Output:** `GeneratedTest.data_entries` is now an array with `data_format`, `review_checklist` (config defaults + the LLM's items) and `entry_plans` (approved model change). The context shows the class scaffold and the base entry in the suite's JSON style. Prompt `generate_v2.md`. Config `data.access` / `reading_helpers` / `per_entry_keys`; `generate.unique_entry_keys` / `drop_template_keys` removed.
+  - **Dependency:** `ruff` is now a runtime dependency (approved).
+- 2026-10-06: Verified offline: `test_generate.py` rewritten (35 tests, incl. 13 retry cases) and the new `test_style.py` (10). The stand-in's test files are a fixed point of the formatter with the default config. ruff, mypy strict (64 files), pytest 402 passed, 12 live deselected. Observed: without the LLM, retrieval's first template for STND-104 is a sibling (`test_orders_list_filter_status[open]`), not `test_orders_detail_cancel`. The live run will show whether LLM-on retrieval picks better before any change.
 
 ---
 

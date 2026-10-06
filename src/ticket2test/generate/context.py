@@ -6,7 +6,6 @@ Required pieces (conventions doc, draft, template) must fit, or building fails.
 
 from __future__ import annotations
 
-import json
 import math
 from dataclasses import dataclass, field
 
@@ -84,12 +83,18 @@ def chunk_piece(chunk: Chunk, label: str, required: bool = False) -> Piece:
     )
 
 
-def template_piece(chunk: Chunk, entry_key: str) -> Piece:
-    entry = chunk.data_entries[entry_key]
-    body = (
+def template_piece(
+    chunk: Chunk, entry_key: str, entry_json: str, scaffold: str | None = None
+) -> Piece:
+    """The template test, its class scaffold, and its entry (the base for new entries)."""
+    sections = ", ".join(chunk.data_entries[entry_key])
+    body = ""
+    if scaffold:
+        body += f"Class scaffold (copy unchanged; new class name):\n```python\n{scaffold}\n```\n"
+    body += (
         f"```python\n{chunk.code}\n```\n"
-        f"Its JSON data entry `{entry_key}` (from {chunk.data_file}):\n"
-        f"```json\n{json.dumps(entry, indent=2)}\n```"
+        f"Base entry `{entry_key}` (from {chunk.data_file}; top-level sections: {sections}):\n"
+        f"```json\n{entry_json.rstrip()}\n```"
     )
     return Piece(
         f"Template test: {chunk.qualname} ({chunk.file_path})", body, chunk.id, required=True
