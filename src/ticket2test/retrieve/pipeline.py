@@ -7,6 +7,7 @@ follow-up rounds (own search tools only) -> ranked hits with reasons + JSON-entr
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
@@ -167,29 +168,40 @@ class Retriever:
     # --- templates -----------------------------------------------------------------------
 
     def templates(
-        self, pool: dict[str, _Candidate], draft: TestCaseDraft | None
+        self,
+        pool: dict[str, _Candidate],
+        draft: TestCaseDraft | None,
+        ticket_components: list[str] | None = None,
     ) -> list[TemplateRef]:
-        component = draft.markers.component.lower() if draft else None
+        """Tests with data entries, same component first, then by retrieval score.
+
+        The component comes from the draft and from the ticket's own components; a free-text
+        draft component ("rule search") also matches a component word it contains ("rule[s]").
+        """
+        wanted = {c.strip().lower() for c in (ticket_components or []) if c.strip()}
+        if draft is not None:
+            wanted.add(draft.markers.component.strip().lower())
+        words = {w for c in wanted for w in re.findall(r"[a-z0-9]+", c)}
         with_data = [c for c in pool.values() if c.chunk.kind == "test" and c.chunk.data_entries]
 
-        def same_component(candidate: _Candidate) -> bool:
-            values = [
+        def component_of(candidate: _Candidate) -> str | None:
+            for value in (
                 str(a).lower()
                 for m in candidate.chunk.markers
                 if m.name == "component"
                 for a in m.args
-            ]
-            return component is not None and component in values
+            ):
+                singular = value.removesuffix("s")
+                if value in wanted or value in words or (singular and singular in words):
+                    return value
+            return None
 
-        ranked = sorted(with_data, key=lambda c: (not same_component(c), -c.score, c.chunk.id))
+        ranked = sorted(with_data, key=lambda c: (component_of(c) is None, -c.score, c.chunk.id))
         refs: list[TemplateRef] = []
         for candidate in ranked[: self.cfg.max_templates]:
             key = next(i for i in candidate.chunk.test_ids if i in candidate.chunk.data_entries)
-            why = (
-                f"same component '{component}'"
-                if same_component(candidate)
-                else "most similar test with data"
-            )
+            matched = component_of(candidate)
+            why = f"same component '{matched}'" if matched else "most similar test with data"
             refs.append(TemplateRef(chunk_id=candidate.chunk.id, entry_key=key, why=why))
             candidate.add_reason(Reason(source="template", detail=f"template entry {key}"))
         return refs
@@ -259,7 +271,7 @@ def retrieve(
             if request.done or set(pool) == before:
                 break
 
-    templates = retriever.templates(pool, draft)
+    templates = retriever.templates(pool, draft, ticket.components)
     hits = [
         RetrievedChunk(
             chunk_id=r.chunk.id,

@@ -22,7 +22,7 @@ from ticket2test.eval.retrieval import (
 )
 from ticket2test.index.indexer import IndexData, update_index
 from ticket2test.llm import FakeLLMClient
-from ticket2test.models import Ticket
+from ticket2test.models import TestCaseDraft, Ticket
 from ticket2test.normalize import normalize
 from ticket2test.retrieve.pipeline import retrieve
 from ticket2test.retrieve.query import candidate_identifiers, verify_identifiers
@@ -112,6 +112,32 @@ def test_templates_are_existing_entries(index: IndexData, tmp_path: Path) -> Non
     chunks = {c.id: c for c in index.chunks}
     for ref in result.templates:
         assert ref.entry_key in chunks[ref.chunk_id].data_entries
+
+
+@pytest.mark.parametrize("component", ["rule search", "Rules", "unknown"])
+def test_templates_prefer_the_ticket_and_draft_component(
+    index: IndexData, tmp_path: Path, component: str
+) -> None:
+    """A free-text draft component, or the ticket's own component, picks same-area tests."""
+    draft = TestCaseDraft(
+        id="STND-102/d1",
+        ticket_id="STND-102",
+        kind="primary",
+        intent="Search rules regardless of case.",
+        markers={"priority": "p2", "component": component, "suite": "regression"},
+        test_kind="ui",
+        deployment_type="both",
+        preconditions=["Rules with mixed-case names"],
+        steps=["Search for ALPHA"],
+        expected_outcome="All matching rules are listed.",
+        variants=[],
+        confidence=0.8,
+        prompt_version="draft_v1",
+    )
+    result = retrieve(_ticket("STND-102"), index, _settings(tmp_path), None, draft)
+    assert result.templates
+    assert all(t.chunk_id.startswith("tests/rules/") for t in result.templates)
+    assert result.templates[0].why == "same component 'rules'"
 
 
 # --- LLM steps -------------------------------------------------------------------------------
