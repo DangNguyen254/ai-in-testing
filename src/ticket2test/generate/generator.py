@@ -24,6 +24,7 @@ from ticket2test.generate.context import (
 from ticket2test.generate.entries import build_entry
 from ticket2test.index.indexer import IndexData
 from ticket2test.llm.base import LLMClient, LLMError, LLMRequest, Message
+from ticket2test.llm.factory import model_name
 from ticket2test.llm.schema import strict_schema
 from ticket2test.llm.structured import complete_structured
 from ticket2test.models.chunk import Chunk, DataFormat
@@ -93,6 +94,7 @@ def generate_test(
         seed=settings.llm.seed,
         max_output_tokens=settings.llm.max_output_tokens,
         json_schema=strict_schema(GenerationResponse),
+        model=model_name(settings, "generate"),
     )
     result = complete_structured(
         client,

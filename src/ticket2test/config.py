@@ -29,16 +29,22 @@ class _Section(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+# The pipeline's LLM steps; each provider may map some of them to another model.
+LLMStep = Literal["draft", "query_rewrite", "retrieval_followup", "generate"]
+
+
 class ClaudeCodeCLISettings(_Section):
     # "claude" on PATH, or a full path (set via env; never commit a machine-specific path).
     executable: str = "claude"
     model: str = "claude-sonnet-5-5"
+    step_models: dict[LLMStep, str] = {}  # per-step override of `model`
     # Working directory for CLI calls (inside the repo, git-ignored).
     workdir: Path = Path(".scratch/claude-cli")
 
 
 class ClaudeAPISettings(_Section):
     model: str = "claude-sonnet-5-5"
+    step_models: dict[LLMStep, str] = {}  # per-step override of `model`
     # Server-side refusal fallback (`fallbacks: "default"`); Claude API only.
     fallbacks: bool = True
     effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
@@ -46,6 +52,7 @@ class ClaudeAPISettings(_Section):
 
 class GeminiSettings(_Section):
     model: str = ""  # required when provider is "gemini"; config-only
+    step_models: dict[LLMStep, str] = {}  # per-step override of `model`
 
 
 class LLMSettings(_Section):

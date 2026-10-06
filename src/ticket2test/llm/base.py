@@ -29,6 +29,8 @@ class LLMRequest(BaseModel):
     json_mode: bool = True
     # When set, providers constrain the output to this JSON schema (see llm/schema.py).
     json_schema: dict[str, Any] | None = None
+    # Per-request model override (e.g. a smaller model for a simple step); None = the client's.
+    model: str | None = None
 
 
 class LLMResponse(BaseModel):

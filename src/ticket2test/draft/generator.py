@@ -7,6 +7,7 @@ from typing import Any
 
 from ticket2test.config import Settings
 from ticket2test.llm.base import LLMClient, LLMRequest, Message
+from ticket2test.llm.factory import model_name
 from ticket2test.llm.schema import strict_schema
 from ticket2test.llm.structured import complete_structured
 from ticket2test.models.draft import (
@@ -68,6 +69,7 @@ def generate_drafts(
         seed=settings.llm.seed,
         max_output_tokens=settings.llm.max_output_tokens,
         json_schema=draft_schema(markers.priorities, markers.suites),
+        model=model_name(settings, "draft"),
     )
     result = complete_structured(
         client,

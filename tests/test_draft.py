@@ -96,6 +96,7 @@ def test_request_carries_schema_prompt_and_allowed_values() -> None:
     assert "Allowed suites: smoke, regression, unknown" in user
     assert "Too much data for declared Content-Length" in user
     assert request.temperature == 0.0
+    assert request.model == "claude-sonnet-5-5"  # drafting keeps the main model
     markers = request.json_schema["properties"]["drafts"]["items"]["properties"]["markers"]  # type: ignore[index]
     assert markers["properties"]["priority"]["enum"] == ["p0", "p1", "p2", "p3"]
     assert markers["properties"]["suite"]["enum"] == ["smoke", "regression", "unknown"]

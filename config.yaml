@@ -14,9 +14,14 @@ llm:
   claude_code_cli:
     executable: claude         # or set T2T_LLM__CLAUDE_CODE_CLI__EXECUTABLE to a full path
     model: claude-sonnet-5-5
+    # Per-step override of `model` (steps: draft, query_rewrite, retrieval_followup, generate).
+    # Empty: every step uses `model`. Haiku 4.5 for the retrieval steps was tried on 2026-10-06
+    # and was worse, slower, and not cheaper (PROJECT_STATUS, Phase 6 log).
+    step_models: {}
     workdir: .scratch/claude-cli   # git-ignored, inside the repo
   claude:                      # Anthropic API; key from ANTHROPIC_API_KEY
     model: claude-sonnet-5-5
+    step_models: {}
     fallbacks: true            # server-side refusal fallback
     effort: null               # low | medium | high | xhigh | max (null = model default)
   gemini:                      # key from GEMINI_API_KEY

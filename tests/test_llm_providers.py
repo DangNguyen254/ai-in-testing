@@ -215,6 +215,12 @@ def test_claude_api_without_fallbacks_uses_plain_endpoint() -> None:
     assert "fallbacks" not in fake.calls[0] and "betas" not in fake.calls[0]
 
 
+def test_claude_api_uses_the_request_model_when_given() -> None:
+    fake = FakeAnthropic()
+    ClaudeAPIClient(model="m", client=fake).complete(_request(model="claude-haiku-4-5-20251001"))
+    assert fake.calls[0]["model"] == "claude-haiku-4-5-20251001"
+
+
 @pytest.mark.parametrize(
     ("stop", "message"), [("refusal", "declined"), ("max_tokens", "max_tokens")]
 )
@@ -304,3 +310,34 @@ def test_debug_log_only_when_enabled(tmp_path: Path) -> None:
     record = json.loads(log_file.read_text(encoding="utf-8"))
     assert record["request"]["messages"][1]["content"] == "USER TEXT"
     assert record["response"]["text"] == "reply"
+
+
+# --- Per-step models -------------------------------------------------------------------------
+
+
+def test_step_models_override_the_provider_model_per_step() -> None:
+    defaults = Settings()
+    assert {model_name(defaults, s) for s in ("draft", "query_rewrite", "generate")} == {
+        "claude-sonnet-5-5"
+    }
+    haiku = "claude-haiku-4-5-20251001"
+    settings = Settings.model_validate(
+        {"llm": {"claude_code_cli": {"step_models": {"query_rewrite": haiku}}}}
+    )
+    assert model_name(settings) == model_name(settings, "draft") == "claude-sonnet-5-5"
+    assert model_name(settings, "query_rewrite") == haiku
+    custom = Settings.model_validate(
+        {"llm": {"provider": "gemini", "gemini": {"model": "g1", "step_models": {"draft": "g2"}}}}
+    )
+    assert (model_name(custom), model_name(custom, "draft")) == ("g1", "g2")
+
+
+def test_cli_uses_the_request_model_when_given(tmp_path: Path) -> None:
+    runner = FakeRunner(_cli_result())
+    response = _cli(runner, tmp_path).complete(_request(model="claude-haiku-4-5-20251001"))
+    args = runner.calls[0]["args"]
+    assert args[args.index("--model") + 1] == "claude-haiku-4-5-20251001"
+    assert response.model == "claude-haiku-4-5-20251001"
+    _cli(runner, tmp_path).complete(_request())
+    args = runner.calls[1]["args"]
+    assert args[args.index("--model") + 1] == "claude-sonnet-5-5"

@@ -167,6 +167,8 @@ def test_followup_rounds_stop_at_the_cap(index: IndexData, tmp_path: Path) -> No
     assert result.followup_rounds == 2
     assert result.llm_calls == 3 and len(fake.requests) == 3  # 1 rewrite + exactly 2 rounds
     assert result.prompt_versions == ["query_rewrite_v1", "retrieval_followup_v1"]
+    # Both retrieval steps ask for the step's configured model (here the default model).
+    assert {r.model for r in fake.requests} == {"claude-sonnet-5-5"}
 
 
 _NEW_EACH_ROUND = ["wizard", "delete", "capabilities", "profile", "import", "tenant"]

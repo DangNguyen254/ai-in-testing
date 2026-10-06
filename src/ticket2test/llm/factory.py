@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ticket2test.config import Settings
+from ticket2test.config import LLMStep, Settings
 from ticket2test.llm.base import LLMClient
 from ticket2test.llm.debug import DebugLoggingClient
 
@@ -43,10 +43,16 @@ def create_llm_client(settings: Settings, debug_log: bool = False) -> LLMClient:
     return client
 
 
-def model_name(settings: Settings) -> str:
+def model_name(settings: Settings, step: LLMStep | None = None) -> str:
+    """The configured provider's model, or the model mapped to ``step`` in its ``step_models``."""
     llm = settings.llm
-    if llm.provider == "claude_code_cli":
-        return llm.claude_code_cli.model
-    if llm.provider == "claude":
-        return llm.claude.model
-    return llm.gemini.model
+    section = (
+        llm.claude_code_cli
+        if llm.provider == "claude_code_cli"
+        else llm.claude
+        if llm.provider == "claude"
+        else llm.gemini
+    )
+    if step is not None and step in section.step_models:
+        return section.step_models[step]
+    return section.model

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,7 @@ from ticket2test.config import Settings
 from ticket2test.eval.pairs import EvalCache, EvalPair, PairSet
 from ticket2test.index.indexer import update_index
 from ticket2test.llm.base import LLMClient
+from ticket2test.llm.factory import model_name
 from ticket2test.models.retrieval import RetrievalResult
 from ticket2test.normalize import normalize
 from ticket2test.retrieve.pipeline import retrieve
@@ -53,6 +55,9 @@ class RetrievalReport(BaseModel):
     mean_recall: float | None = None
     mean_reciprocal_rank: float | None = None
     settings: dict[str, Any] = Field(default_factory=dict)  # retrieval config snapshot
+    llm_models: dict[str, str] = Field(default_factory=dict)  # step -> model, when LLM is on
+    llm_calls: int = 0
+    elapsed_seconds: float | None = None
 
 
 def manifest_test_to_chunk_id(test: str) -> str:
@@ -86,7 +91,13 @@ def evaluate_retrieval(
         created_at=datetime.now(UTC),
         repo_path=pair_set.repo_path,
         settings=settings.retrieval.model_dump(mode="json"),
+        llm_models=(
+            {step: model_name(settings, step) for step in ("query_rewrite", "retrieval_followup")}
+            if use_llm
+            else {}
+        ),
     )
+    started = time.monotonic()
     indexed_files = {path for path, record in index.files.items() if record.info is not None}
     chunk_ids = {c.id for c in index.chunks}
 
@@ -105,6 +116,8 @@ def evaluate_retrieval(
         result = retrieve(ticket, index, settings, client if use_llm else None)
         report.pairs.append(_score(pair, unit, present, truth, result))
 
+    report.llm_calls = sum(p.llm_calls for p in report.pairs)
+    report.elapsed_seconds = round(time.monotonic() - started, 1)
     if report.pairs:
         report.mean_recall = round(sum(p.recall for p in report.pairs) / len(report.pairs), 4)
         report.mean_reciprocal_rank = round(
@@ -152,6 +165,13 @@ def render_markdown(report: RetrievalReport) -> str:
         f"# Retrieval eval: {report.set_name}",
         "",
         f"- k = {report.k}, LLM steps: {'on' if report.use_llm else 'off (deterministic)'}",
+        *(
+            [f"- Models: {', '.join(f'{s} = {m}' for s, m in report.llm_models.items())}"]
+            if report.llm_models
+            else []
+        ),
+        f"- LLM calls: {report.llm_calls}, time: "
+        + ("n/a" if report.elapsed_seconds is None else f"{report.elapsed_seconds:.0f} s"),
         f"- Pairs evaluated: {len(report.pairs)}, skipped: {len(report.skipped)}",
         f"- **Mean recall@{report.k}: {fmt(report.mean_recall)}**",
         f"- Mean reciprocal rank: {fmt(report.mean_reciprocal_rank)}",

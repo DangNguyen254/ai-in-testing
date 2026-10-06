@@ -52,7 +52,7 @@ class GeminiClient(LLMClient):
         )
         try:
             response = self._client.models.generate_content(
-                model=self._model, contents=contents, config=config
+                model=request.model or self._model, contents=contents, config=config
             )
         except errors.APIError as exc:
             raise LLMError(f"Gemini API error {exc.code}: {exc.message}") from exc
@@ -63,7 +63,7 @@ class GeminiClient(LLMClient):
         usage = response.usage_metadata
         return LLMResponse(
             text=text,
-            model=self._model,
+            model=request.model or self._model,
             input_tokens=getattr(usage, "prompt_token_count", None),
             output_tokens=getattr(usage, "candidates_token_count", None),
         )

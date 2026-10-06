@@ -44,7 +44,7 @@ class ClaudeAPIClient(LLMClient):
             output_config["effort"] = self._effort
 
         kwargs: dict[str, Any] = {
-            "model": self._model,
+            "model": request.model or self._model,
             "max_tokens": request.max_output_tokens or self._max_tokens,
             "messages": messages,
         }

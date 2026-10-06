@@ -70,7 +70,8 @@ class ClaudeCodeCLIClient(LLMClient):
             log.warning("ANTHROPIC_API_KEY is set: the Claude CLI will use API billing.")
 
         system, prompt = render_messages(request.messages)
-        args = build_args(exe, self._model, system, request.json_schema)
+        model = request.model or self._model
+        args = build_args(exe, model, system, request.json_schema)
         workdir = self._ensure_workdir()
         try:
             proc = self._run(
@@ -88,7 +89,7 @@ class ClaudeCodeCLIClient(LLMClient):
         except OSError as exc:
             raise LLMError(f"Could not start the Claude CLI: {exc}") from exc
 
-        return parse_output(proc.returncode, proc.stdout, proc.stderr, self._model)
+        return parse_output(proc.returncode, proc.stdout, proc.stderr, model)
 
     def _ensure_workdir(self) -> Path:
         workdir = self._workdir or DEFAULT_WORKDIR

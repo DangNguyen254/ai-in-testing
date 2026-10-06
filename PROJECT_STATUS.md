@@ -67,6 +67,7 @@ Read this first when resuming in a new session.
   - Commit locally with the repo-local identity (DangNguyen254). Never `git push` without the human's explicit OK. There are local commits not yet pushed.
   - No Claude co-author trailers or "Generated with Claude Code" lines (CLAUDE.md).
 - **Tooling pitfalls:**
+  - Env overrides of dict settings are deep-merged with `config.yaml`: `T2T_LLM__CLAUDE_CODE_CLI__STEP_MODELS='{}'` changes nothing; set each key explicitly. Check the report header (`Models:`) after an eval.
   - Bash heredocs mangle `\n` and `\b` in Python snippets: write scripts to `.scratch/*.py` with the editor tools instead.
   - Git object files are read-only on Windows (`build_history.py` handles this).
 - **Stand-in conventions:** the stand-in has its own `standin/ruff.toml` (3-space indent). Its JSON data is written with indent 3 and `"key":value`; the throwaway builders in `.scratch/` are not part of the repo.
@@ -538,6 +539,17 @@ Read this first when resuming in a new session.
   - **STND-102:** compares names after sorting both sides ("order isn't stated"), although the conventions now state the order. A minor point.
   - **STND-104:** checks counts in the UI and the published policy through `targets`; it doesn't use `page_size`.
   - **Caveat:** STND-106's linked test (the fixed pagination test) was in context again, so this run shows that the stand-in fix carries over, not that the prompt alone prevents the errors. Leave-one-out (Phase 8 idea) would test that.
+- 2026-10-06: **Per-step models, and a Haiku trial for the retrieval steps** (the human's request, to keep LLM use small).
+  - **Built:** config `llm.<provider>.step_models` (steps `draft`, `query_rewrite`, `retrieval_followup`, `generate`); an optional `LLMRequest.model` that all three providers honour (an additive model change); `model_name(settings, step)`. Retrieval eval reports now record the model per step, the total LLM calls, and the elapsed time.
+  - **Trial:** Haiku 4.5 (`claude-haiku-4-5-20251001`) for query rewrite and follow-ups, against Sonnet 5.5, on the same day and code. Reports are in `output/reports/step-models/`. recall@10 / MRR:
+
+    | Set | No LLM | Sonnet 5.5 | Haiku 4.5 |
+    |---|---|---|---|
+    | httpx (13 pairs) | – | 0.725 / 0.697, 94 s | 0.668 / 0.564, 368 s |
+    | stand-in v3 (6 pairs) | 0.833 / 0.297 | 1.000 / 0.625, 43 s | 0.833 / 0.500, 116 s; rerun 1.000 / 0.519, 127 s |
+
+    One rewrite call per ticket in every run (no follow-up rounds, no retries). On httpx, Haiku was worse or equal on every pair. One probe call each (STND-106 rewrite, CLI's own numbers): Haiku 15.6 s, 1,065 output tokens, $0.0074; Sonnet 5.7 s, 216 output tokens, $0.0062. The CLI's fixed prompt overhead dominates, so a cheaper per-token rate saves nothing here.
+  - **Decision (human):** keep Sonnet for every step; `step_models` stays empty (the mechanism stays for later).
 
 ---
 
@@ -686,4 +698,5 @@ Read this first when resuming in a new session.
 | 2026-10-06 | – | Handoff section added (session moves to Claude Code desktop) |
 | 2026-10-06 | 3b | Stand-in v3 built and verified (policy app with top bar, four test shapes, targets/interactions replayed, rule (1) checked on the stand-in); generate_v3 prompt and self-checks |
 | 2026-10-06 | 6 | Third style check (STND-106): semantic gaps traced to the stand-in; stand-in patched (sorting, page size, name cap, `total_count`), `generate_v4`; no LLM reviewer step (human decision) |
+| 2026-10-06 | 6 | Per-step models (`step_models`, `LLMRequest.model`); Haiku 4.5 trial for the retrieval steps was worse, slower, not cheaper; kept Sonnet (human decision) |
 | 2026-10-06 | 3b | Stand-in v2 built and verified (patterns checked by project tests; indexer reads array data and infers unannotated types; config `data`; `Chunk.data_format`); marked ✅ Done. v1 generator tests skipped until `generate_v2` |
