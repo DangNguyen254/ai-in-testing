@@ -3,14 +3,72 @@
 **Who this is for:** an AI assistant (e.g. a small Claude model) working inside the company
 environment. You can read the **real test suite** (the "target repo") and this project
 ("ticket2test"). Your job is to **write the input files that connect them**, and to check
-your work with ticket2test's own reports. Read this whole file before you start. Follow the
-steps in order. When this file says "stop and ask", stop and ask the human.
+your work with ticket2test's own reports. Read the quick card below first and keep it in
+mind the whole time. Read the numbered sections when a step needs them; **re-read the section
+for the step you are on** instead of relying on memory. When this file says "stop and ask",
+stop and ask the human.
+
+---
+
+## Quick card (keep this in front of you)
+
+**Rules.** Read the target repo only; never write to it. Never edit ticket2test. Write only
+your files, in the private folder the human names. No company values in ticket2test's repo.
+No secrets in any file. Never run generated tests yourself. If a value isn't found: keep the
+default, mark `# TODO`, list it in the report. Building a container image is the human's step.
+
+**Your files.** `company.yaml` (only values that differ from the defaults, each with a
+`# evidence: file:line` comment) · `CONVENTIONS.md` · `sandbox-requirements.txt` ·
+`tickets.json` (if needed) · `integration-notes.md` (your report).
+
+**Search, don't read.** Use text search (patterns are in section 5). Open a whole file only
+when a search result needs context.
+
+**Sessions.** One session per part; start each with this file plus your `integration-notes.md`:
+
+| Session | Do | Sections |
+|---|---|---|
+| 1 | `company.yaml` + the calibration loop | 3, 5, 6 |
+| 2 | `CONVENTIONS.md` | 4, 7 |
+| 3 | `sandbox-requirements.txt`, `tickets.json`, final report | 8, 9, 10 |
+
+**The loop (session 1, max 10 rounds).**
+1. `ticket2test index <repo>`: tests and page-object chains must be > 0.
+2. Draft `company.yaml` from section 5.
+3. `ticket2test check-suite <repo>` → open the newest `output/reports/check-suite-*.json`.
+4. `"ok": true` → stop. Else take `by_check[0]`, read its `examples` and `hint`, change **one
+   or two keys** (table below), count the round, go to 3.
+5. Errors left in under 2% of files with no config fix → note them in the report and stop.
+
+| Error check | Change |
+|---|---|
+| `markers` | `markers.priorities` / `suites` / `project` (exact casing); `markers.required` |
+| `assertions` | `validation.assertion_object` / `assertion_methods` (bare `assert` suite → stop and ask) |
+| `base_class` | `validation.base_class` |
+| `imports` | add the package to `validation.external_modules` |
+| `names` | `index.chain_roots`, `validation.base_class` |
+| `style` | `style.python.indent_width` / `line_length` / `quote_style`; annotations → `strip_annotations: false` |
+| `data_file` | `style.json.indent` / `key_separator` / `final_newline` |
+| `ids` | `data.id_field`, `data.format`, `index.data_file_suffix`, `data.access` |
+| `data_keys` | `data.seed_sections`, `data.per_entry_keys`, `data.expectation_sections` |
+| `names_unique` / `name_length` | `validation.name_keys`, `placeholder_pattern`, `unique_name_pattern`, `name_max_length` |
+| `naming` | `validation.naming.*` |
+| `page_objects` | suite doesn't use property-style page objects → stop and ask |
+
+Never fix a test to make the check pass: the suite is right, the config is wrong.
+
+**Stop and ask** when: the suite has no base class, page objects, or JSON data files; tests use
+bare `assert`; you need the allowed registry or base image; a needed package is private; you
+can't find the app's name length limit; or 10 rounds are used up.
+
+**Done when** `check-suite --collect` reports `"ok": true` (the human builds the image first),
+and `integration-notes.md` follows section 10.
 
 ---
 
 ## 1. The goal in one paragraph
 
-ticket2test turns a bug ticket into a draft test case, then into test code plus a JSON data
+ticket2test turns a ticket into a draft test case, then into test code plus a JSON data
 file, written in the style of the target suite. It does not know the target suite yet. It
 learns the suite only from **files you write** (a config file, a conventions document, a
 requirements file, a ticket export). You are done when `ticket2test check-suite <target repo>
