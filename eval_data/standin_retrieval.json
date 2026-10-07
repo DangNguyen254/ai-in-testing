@@ -19,6 +19,15 @@
     {"id": "standin-109", "ticket": "STND-109", "tests": ["tests/tenants/test_tenants.py::TestTenantsSecondary::test_tenants_secondary_rules_add"]},
     {"id": "standin-110", "ticket": "STND-110", "tests": ["tests/api/test_policy_api.py::TestPolicyApi::test_policy_api_rules_update_forbidden"]},
     {"id": "standin-111", "ticket": "STND-111", "tests": ["tests/rules/test_rules.py::TestRules::test_rules_edit_action"]},
-    {"id": "standin-112", "ticket": "STND-112", "tests": ["tests/rules/test_rules.py::TestRules::test_rules_import_file"]}
+    {"id": "standin-112", "ticket": "STND-112", "tests": ["tests/rules/test_rules.py::TestRules::test_rules_import_file"]},
+    {"id": "standin-113", "ticket": "STND-113", "tests": ["tests/files/test_files_downloads.py::TestFilesDownloads::test_files_download_type_action"]},
+    {"id": "standin-114", "ticket": "STND-114", "tests": ["tests/files/test_files_downloads.py::TestFilesDownloads::test_files_download_original_blocked"]},
+    {"id": "standin-115", "ticket": "STND-115", "tests": ["tests/files/test_files_scanning.py::TestFilesScanning::test_files_scan_hash_blocked"]},
+    {"id": "standin-116", "ticket": "STND-116", "tests": ["tests/agent/test_agent_injection.py::TestAgentInjection::test_agent_injection_flagged"]},
+    {"id": "standin-117", "ticket": "STND-117", "tests": ["tests/files/test_files_archives.py::TestFilesArchives::test_files_archive_member_blocked"]},
+    {"id": "standin-118", "ticket": "STND-118", "tests": ["tests/files/test_files_scanning.py::TestFilesScanning::test_files_dlp_rule_enforced"]},
+    {"id": "standin-119", "ticket": "STND-119", "tests": ["tests/files/test_files_archives.py::TestFilesArchives::test_files_encrypted_wrong_password"]},
+    {"id": "standin-120", "ticket": "STND-120", "tests": ["tests/files/test_files_viewer.py::TestFilesViewer::test_files_viewer_strips_active_content"]},
+    {"id": "standin-121", "ticket": "STND-121", "tests": ["tests/agent/test_agent_api.py::TestAgentApi::test_agent_api_settings_forbidden"]}
   ]
 }

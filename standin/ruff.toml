@@ -11,4 +11,4 @@ line-ending = "lf"
 select = ["E", "F", "W", "I", "B", "UP", "SIM"]
 
 [lint.isort]
-known-first-party = ["app", "framework"]
+known-first-party = ["app", "framework", "tests"]

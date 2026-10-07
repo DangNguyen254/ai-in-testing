@@ -70,3 +70,7 @@ class Chunk(BaseModel):
     data_file: str | None = None
     data_entries: dict[str, Any] = Field(default_factory=dict)  # test id -> JSON entry
     data_format: DataFormat | None = None  # layout of data_file
+    # Classes pytest collects the test under (empty: ``class_name``): differs for class variants.
+    collected_classes: list[str] = Field(default_factory=list)
+    # For a test inherited from a base class: the chunk id where it is defined.
+    inherited_from: str | None = None

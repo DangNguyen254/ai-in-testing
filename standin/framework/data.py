@@ -7,7 +7,8 @@ value comes first. Tests that read no data may have no entry.
 
 Entry sections:
 - seed: ``settings`` and ``policy`` (primary tenant), ``tenants`` (per-tenant blocks with
-  ``tenant``, optional ``settings`` / ``policy`` / ``targets``; the first is the primary);
+  ``tenant``, optional ``settings`` / ``policy`` / ``targets``; the first is the primary),
+  ``site`` (files and pages on the fake external site, shared by all tenants);
 - expectations: ``targets`` (read by ``verify_targets``) or ``interactions`` (read by
   ``verify_interactions``), never both;
 - overrides: ``priority``, ``skip``;

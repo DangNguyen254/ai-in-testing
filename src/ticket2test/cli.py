@@ -467,7 +467,13 @@ def validate(
         data_path = path.parent / generated.data_file_name
         data_text = data_path.read_text(encoding="utf-8") if data_path.is_file() else None
         report = validate_generated(
-            generated, index.catalog, settings, roots, data_text=data_text, imports=imports
+            generated,
+            index.catalog,
+            settings,
+            roots,
+            data_text=data_text,
+            imports=imports,
+            index=index,
         )
         update: dict[str, object] = {"validation_report": report.model_dump(mode="json")}
         typer.echo(

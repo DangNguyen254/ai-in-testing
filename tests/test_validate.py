@@ -20,7 +20,7 @@ from ticket2test.models.draft import TestCaseDraft
 from ticket2test.models.generated import GeneratedTest
 from ticket2test.style import format_entries
 from ticket2test.validate.report import ValidationReport
-from ticket2test.validate.validator import validate_generated
+from ticket2test.validate.validator import module_imports, validate_generated
 
 STANDIN = Path(__file__).resolve().parents[1] / "standin"
 
@@ -100,12 +100,13 @@ def _validate(
     data_text: str | None = "",
     draft: TestCaseDraft | None = None,
     settings: Settings | None = None,
+    test_ids: list[str] | None = None,
 ) -> ValidationReport:
     base_settings, index, fp = setup
     settings = settings or base_settings
     entries = copy.deepcopy([GOOD_ENTRY] if entries is None else entries)
     try:
-        ids = computed_test_ids(code)
+        ids = computed_test_ids(code) if test_ids is None else test_ids
     except ValueError:
         ids = []
     generated = GeneratedTest(
@@ -127,7 +128,10 @@ def _validate(
     )
     if data_text == "":
         data_text = format_entries(entries, settings.data, settings.style.json_files, "array")
-    return validate_generated(generated, index.catalog, settings, fp, draft, data_text)
+    imports = module_imports(index)
+    return validate_generated(
+        generated, index.catalog, settings, fp, draft, data_text, imports, index
+    )
 
 
 def _messages(report: ValidationReport, check: str, severity: str = "error") -> list[str]:
@@ -149,7 +153,15 @@ def test_a_good_pair_has_no_findings(setup: Any) -> None:
 
 
 def test_the_hand_written_standin_suite_has_no_errors(setup: Any) -> None:
+    _, index, _ = setup
     for path in sorted((STANDIN / "tests").rglob("test_*.py")):
+        relative = path.relative_to(STANDIN).as_posix()
+        ids = [  # from the index: includes inherited tests
+            t
+            for c in index.chunks
+            if c.kind == "test" and c.file_path == relative
+            for t in c.test_ids
+        ]
         code = path.read_text(encoding="utf-8")
         data_path = path.with_suffix(".json")
         data_text = data_path.read_text(encoding="utf-8") if data_path.exists() else None
@@ -157,9 +169,10 @@ def test_the_hand_written_standin_suite_has_no_errors(setup: Any) -> None:
             setup,
             code=code,
             entries=json.loads(data_text) if data_text else [],
-            file_name=path.relative_to(STANDIN).as_posix(),
+            file_name=relative,
             ticket_id="NONE-0",
             data_text=data_text,
+            test_ids=ids,
         )
         assert report.ok, (path.name, [f.render() for f in report.errors])
 
@@ -547,8 +560,6 @@ def test_names_a_package_re_exports_are_known(setup: Any) -> None:
         "from framework.pages import Navigator",
     )
     code = code.replace("rules.next_page()", "rules.next_page()\n      Navigator")
-    without = _messages(_validate(setup, code=code), "imports")
-    assert without == ["framework.pages has no name 'Navigator'"]
     settings, _, fp = setup
     generated = GeneratedTest.model_validate(
         {
@@ -569,6 +580,8 @@ def test_names_a_package_re_exports_are_known(setup: Any) -> None:
             "context_tokens": 0,
         }
     )
+    without = validate_generated(generated, index.catalog, settings, fp)
+    assert _messages(without, "imports") == ["framework.pages has no name 'Navigator'"]
     report = validate_generated(
         generated, index.catalog, settings, fp, imports=module_imports(index)
     )
@@ -602,3 +615,73 @@ def test_placeholder_syntax_comes_from_config(setup: Any) -> None:
     ]
     # With the default (stand-in) patterns, the length check can't see the new syntax.
     assert not _messages(_validate(setup, entries=[entry]), "name_length")
+
+
+# --- reuse: inherited tests and tests calling tests ----------------------------------------------
+
+REUSE_CODE = """import pytest
+
+from framework.decorators import browsers, data_driven, environments
+from tests.files.checks import DownloadChecks
+
+
+@browsers("chrome", "firefox")
+@environments("cloud", "on_prem")
+@data_driven
+@pytest.mark.project("example-project")
+@pytest.mark.component("files")
+class TestFilesReports(DownloadChecks):
+   @pytest.mark.priority("p2")
+   @pytest.mark.suite("regression")
+   def test_files_reports_view_after_download(self):
+      self.test_files_download_verdict()
+      self.nav.files.view_file(self.params["file"])
+      self.check.assertEqual("read-only", self.nav.files.viewer.mode)
+"""
+REUSE_ENTRIES: list[dict[str, Any]] = [
+    {
+        "test_id": test_id,
+        "site": {"files": [{"name": "report.pdf", "content": "x"}]},
+        "file": "report.pdf",
+        "decision": "converted",
+        "targets": [{"method": "GET", "path": "/api/downloads/v1/log/:tid", "response": []}],
+    }
+    for test_id in ("test_files_download_verdict", "test_files_reports_view_after_download")
+]
+
+
+def test_a_class_reusing_a_base_gets_its_inherited_tests_and_helpers(setup: Any) -> None:
+    file_name = "tests/files/test_files_reports.py"
+    report = _validate(
+        setup,
+        code=REUSE_CODE,
+        entries=REUSE_ENTRIES,
+        file_name=file_name,
+        test_ids=["test_files_reports_view_after_download", "test_files_download_verdict"],
+    )
+    # The inherited test's entry is not an orphan; the called test's keys and its
+    # verify_targets() count as used; the base's helper resolves through DownloadChecks.
+    assert report.ok, [f.render() for f in report.errors]
+
+
+def test_keys_a_called_test_reads_must_exist(setup: Any) -> None:
+    entries = copy.deepcopy(REUSE_ENTRIES)
+    del entries[1]["decision"]  # read by test_files_download_verdict, which the test calls
+    report = _validate(
+        setup,
+        code=REUSE_CODE,
+        entries=entries,
+        file_name="tests/files/test_files_reports.py",
+        test_ids=["test_files_reports_view_after_download", "test_files_download_verdict"],
+    )
+    assert _messages(report, "data_keys") == ["reads keys its entry lacks: ['decision']"]
+    missing_inherited = _validate(
+        setup,
+        code=REUSE_CODE,
+        entries=REUSE_ENTRIES[1:],
+        file_name="tests/files/test_files_reports.py",
+        test_ids=["test_files_reports_view_after_download", "test_files_download_verdict"],
+    )
+    assert [f.test for f in missing_inherited.errors if f.check == "ids"] == [
+        "test_files_download_verdict"
+    ]

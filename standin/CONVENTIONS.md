@@ -67,9 +67,13 @@ not only a count).
   variant; tests that read no data have no entry.
 - The entry arrives as a dict: `self.params` in `@data_driven` classes, or a `params` argument
   in classes without it (e.g. profiles). Index it (`params["key"]`); no attribute access.
-- Seed sections: `settings` (`capabilities`, `roles`, `api_tokens`) and `policy` (`rules`,
-  `profiles`) for the primary tenant; `tenants` for several tenants, each block with
-  `tenant` (`{tenant_id1}`, ...) and optional `settings`, `policy`, `targets`.
+- Seed sections: `settings` (`capabilities`, `roles`, `api_tokens`, `agent`) and `policy`
+  (`rules`, `profiles`, and the file-policy sections `downloads`, `scanning`, `dlp`, `archives`,
+  `encrypted`, `originals`) for the primary tenant; `tenants` for several tenants, each block
+  with `tenant` (`{tenant_id1}`, ...) and optional `settings`, `policy`, `targets`; `site` for
+  the fake external site (`files`, `pages`), shared by all tenants and reset for every test.
+- Policy objects (rules, profiles, DLP rules) get unique names (`{test_id:N}-suffix`); files
+  and pages on the site keep fixed names (`report.pdf`, `/pages/news`).
 - Seed only what the scenario reads or the feature needs. In `settings.capabilities`, list only
   the gates the feature uses (`{"rules":true}` for rules tests; add `bulk_delete` / `import`
   only for those features). Unlisted gates keep their defaults.
@@ -87,6 +91,36 @@ not only a count).
 - Other pre-existing state: a UI helper in the test file (`_add_profile`), the policy manager
   (`self.policy.add_rule(...)`), the settings manager (`self.settings.set_capabilities(...)`),
   or a file under `tests/<area>/files/`.
+
+## Reuse (prefer it to new code)
+- **Shared bases.** File-policy classes inherit `DownloadChecks` (`tests/files/checks.py`): its
+  `setup`, the `expect_verdict(decision, reason="")` helper, and the
+  `test_files_download_verdict` test, which runs in every subclass with that subclass's own
+  data entry. A new file-policy class inherits it too, and gives the inherited test an entry.
+- **Page-object helpers.** Use the multi-step helpers instead of spelling out their steps:
+  `nav.files.download_file(name, mode="converted", password=None)` (leaves the verdict open),
+  `nav.files.view_file(name)`, `nav.agent.console.run_task(goal, start_page)`,
+  `policy.set_type_action(file_type, action)`.
+- **Tests calling tests.** A test may run another test of its class first
+  (`self.test_files_download_verdict()`), then check more. Its entry then also holds every key
+  the called test reads.
+- **Class variants.** `@variants("delivery", "converted", "original")` (on top of the stack)
+  generates `TestXConverted` and `TestXOriginal`, each with `self.delivery` set; both run every
+  test of the class, inherited ones included, and share the data entries.
+- **New variants of an existing test** are a new parametrize value plus one data entry, not a
+  new test.
+
+## Files and agent areas
+- Downloads are enforced by the latest **published** policy: change the policy in its editor,
+  `save()` it, then top-bar save and publish, then download.
+- Download decisions: `allowed`, `converted` (a safe copy, active content removed), `blocked`,
+  `password_required`. The converted mode is the default; `"original"` is the other mode.
+- Backend checks: `GET /api/downloads/v1/log/:tid` (the download log, oldest first),
+  `GET /api/files/v1/policy/:tid/:rev_id`, `GET /api/agent/v1/tasks/:tid`.
+- The browsing agent never acts on instructions in page content while the injection guard is
+  on; it flags them as `injection:<location>` (`text`, `hidden_text`, `comment`, `alt`,
+  `meta`). Injection tests run a reading task on a seeded page and check the flags, that the
+  embedded action was not taken, and the task list.
 
 ## Style
 - 3-space indent, LF line endings, final newline, alphabetical imports, no type annotations

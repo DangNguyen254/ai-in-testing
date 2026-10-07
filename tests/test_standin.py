@@ -31,7 +31,7 @@ STANDIN = REPO_ROOT / "standin"
 MANIFEST = json.loads((STANDIN / "manifest.json").read_text(encoding="utf-8"))
 TEST_FILES = sorted((STANDIN / "tests").rglob("test_*.py"))
 ID = "test_id"
-SEED = {"settings", "policy", "tenants"}
+SEED = {"settings", "policy", "tenants", "site"}
 EXPECTATIONS = {"targets": "self.verify_targets", "interactions": "self.verify_interactions"}
 OVERRIDES = {"priority", "skip"}
 SUFFIX = "abc123"
@@ -99,7 +99,23 @@ def _by_id(test_file: str | Path) -> dict[str, dict[str, Any]]:
 
 
 def _all_entries() -> dict[str, dict[str, Any]]:
-    return {entry[ID]: entry for path in TEST_FILES for entry in _entries(path)}
+    """Every entry, keyed ``<test file>::<test id>`` (inherited tests share ids across files)."""
+    return {
+        f"{path.relative_to(STANDIN).as_posix()}::{entry[ID]}": entry
+        for path in TEST_FILES
+        for entry in _entries(path)
+    }
+
+
+def _test_id(key: str) -> str:
+    return key.split("::", 1)[1]
+
+
+def _entry(test_id: str) -> dict[str, Any]:
+    """The one entry with this id (for ids that exist in a single file)."""
+    found = [e for k, e in _all_entries().items() if _test_id(k) == test_id]
+    assert len(found) == 1, (test_id, len(found))
+    return found[0]
 
 
 def _dotted(node: ast.expr) -> str:
@@ -117,11 +133,33 @@ def _test_classes() -> Iterator[tuple[Path, ast.ClassDef]]:
                 yield path, node
 
 
+def _base_classes() -> Iterator[tuple[Path, ast.ClassDef]]:
+    """Shared bases in the test folders (not collected themselves): they define tests and
+    helpers that test classes inherit."""
+    for path in sorted((STANDIN / "tests").rglob("*.py")):
+        if path in TEST_FILES or path.name == "conftest.py":
+            continue
+        for node in ast.parse(path.read_text(encoding="utf-8")).body:
+            if isinstance(node, ast.ClassDef):
+                yield path, node
+
+
 def _test_functions() -> Iterator[tuple[Path, ast.ClassDef, ast.FunctionDef]]:
-    for path, cls in _test_classes():
+    """Test methods where they are defined: in test classes and in shared bases."""
+    for path, cls in [*_test_classes(), *_base_classes()]:
         for node in cls.body:
             if isinstance(node, ast.FunctionDef) and node.name.startswith("test_"):
                 yield path, cls, node
+
+
+def _methods() -> dict[str, ast.FunctionDef]:
+    """Every method of test classes and shared bases, by name (helpers included)."""
+    return {
+        node.name: node
+        for _path, cls in [*_test_classes(), *_base_classes()]
+        for node in cls.body
+        if isinstance(node, ast.FunctionDef)
+    }
 
 
 def _functions() -> dict[str, tuple[Path, ast.ClassDef, ast.FunctionDef]]:
@@ -132,28 +170,68 @@ def _calls(function: ast.FunctionDef) -> set[str]:
     return {_dotted(n.func) for n in ast.walk(function) if isinstance(n, ast.Call)}
 
 
+def _own_reads(function: ast.FunctionDef) -> tuple[set[str], set[str]]:
+    """(keys indexed, keys read with ``.get``) in one function body."""
+    indexed, optional = set(), set()
+    for node in ast.walk(function):
+        if (
+            isinstance(node, ast.Subscript)
+            and _dotted(node.value) in ("self.params", "params")
+            and isinstance(node.slice, ast.Constant)
+            and isinstance(node.slice.value, str)
+        ):
+            indexed.add(node.slice.value)
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "get"
+            and _dotted(node.func.value) in ("self.params", "params")
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+        ):
+            optional.add(node.args[0].value)
+    return indexed, optional
+
+
+def _followed(function: ast.FunctionDef) -> list[ast.FunctionDef]:
+    """The function and every ``self.<method>`` it calls, transitively (tests calling tests,
+    helpers), bounded by the number of methods."""
+    methods = _methods()
+    seen: dict[str, ast.FunctionDef] = {function.name: function}
+    queue = [function]
+    while queue and len(seen) <= len(methods):
+        current = queue.pop()
+        for call in _calls(current):
+            name = call.removeprefix("self.")
+            if call.startswith("self.") and name in methods and name not in seen:
+                seen[name] = methods[name]
+                queue.append(methods[name])
+    return list(seen.values())
+
+
 def _reads(function: ast.FunctionDef) -> set[str]:
-    """Keys a test body reads from its entry: ``self.params["k"]`` or ``params["k"]``."""
-    return {
-        node.slice.value
-        for node in ast.walk(function)
-        if isinstance(node, ast.Subscript)
-        and _dotted(node.value) in ("self.params", "params")
-        and isinstance(node.slice, ast.Constant)
-        and isinstance(node.slice.value, str)
-    }
+    """Keys a test reads from its entry (indexed), including in methods it calls."""
+    return set().union(*(_own_reads(f)[0] for f in _followed(function)))
+
+
+def _optional_reads(function: ast.FunctionDef) -> set[str]:
+    return set().union(*(_own_reads(f)[1] for f in _followed(function)))
+
+
+def _deep_calls(function: ast.FunctionDef) -> set[str]:
+    return set().union(*(_calls(f) for f in _followed(function)))
 
 
 def _uses_entry(function: ast.FunctionDef) -> bool:
-    return bool(_reads(function)) or bool(_calls(function) & set(EXPECTATIONS.values()))
+    return bool(_reads(function)) or bool(_deep_calls(function) & set(EXPECTATIONS.values()))
 
 
 # --- Collection and data files ----------------------------------------------------------
 
 
 def test_collects_without_browser_or_network(items: list[dict[str, Any]]) -> None:
-    assert len(items) >= 30
-    assert len({i["file"] for i in items}) == 5
+    assert len(items) >= 60
+    assert len({i["file"] for i in items}) == 11
 
 
 def test_entry_ids_are_collected_test_ids(items: list[dict[str, Any]]) -> None:
@@ -170,12 +248,12 @@ def test_tests_that_use_their_entry_have_one_per_variant(items: list[dict[str, A
     variants: dict[str, set[str]] = {}
     for item in items:
         variants.setdefault(item["name"].split("[")[0], set()).add(item["name"])
-    entries = _all_entries()
+    entries = {_test_id(k) for k in _all_entries()}
     without_entry = set()
     for name, (_path, _cls, function) in _functions().items():
         if _uses_entry(function):
-            assert variants[name] <= set(entries), (name, variants[name] - set(entries))
-        elif not variants[name] & set(entries):
+            assert variants[name] <= entries, (name, variants[name] - entries)
+        elif not variants[name] & entries:
             without_entry.add(name)
     assert without_entry == {"test_rules_list_empty", "test_profiles_list_empty"}
 
@@ -184,14 +262,15 @@ def test_every_entry_key_is_read_or_consumed() -> None:
     """Custom keys are read by the test; an expectation section only with its helper."""
     functions = _functions()
     for entry_id, entry in _all_entries().items():
-        function = functions[entry_id.split("[")[0]][2]
-        reads, calls = _reads(function), _calls(function)
+        function = functions[_test_id(entry_id).split("[")[0]][2]
+        reads, calls = _reads(function), _deep_calls(function)
         assert reads <= set(entry), (entry_id, reads - set(entry))
         for key in set(entry) - {ID} - SEED - OVERRIDES:
             if key in EXPECTATIONS:
                 assert EXPECTATIONS[key] in calls, (entry_id, key)
             else:
-                assert key in reads, (entry_id, f"custom key {key!r} is never read")
+                read = reads | _optional_reads(function)
+                assert key in read, (entry_id, f"custom key {key!r} is never read")
         assert not {"targets", "interactions"} <= set(entry), entry_id
 
 
@@ -222,11 +301,15 @@ def test_expectation_shapes_and_path_placeholders() -> None:
     assert 403 in statuses  # a permission test
 
 
-def test_seed_holds_only_settings_policy_and_tenants() -> None:
+FILE_POLICY = {"downloads", "scanning", "dlp", "archives", "encrypted", "originals"}
+
+
+def test_seed_holds_only_settings_policy_tenants_and_site() -> None:
     for entry_id, entry in _all_entries().items():
         settings = entry.get("settings", {})
-        assert set(settings) <= {"capabilities", "roles", "api_tokens"}, entry_id
-        assert set(entry.get("policy", {})) <= {"rules", "profiles"}, entry_id
+        assert set(settings) <= {"capabilities", "roles", "api_tokens", "agent"}, entry_id
+        assert set(entry.get("policy", {})) <= {"rules", "profiles", *FILE_POLICY}, entry_id
+        assert set(entry.get("site", {})) <= {"files", "pages"}, entry_id
 
 
 def test_stacked_parametrize_and_priority_override(items: list[dict[str, Any]]) -> None:
@@ -234,7 +317,9 @@ def test_stacked_parametrize_and_priority_override(items: list[dict[str, Any]]) 
     # @parametrize("change", ...) above @parametrize("role", ...): role comes first.
     assert "test_policy_api_rules_update_forbidden[viewer-replace]" in by_name
     assert "test_policy_api_rules_update_forbidden[replace-viewer]" not in by_name
-    assert "test_policy_api_rules_update_forbidden[viewer-replace]" in _all_entries()
+    assert "test_policy_api_rules_update_forbidden[viewer-replace]" in {
+        _test_id(k) for k in _all_entries()
+    }
     assert by_name["test_rules_add_basic[allow]"]["priority"] == "p0"  # from the decorator
     assert by_name["test_rules_add_basic[deny]"]["priority"] == "p2"  # from the JSON entry
 
@@ -254,8 +339,13 @@ def test_all_tests_carry_the_four_markers_with_known_values(items: list[dict[str
 
 def test_classes_use_the_base_class_scaffold_and_setup() -> None:
     styles = Counter()
-    for _path, cls in _test_classes():
+    shared = {cls.name for _path, cls in _base_classes()}
+    for _path, cls in _base_classes():
         assert [_dotted(b) for b in cls.bases] == ["BaseTest"], cls.name
+    for _path, cls in _test_classes():
+        bases = [_dotted(b) for b in cls.bases]
+        assert len(bases) == 1 and bases[0] in {"BaseTest", *shared}, cls.name
+        styles["shared base" if bases[0] in shared else "BaseTest"] += 1
         decorators = [_dotted(d) for d in cls.decorator_list]
         assert decorators[-2:] == ["pytest.mark.project", "pytest.mark.component"], cls.name
         assert "environments" in decorators, cls.name
@@ -267,8 +357,9 @@ def test_classes_use_the_base_class_scaffold_and_setup() -> None:
             styles["setup_method"] += 1
         styles["teardown"] += "teardown" in methods
         styles["data_driven" if "data_driven" in decorators else "params argument"] += 1
-    assert styles["setup"] >= 3 and styles["setup_method"] >= 1 and styles["teardown"] >= 1
+    assert styles["setup"] >= 3 and styles["setup_method"] >= 2 and styles["teardown"] >= 1
     assert styles["data_driven"] >= 3 and styles["params argument"] >= 1
+    assert styles["shared base"] >= 4  # file-policy classes reuse DownloadChecks
 
 
 def test_base_setup_options_vary_by_class() -> None:
@@ -329,8 +420,8 @@ def test_checks_use_the_unittest_assertion_object() -> None:
 def test_test_names_summarize_area_and_never_contain_ticket_ids() -> None:
     pattern = re.compile(Settings().eval.ticket_id_pattern)
     for path, cls, function in _test_functions():
-        area = path.stem.removeprefix("test_")
-        assert function.name.startswith(f"test_{area}_"), function.name
+        areas = {path.stem.removeprefix("test_"), path.parent.name}  # file or folder area
+        assert any(function.name.startswith(f"test_{area}_") for area in areas), function.name
         assert len(function.name.split("_")) >= 4, function.name
         assert not pattern.search(function.name) and not re.search(r"\d{3,}", function.name)
         assert not re.search(r"\d{3,}", cls.name)
@@ -390,9 +481,10 @@ def test_seeded_names_stay_within_the_app_name_cap(standin: dict[str, ModuleType
         return []
 
     checked = 0
-    for test_id, entry in _all_entries().items():
+    for key, entry in _all_entries().items():
+        test_id = _test_id(key)
         for raw in strings(entry):
-            if pattern.search(raw):
+            if pattern.match(raw):  # names start with the placeholder; messages don't
                 resolved = placeholders.resolve(raw, test_id, SUFFIX)
                 assert len(resolved) <= cap, (test_id, raw, resolved)
                 checked += 1
@@ -463,9 +555,12 @@ def test_json_style_indent_3_compact_keys_final_newline() -> None:
 
 def test_entry_skip_cites_a_ticket_id(items: list[dict[str, Any]]) -> None:
     pattern = re.compile(Settings().eval.ticket_id_pattern)
-    skipped = [i for i in items if any(pattern.search(r) for r in i["skips"])]
-    assert [i["name"] for i in skipped] == ["test_profiles_edit_reset"]
-    assert skipped[0]["skips"][0].startswith("STND-105:")
+    skipped = {
+        i["name"]: i["skips"][0] for i in items if any(pattern.search(r) for r in i["skips"])
+    }
+    assert set(skipped) == {"test_profiles_edit_reset", "test_agent_injection_flagged[meta]"}
+    assert skipped["test_profiles_edit_reset"].startswith("STND-105:")  # open bugs
+    assert skipped["test_agent_injection_flagged[meta]"].startswith("STND-116:")
 
 
 def test_deployment_type_skips(
@@ -609,25 +704,74 @@ def _effects() -> dict[str, Effect]:
         "test_tenants_secondary_rules_add": lambda s, e, n, t: add_rule("deny")(
             s, e, n, "tenant-b"
         ),
+        **_file_and_agent_effects(),
     }
 
 
-def _replay(standin: dict[str, ModuleType], test_id: str, effect: Effect | None) -> None:
+def _file_and_agent_effects() -> dict[str, Effect]:
+    """Effects of the file-policy and agent UI flows (downloads go to the log)."""
+
+    def download(s: Any, e: dict[str, Any], _n: str, t: str) -> None:
+        if e.get("password") is not None:  # the helper asks for the password first
+            s.download(t, e["file"], e.get("mode", "converted"))
+        s.download(t, e["file"], e.get("mode", "converted"), e.get("password"))
+
+    def original_then_converted(s: Any, e: dict[str, Any], _n: str, t: str) -> None:
+        s.download(t, e["file"], "original")
+        s.download(t, e["file"], "converted")
+
+    def block_docx(s: Any, e: dict[str, Any], _n: str, t: str) -> None:
+        s.update_file_policy(t, {"downloads": {"default": "allow", "types": {"docx": "block"}}})
+        s.save(t)
+        s.publish(t)
+        s.download(t, e["file"])
+
+    def run_task(s: Any, e: dict[str, Any], _n: str, t: str) -> None:
+        s.run_agent(t, e["goal"], e["start_page"])
+
+    plain = [
+        "test_files_download_verdict",
+        "test_files_scan_hash_blocked",
+        "test_files_scan_disabled_allows",
+        "test_files_archive_member_blocked",
+        "test_files_archive_too_deep",
+        "test_files_archive_view_members",
+        "test_files_encrypted_password_prompt",
+        "test_files_encrypted_wrong_password",
+        *(f"test_files_download_type_action[{k}]" for k in ("exe", "html", "pdf")),
+        *(f"test_files_dlp_rule_enforced[{a}]" for a in ("block", "log")),
+    ]
+    effects: dict[str, Effect] = {name: download for name in plain}
+    effects["test_files_download_original_blocked"] = original_then_converted
+    effects["test_files_policy_block_type"] = block_docx
+    for location in ("text", "hidden_text", "comment", "alt", "meta"):
+        effects[f"test_agent_injection_flagged[{location}]"] = run_task
+    effects["test_agent_guard_off_follows_page"] = run_task
+    effects["test_agent_settings_guard_toggle"] = lambda s, e, n, t: s.update_agent_settings(
+        t, {"injection_guard": False}
+    )
+    return effects
+
+
+def _replay(standin: dict[str, ModuleType], key: str, effect: Effect | None) -> None:
     """Seed from the entry, run the flow's backend effect, then check every expectation."""
     state, server = standin["app.state"], standin["app.server"]
     config = standin["framework.config"].CONFIG
     placeholders, validations = standin["framework.placeholders"], standin["framework.validations"]
-    entry = placeholders.resolve(_all_entries()[test_id], test_id, SUFFIX)
+    test_id = _test_id(key)
+    entry = placeholders.resolve(_all_entries()[key], test_id, SUFFIX)
     primary = config.tenants[0]
     store = server.STORE
     store.reset()
     service = {"roles": {config.service_user: "admin"}}
     blocks = [{"tenant": t, "settings": service} for t in config.tenants]
     store.seed(blocks + standin["framework.data"].seed_blocks(entry, primary))
+    store.seed_site(entry.get("site") or {})
     if effect is not None:
         effect(store, entry, placeholders.unique_name(test_id, SUFFIX, 24), primary)
 
-    user = config.users[0] if test_id.startswith("test_policy_api_") else config.service_user
+    api_tests = ("test_policy_api_", "test_agent_api_")
+    user = config.users[0] if test_id.startswith(api_tests) else config.service_user
     checks = [(primary, t) for t in entry.get("targets", [])]
     checks += [(b["tenant"], t) for b in entry.get("tenants", []) for t in b.get("targets", [])]
     checks += [
@@ -660,29 +804,48 @@ def _replay(standin: dict[str, ModuleType], test_id: str, effect: Effect | None)
 
 
 def _with_expectations() -> list[str]:
+    """Entries with backend expectations (keys ``<file>::<id>``); open bugs are excluded."""
     return [
-        test_id
-        for test_id, entry in _all_entries().items()
-        if entry.get("targets")
-        or entry.get("interactions")
-        or any(b.get("targets") for b in entry.get("tenants", []))
+        key
+        for key, entry in _all_entries().items()
+        if (
+            entry.get("targets")
+            or entry.get("interactions")
+            or any(b.get("targets") for b in entry.get("tenants", []))
+        )
+        and not (entry.get("skip") and _test_id(key) in OPEN_BUGS)
     ]
 
 
+OPEN_BUGS = {"test_profiles_edit_reset", "test_agent_injection_flagged[meta]"}
+
+
 def test_every_expectation_is_covered_by_a_replay() -> None:
-    api_only = {i for i in _with_expectations() if i.startswith("test_policy_api_")}
-    assert set(_with_expectations()) - api_only <= set(_effects())
+    ids = {_test_id(k) for k in _with_expectations()}
+    api_only = {i for i in ids if i.startswith(("test_policy_api_", "test_agent_api_"))}
+    assert ids - api_only <= set(_effects())
 
 
-@pytest.mark.parametrize("test_id", _with_expectations())
-def test_expectations_replay_against_the_app(standin: dict[str, ModuleType], test_id: str) -> None:
-    _replay(standin, test_id, _effects().get(test_id))
+@pytest.mark.parametrize("key", _with_expectations())
+def test_expectations_replay_against_the_app(standin: dict[str, ModuleType], key: str) -> None:
+    _replay(standin, key, _effects().get(_test_id(key)))
+
+
+def test_open_agent_bug_shows_in_the_app(standin: dict[str, ModuleType]) -> None:
+    """STND-116 (open): an instruction in page metadata is followed, not flagged."""
+    key = "tests/agent/test_agent_injection.py::test_agent_injection_flagged[meta]"
+    entry = _all_entries()[key]
+    store = standin["app.server"].STORE
+    store.reset()
+    store.seed_site(entry["site"])
+    task = store.run_agent("tenant-a", entry["goal"], entry["start_page"])
+    assert task["flags"] == [] and entry["injected_action"] in task["actions"]
 
 
 def test_open_bug_shows_in_the_ui_view(standin: dict[str, ModuleType]) -> None:
     """STND-105 (open): after a reset, the UI still shows the profile edit."""
     test_id = "test_profiles_edit_reset"
-    _replay(standin, test_id, _effects()[test_id])
+    _replay(standin, f"tests/profiles/test_profiles.py::{test_id}", _effects()[test_id])
     name = standin["framework.placeholders"].unique_name(test_id, SUFFIX, 24)
     tenant = standin["framework.config"].CONFIG.tenants[0]
     shown = standin["app.server"].STORE.search_profiles(tenant, name)
@@ -695,7 +858,7 @@ def test_ui_only_expectations_match_the_app(standin: dict[str, ModuleType]) -> N
     store = server.STORE
 
     def seeded(test_id: str) -> dict[str, Any]:
-        entry = placeholders.resolve(_all_entries()[test_id], test_id, SUFFIX)
+        entry = placeholders.resolve(_entry(test_id), test_id, SUFFIX)
         store.reset()
         store.seed(standin["framework.data"].seed_blocks(entry, config.tenants[0]))
         return entry
@@ -757,9 +920,10 @@ def test_history_has_skip_removed_by_fix_commits(tmp_path: Path) -> None:
         "Add stand-in suite",
         "Fix STND-103: reject duplicate rule names",
         "Fix STND-104: deleted rules stay deleted after publishing",
+        "Fix STND-117: inspect members of nested archives",
     ]
     pattern = re.compile(Settings().eval.ticket_id_pattern)
-    for rev, ticket in (("HEAD~1", "STND-103"), ("HEAD", "STND-104")):
+    for rev, ticket in (("HEAD~2", "STND-103"), ("HEAD~1", "STND-104"), ("HEAD", "STND-117")):
         removed = [
             line
             for line in git("show", "--format=", rev, "--", "tests").splitlines()

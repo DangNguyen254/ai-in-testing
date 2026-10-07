@@ -28,7 +28,8 @@ from ticket2test.models.chunk import Chunk
 
 log = logging.getLogger(__name__)
 
-INDEX_VERSION = 4  # 2: syntax-tree refs; 3: array data files, returned calls; 4: imports
+INDEX_VERSION = 5  # 2: syntax-tree refs; 3: array data files, returned calls; 4: imports;
+# 5: inherited tests and class variants
 INDEX_FILE = "index.json"
 
 
@@ -168,6 +169,7 @@ def build_index(
         for info in infos
     )
 
+    infos_by_path = {info.path: info for info in infos}
     chunks: list[Chunk] = []
     for info in infos:
         chunks.extend(
@@ -177,6 +179,7 @@ def build_index(
                 index_settings,
                 lambda p: _read_data_file(repo, p, settings.data.id_field),
                 custom_id_hook,
+                infos_by_path,
             )
         )
 

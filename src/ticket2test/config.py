@@ -95,6 +95,14 @@ class DraftSettings(_Section):
     unknown_component_max_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
 
 
+class ClassVariantRule(_Section):
+    """A class decorator that generates one test class per value (see index/inheritance.py)."""
+
+    values_from: int = Field(default=0, ge=0)  # positional string arguments from here are values
+    # Generated class name; placeholders: {cls}, {value}, {value_title} (title-cased, no "_").
+    name: str = "{cls}{value_title}"
+
+
 class IndexSettings(_Section):
     # fnmatch patterns matched against every path segment.
     ignore: list[str] = Field(
@@ -115,6 +123,10 @@ class IndexSettings(_Section):
     max_chain_entries: int = Field(default=5000, ge=1)
     name_boost: int = Field(default=3, ge=1)  # symbol name repeats in the search text
     save_attempts: int = Field(default=5, ge=1)  # index file rename retries (Windows locks)
+    # Class decorators that generate test-class variants (stand-in: ``variants(attr, *values)``).
+    class_variant_decorators: dict[str, ClassVariantRule] = Field(
+        default_factory=lambda: {"variants": ClassVariantRule(values_from=1)}
+    )
 
 
 class DataSettings(_Section):
@@ -130,7 +142,9 @@ class DataSettings(_Section):
     # How a test reads its entry: these expressions are indexed (``self.params["key"]``).
     access: list[str] = Field(default_factory=lambda: ["self.params", "params"])
     # Sections the framework applies before the test (always consumed).
-    seed_sections: list[str] = Field(default_factory=lambda: ["settings", "policy", "tenants"])
+    seed_sections: list[str] = Field(
+        default_factory=lambda: ["settings", "policy", "tenants", "site"]
+    )
     # Expectation section -> the validation helper that reads it. An entry has at most one,
     # and only when the test calls its helper.
     expectation_sections: dict[str, str] = Field(
@@ -259,6 +273,11 @@ class ValidateSettings(_Section):
     naming: NamingSettings = NamingSettings()
     # Seeded object names: these keys in seed sections must use the unique-name placeholder.
     name_keys: list[str] = Field(default_factory=lambda: ["name"])
+    # Seed sections whose objects need unique names (others, e.g. files on a fake site that
+    # is reset for every test, may use fixed names).
+    unique_name_sections: list[str] = Field(
+        default_factory=lambda: ["settings", "policy", "tenants"]
+    )
     name_max_length: int = Field(default=32, ge=1)  # the app's name length limit
     unique_name_helper: str = "self.unique_name"
     # Data placeholders (regexes). Any placeholder makes a seeded name non-literal; the

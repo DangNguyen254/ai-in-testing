@@ -8,8 +8,15 @@ JSON API under ``/api`` (tests seed state and check backend results through it):
 - ``GET /api/policy/v1/{policy,rules,profiles}/<tenant>/<rev_id>``: a published revision
 - ``GET /api/policy/v1/revision/<tenant>``: the latest revision number
 - ``PUT /api/policy/v1/rules/<tenant>``: replace the rules and publish (admin role only)
-- ``GET /api/settings/v1/settings/<tenant>``
-- ``POST /api/_reset``, ``POST /api/_seed`` (test setup only)
+- ``GET /api/settings/v1/settings/<tenant>``; ``PUT /api/settings/v1/agent/<tenant>`` (admin)
+- ``GET /api/files/v1/policy/<tenant>/<rev_id>``: the file policy of a published revision
+- ``POST /api/downloads/v1/download/<tenant>`` ``{file, mode, password}``: a download verdict
+- ``GET /api/downloads/v1/log/<tenant>``: the download log
+- ``POST /api/agent/v1/tasks/<tenant>`` ``{goal, start_page}``; ``GET .../tasks/<tenant>[/<id>]``
+- ``POST /api/_reset``, ``POST /api/_seed`` (test setup only; ``{"tenants": [...], "site": {...}}``)
+
+File-policy and agent pages live in ``app/pages_v4.py``; the fake external site's pages are
+served under ``/site``.
 """
 
 import argparse
@@ -20,6 +27,7 @@ from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
+from app import agent, files, pages_v4
 from app.state import ACTIONS, LEVELS, PAGE_SIZE, PermissionDenied, Store, ValidationError
 
 STORE = Store()
@@ -40,6 +48,8 @@ def page(tenant_id, title, body, here, toast="", error=""):
    if caps["profiles"]:
       links.append(("profiles", "/profiles", "Profiles"))
    links.append(("settings", "/settings/capabilities", "Settings"))
+   links.append(("files", "/files", "Files"))
+   links.append(("agent", "/agent", "Agent"))
    nav = " | ".join(f'<a id="nav-{key}" href="{href}">{label}</a>' for key, href, label in links)
    blocked = STORE.save_blocked(tenant_id)
    status = (
@@ -284,6 +294,13 @@ class Handler(BaseHTTPRequestHandler):
       if parts == ["logout"]:
          self._redirect("/", cookie="")
          return
+      if parts[:1] == ["site"] and len(parts) > 1:
+         path = "/" + "/".join(parts[1:])
+         if path in STORE.site["pages"]:
+            self._html(agent.render(STORE.site["pages"][path]))
+         else:
+            self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
+         return
       tenant, _ = self._session()
       if tenant is None:
          self._sign_in()
@@ -311,8 +328,28 @@ class Handler(BaseHTTPRequestHandler):
          self._html(profile_editor(tenant, parts[1]))
       elif parts == ["settings", "capabilities"]:
          self._html(capabilities_page(tenant, toast))
+      elif parts == ["files"]:
+         self._v4(tenant, pages_v4.download_center(STORE, tenant), "/files", toast)
+      elif len(parts) == 3 and parts[0] == "files" and parts[2] == "download":
+         verdict = STORE.download(tenant, parts[1], query.get("mode", "converted"))
+         self._v4(tenant, pages_v4.verdict_page(parts[1], verdict), "/files", toast)
+      elif len(parts) == 3 and parts[0] == "files" and parts[2] == "view":
+         result = STORE.view_file(tenant, parts[1])
+         self._v4(tenant, pages_v4.viewer_page(parts[1], result), "/files", toast)
+      elif parts == ["settings", "downloads"]:
+         policy = STORE.file_policy(tenant)
+         self._v4(tenant, pages_v4.download_policy_page(policy), "/settings/downloads", toast)
+      elif parts == ["agent"]:
+         self._v4(tenant, pages_v4.agent_console(STORE.site["pages"]), "/agent", toast)
+      elif parts == ["settings", "agent"]:
+         settings = STORE.tenant(tenant).settings
+         self._v4(tenant, pages_v4.agent_settings_page(settings), "/settings/agent", toast)
       else:
          raise KeyError(self.path)
+
+   def _v4(self, tenant, title_body, here, toast="", status=HTTPStatus.OK):
+      title, body = title_body
+      self._html(page(tenant, title, body, here, toast), status)
 
    def do_POST(self):
       parts, _ = self._parts()
@@ -398,6 +435,20 @@ class Handler(BaseHTTPRequestHandler):
          caps = STORE.tenant(tenant).settings["capabilities"]
          STORE.update_capabilities(tenant, {key: key in form for key in caps})
          self._redirect("/settings/capabilities", "Settings applied")
+      elif len(parts) == 3 and parts[0] == "files" and parts[2] == "download":
+         mode = form.get("mode", "converted")
+         verdict = STORE.download(tenant, parts[1], mode, form.get("password", ""))
+         self._v4(tenant, pages_v4.verdict_page(parts[1], verdict), "/files")
+      elif parts == ["settings", "downloads"]:
+         changes = pages_v4.file_policy_changes(form, STORE.file_policy(tenant))
+         STORE.update_file_policy(tenant, changes)
+         self._redirect("/settings/downloads", "Download policy saved")
+      elif parts == ["agent", "run"]:
+         task = STORE.run_agent(tenant, form.get("goal", ""), form.get("start_page", ""))
+         self._v4(tenant, pages_v4.agent_console(STORE.site["pages"], task), "/agent")
+      elif parts == ["settings", "agent"]:
+         STORE.update_agent_settings(tenant, {"injection_guard": "injection_guard" in form})
+         self._redirect("/settings/agent", "Agent settings applied")
       else:
          self._html(page(tenant, "Not found", "", "/rules"), HTTPStatus.NOT_FOUND)
 
@@ -444,6 +495,7 @@ def route_api(method, parts, payload, user=""):
          return {"ok": True}
       case "POST", ["_seed"]:
          STORE.seed(payload["tenants"])  # the data entry's seed sections, per tenant
+         STORE.seed_site(payload.get("site") or {})
          return {"ok": True}
       case "GET", ["policy", "v1", "revision", tenant]:
          return {"rev_id": STORE.tenant(tenant).rev_id}
@@ -455,6 +507,25 @@ def route_api(method, parts, payload, user=""):
          return {"rev_id": STORE.api_replace_rules(tenant, user, payload.get("rules", []))}
       case "GET", ["settings", "v1", "settings", tenant]:
          return STORE.tenant(tenant).settings
+      case "PUT", ["settings", "v1", "agent", tenant]:
+         role = STORE.tenant(tenant).settings["roles"].get(user, "viewer")
+         if role != "admin":
+            raise PermissionDenied(f"Role '{role}' cannot change agent settings")
+         return STORE.update_agent_settings(tenant, payload)
+      case "GET", ["files", "v1", "policy", tenant, rev_id]:
+         return files.file_policy(STORE.published(tenant, int(rev_id)))
+      case "POST", ["downloads", "v1", "download", tenant]:
+         return STORE.download(
+            tenant, payload["file"], payload.get("mode", "converted"), payload.get("password")
+         )
+      case "GET", ["downloads", "v1", "log", tenant]:
+         return STORE.tenant(tenant).downloads
+      case "POST", ["agent", "v1", "tasks", tenant]:
+         return STORE.run_agent(tenant, payload.get("goal", ""), payload.get("start_page", ""))
+      case "GET", ["agent", "v1", "tasks", tenant]:
+         return STORE.tenant(tenant).tasks
+      case "GET", ["agent", "v1", "tasks", tenant, task_id]:
+         return STORE.tenant(tenant).tasks[int(task_id) - 1]
    raise LookupError(f"{method} /api/{'/'.join(parts)}")
 
 

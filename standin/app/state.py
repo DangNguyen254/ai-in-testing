@@ -2,14 +2,21 @@
 
 Each tenant has:
 - ``settings``: capability gates, user roles, API-token state;
-- a policy (rules and profiles) in three layers: the **working copy** (object editors write
-  here; "unsaved changes"), the **saved draft** (top-bar save), and the **published
-  revisions** (top-bar publish; ``rev_id`` is the latest revision number).
+- a policy (rules, profiles, and file-policy sections) in three layers: the **working copy**
+  (object editors write here; "unsaved changes"), the **saved draft** (top-bar save), and the
+  **published revisions** (top-bar publish; ``rev_id`` is the latest revision number);
+- a download log and the browsing agent's tasks (enforcement uses the latest *published*
+  policy, never unsaved edits).
+
+The store also holds the fake **external site** (``site``): files and pages the browser and
+the agent can reach, seeded per test.
 
 Pure functions on a Store, so it is testable without a server.
 """
 
 import copy
+
+from app import agent, files
 
 ACTIONS = ("allow", "deny", "log")
 LEVELS = ("low", "medium", "high")
@@ -35,7 +42,10 @@ class Tenant:
          "capabilities": dict(DEFAULT_CAPABILITIES),
          "roles": {},
          "api_tokens": {"enabled": False},
+         "agent": {"injection_guard": True},
       }
+      self.downloads = []  # the download log, newest last
+      self.tasks = []  # the browsing agent's tasks, newest last
       self.draft = copy.deepcopy(EMPTY_POLICY)
       self.working = None  # None: no unsaved changes
       self.revisions = [copy.deepcopy(EMPTY_POLICY)]  # revision 0
@@ -61,11 +71,21 @@ class Tenant:
 class Store:
    def __init__(self):
       self.tenants = {}
+      self.site = {"files": {}, "pages": {}}
 
    # --- seed / reset (the test framework's setup applies data-entry sections) ----------
 
    def reset(self):
       self.tenants.clear()
+      self.site = {"files": {}, "pages": {}}
+
+   def seed_site(self, site):
+      """Add files and pages to the fake external site (by name and by path)."""
+      for spec in site.get("files", []):
+         files.build(spec)  # fails early on a bad description
+         self.site["files"][spec["name"]] = copy.deepcopy(spec)
+      for page in site.get("pages", []):
+         self.site["pages"][page["path"]] = copy.deepcopy(page)
 
    def tenant(self, tenant_id):
       if tenant_id not in self.tenants:
@@ -83,6 +103,7 @@ class Store:
          tenant.settings["capabilities"].update(settings.get("capabilities", {}))
          tenant.settings["roles"].update(settings.get("roles", {}))
          tenant.settings["api_tokens"].update(settings.get("api_tokens", {}))
+         tenant.settings["agent"].update(settings.get("agent", {}))
          if "policy" in block:
             policy = copy.deepcopy(EMPTY_POLICY)
             policy.update(copy.deepcopy(block["policy"]))
@@ -215,6 +236,67 @@ class Store:
          raise ValidationError(f"Unknown capabilities: {unknown}")
       caps.update({k: bool(v) for k, v in capabilities.items()})
       return self.tenant(tenant_id).settings
+
+   def update_agent_settings(self, tenant_id, changes):
+      agent_settings = self.tenant(tenant_id).settings["agent"]
+      unknown = [k for k in changes if k not in agent_settings]
+      if unknown:
+         raise ValidationError(f"Unknown agent settings: {unknown}")
+      agent_settings.update({k: bool(v) for k, v in changes.items()})
+      return self.tenant(tenant_id).settings
+
+   # --- file policies (the editor writes the working copy) -------------------------------
+
+   def file_policy(self, tenant_id):
+      """The file policy the UI shows (working copy or draft), with defaults filled in."""
+      return files.file_policy(self.tenant(tenant_id).view())
+
+   def update_file_policy(self, tenant_id, changes):
+      """Change file-policy sections in the working copy (top-bar save and publish follow)."""
+      working = self.tenant(tenant_id).edit()
+      unknown = [k for k in changes if k not in files.DEFAULT_FILE_POLICY]
+      if unknown:
+         raise ValidationError(f"Unknown file-policy sections: {unknown}")
+      for key, value in changes.items():
+         working[key] = copy.deepcopy(value)
+      return files.file_policy(working)
+
+   def download(self, tenant_id, name, mode="converted", password=None):
+      """Enforce the latest published policy on a site file; the verdict is logged."""
+      tenant = self.tenant(tenant_id)
+      spec = self.site["files"].get(name)
+      if spec is None:
+         raise KeyError(name)
+      published = tenant.revisions[-1]
+      verdict = files.evaluate(published, name, files.build(spec), mode, password)
+      tenant.downloads.append(verdict)
+      return verdict
+
+   def view_file(self, tenant_id, name, password=None):
+      spec = self.site["files"].get(name)
+      if spec is None:
+         raise KeyError(name)
+      published = self.tenant(tenant_id).revisions[-1]
+      return files.view(published, name, files.build(spec), password)
+
+   # --- the browsing agent -----------------------------------------------------------------
+
+   def run_agent(self, tenant_id, goal, start_page):
+      """Run a task; ``download`` actions go through the file pipeline and the log."""
+      tenant = self.tenant(tenant_id)
+      try:
+         result = agent.run(
+            self.site["pages"], goal, start_page, tenant.settings["agent"]["injection_guard"]
+         )
+      except agent.AgentError as exc:
+         raise ValidationError(str(exc)) from None
+      for action in result["actions"]:
+         verb, _, target = action.partition(" ")
+         if verb == "download" and target in self.site["files"]:
+            self.download(tenant_id, target)
+      task = {"id": len(tenant.tasks) + 1, "goal": goal, "start_page": start_page, **result}
+      tenant.tasks.append(task)
+      return task
 
    # --- API writes (role-checked; save and publish in one step) --------------------------
 

@@ -1,0 +1,203 @@
+[
+   {
+      "test_id":"test_files_download_verdict",
+      "site":{
+         "files":[
+            {
+               "name":"invoice.pdf",
+               "content":"Pay now T2T-FAKE-MALWARE-SIGNATURE"
+            },
+            {
+               "name":"tool.exe",
+               "content":"known bad tool"
+            },
+            {
+               "name":"plan.txt",
+               "content":"Project PROJ-SECRET-1234 rollout plan"
+            }
+         ]
+      },
+      "file":"invoice.pdf",
+      "decision":"blocked",
+      "reason":"malware signature found in invoice.pdf",
+      "targets":[
+         {
+            "method":"GET",
+            "path":"/api/downloads/v1/log/:tid",
+            "response":[
+               {
+                  "file":"invoice.pdf",
+                  "decision":"blocked"
+               }
+            ]
+         }
+      ]
+   },
+   {
+      "test_id":"test_files_scan_hash_blocked",
+      "policy":{
+         "scanning":{
+            "enabled":true,
+            "hash_blocklist":[
+               "0a26758b2dbb0fe14b49e0f4b12f6bdd92395b4cfdd0c462bae4421ab94290a5"
+            ]
+         }
+      },
+      "site":{
+         "files":[
+            {
+               "name":"invoice.pdf",
+               "content":"Pay now T2T-FAKE-MALWARE-SIGNATURE"
+            },
+            {
+               "name":"tool.exe",
+               "content":"known bad tool"
+            },
+            {
+               "name":"plan.txt",
+               "content":"Project PROJ-SECRET-1234 rollout plan"
+            }
+         ]
+      },
+      "file":"tool.exe",
+      "targets":[
+         {
+            "method":"GET",
+            "path":"/api/downloads/v1/log/:tid",
+            "response":[
+               {
+                  "file":"tool.exe",
+                  "decision":"blocked",
+                  "reason":"blocked hash: tool.exe"
+               }
+            ]
+         }
+      ]
+   },
+   {
+      "test_id":"test_files_scan_disabled_allows",
+      "policy":{
+         "scanning":{
+            "enabled":false,
+            "hash_blocklist":[]
+         }
+      },
+      "site":{
+         "files":[
+            {
+               "name":"invoice.pdf",
+               "content":"Pay now T2T-FAKE-MALWARE-SIGNATURE"
+            },
+            {
+               "name":"tool.exe",
+               "content":"known bad tool"
+            },
+            {
+               "name":"plan.txt",
+               "content":"Project PROJ-SECRET-1234 rollout plan"
+            }
+         ]
+      },
+      "file":"invoice.pdf",
+      "targets":[
+         {
+            "method":"GET",
+            "path":"/api/downloads/v1/log/:tid",
+            "response":[
+               {
+                  "file":"invoice.pdf",
+                  "decision":"converted"
+               }
+            ]
+         }
+      ]
+   },
+   {
+      "test_id":"test_files_dlp_rule_enforced[block]",
+      "policy":{
+         "dlp":[
+            {
+               "name":"{test_id:20}-codes",
+               "pattern":"PROJ-SECRET-\\d{4}",
+               "action":"block"
+            }
+         ]
+      },
+      "site":{
+         "files":[
+            {
+               "name":"invoice.pdf",
+               "content":"Pay now T2T-FAKE-MALWARE-SIGNATURE"
+            },
+            {
+               "name":"tool.exe",
+               "content":"known bad tool"
+            },
+            {
+               "name":"plan.txt",
+               "content":"Project PROJ-SECRET-1234 rollout plan"
+            }
+         ]
+      },
+      "file":"plan.txt",
+      "decision":"blocked",
+      "findings":[],
+      "targets":[
+         {
+            "method":"GET",
+            "path":"/api/downloads/v1/log/:tid",
+            "response":[
+               {
+                  "file":"plan.txt",
+                  "decision":"blocked"
+               }
+            ]
+         }
+      ]
+   },
+   {
+      "test_id":"test_files_dlp_rule_enforced[log]",
+      "policy":{
+         "dlp":[
+            {
+               "name":"{test_id:20}-codes",
+               "pattern":"PROJ-SECRET-\\d{4}",
+               "action":"log"
+            }
+         ]
+      },
+      "site":{
+         "files":[
+            {
+               "name":"invoice.pdf",
+               "content":"Pay now T2T-FAKE-MALWARE-SIGNATURE"
+            },
+            {
+               "name":"tool.exe",
+               "content":"known bad tool"
+            },
+            {
+               "name":"plan.txt",
+               "content":"Project PROJ-SECRET-1234 rollout plan"
+            }
+         ]
+      },
+      "file":"plan.txt",
+      "decision":"converted",
+      "findings":[
+         "DLP rule '{test_id:20}-codes' logged in plan.txt"
+      ],
+      "targets":[
+         {
+            "method":"GET",
+            "path":"/api/downloads/v1/log/:tid",
+            "response":[
+               {
+                  "file":"plan.txt",
+                  "decision":"converted"
+               }
+            ]
+         }
+      ]
+   }
+]

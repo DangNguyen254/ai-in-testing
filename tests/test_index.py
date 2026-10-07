@@ -352,7 +352,7 @@ def test_cli_index_and_search(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     runner = CliRunner()
     result = runner.invoke(app, ["index", str(STANDIN)])
     assert result.exit_code == 0, result.output
-    assert "27 files" in result.output and "page-object chains: 291" in result.output
+    assert "39 files" in result.output and "page-object chains: 480" in result.output
 
     result = runner.invoke(
         app, ["search", "delete rule", "--repo", str(STANDIN), "--kind", "test", "--top-k", "3"]
@@ -424,3 +424,50 @@ def test_chunks_carry_refs(standin_index: IndexData) -> None:
     test = _chunk(standin_index, "TestRules.test_rules_add_basic")
     assert ["nav", "rules", "wizard"] in test.refs.self_chains  # type: ignore[attr-defined]
     assert {"next", "publish", "verify_targets", "assertEqual"} <= set(test.refs.calls)  # type: ignore[attr-defined]
+
+
+# --- reuse: inherited tests and class variants -------------------------------------------------
+
+
+def test_test_classes_collect_the_tests_they_inherit(standin_index: IndexData) -> None:
+    chunks = {c.id: c for c in standin_index.chunks}
+    defined = "tests/files/checks.py::DownloadChecks.test_files_download_verdict"
+    assert chunks[defined].kind == "function"  # the shared base itself is not collected
+    for test_file, cls in (
+        ("test_files_downloads", "TestFilesDownloads"),
+        ("test_files_scanning", "TestFilesScanning"),
+        ("test_files_archives", "TestFilesArchives"),
+    ):
+        chunk = chunks[f"tests/files/{test_file}.py::{cls}.test_files_download_verdict"]
+        assert chunk.kind == "test" and chunk.inherited_from == defined
+        assert chunk.test_ids == ["test_files_download_verdict"]
+        # Its data entry comes from the subclass's own data file; markers from the base method.
+        assert chunk.data_entries["test_files_download_verdict"]["file"]
+        assert {m.name for m in chunk.markers} >= {"priority", "suite", "component"}
+
+
+def test_class_variants_are_collected_under_the_generated_classes(standin_index: IndexData) -> None:
+    viewer = [
+        c for c in standin_index.chunks if c.class_name == "TestFilesViewer" and c.kind == "test"
+    ]
+    assert {c.symbol_name for c in viewer} == {
+        "test_files_viewer_strips_active_content",
+        "test_files_download_verdict",  # inherited, and collected under each variant
+    }
+    for chunk in viewer:
+        assert chunk.collected_classes == ["TestFilesViewerConverted", "TestFilesViewerOriginal"]
+
+
+def test_variant_rule_names_the_generated_classes() -> None:
+    from ticket2test.config import ClassVariantRule
+    from ticket2test.index.inheritance import variant_classes
+
+    rules = {"variants": ClassVariantRule(values_from=1)}
+    decorators = ['browsers("chrome")', 'variants("delivery", "converted", "dry_run")']
+    assert variant_classes("TestX", decorators, rules) == ["TestXConverted", "TestXDryRun"]
+    custom = {"per_mode": ClassVariantRule(values_from=0, name="{cls}_{value}")}
+    assert variant_classes("TestX", ['framework.per_mode("a", "b")'], custom) == [
+        "TestX_a",
+        "TestX_b",
+    ]
+    assert variant_classes("TestX", ["data_driven"], rules) is None

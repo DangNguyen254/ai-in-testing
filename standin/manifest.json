@@ -84,6 +84,78 @@
     },
     "tests/api/test_policy_api.py::TestPolicyApi::test_policy_api_rules_update_admin": {
       "kind": "api"
+    },
+    "tests/files/test_files_downloads.py::TestFilesDownloads::test_files_download_verdict": {
+      "kind": "ui"
+    },
+    "tests/files/test_files_downloads.py::TestFilesDownloads::test_files_download_type_action": {
+      "kind": "ui"
+    },
+    "tests/files/test_files_downloads.py::TestFilesDownloads::test_files_download_original_blocked": {
+      "kind": "ui"
+    },
+    "tests/files/test_files_downloads.py::TestFilesDownloads::test_files_policy_block_type": {
+      "kind": "ui"
+    },
+    "tests/files/test_files_scanning.py::TestFilesScanning::test_files_download_verdict": {
+      "kind": "ui"
+    },
+    "tests/files/test_files_scanning.py::TestFilesScanning::test_files_scan_hash_blocked": {
+      "kind": "ui"
+    },
+    "tests/files/test_files_scanning.py::TestFilesScanning::test_files_scan_disabled_allows": {
+      "kind": "ui"
+    },
+    "tests/files/test_files_scanning.py::TestFilesScanning::test_files_dlp_rule_enforced": {
+      "kind": "ui"
+    },
+    "tests/files/test_files_archives.py::TestFilesArchives::test_files_download_verdict": {
+      "kind": "ui"
+    },
+    "tests/files/test_files_archives.py::TestFilesArchives::test_files_archive_member_blocked": {
+      "kind": "ui"
+    },
+    "tests/files/test_files_archives.py::TestFilesArchives::test_files_archive_too_deep": {
+      "kind": "ui"
+    },
+    "tests/files/test_files_archives.py::TestFilesArchives::test_files_archive_view_members": {
+      "kind": "ui"
+    },
+    "tests/files/test_files_archives.py::TestFilesArchives::test_files_encrypted_password_prompt": {
+      "kind": "ui"
+    },
+    "tests/files/test_files_archives.py::TestFilesArchives::test_files_encrypted_wrong_password": {
+      "kind": "ui"
+    },
+    "tests/files/test_files_viewer.py::TestFilesViewerConverted::test_files_download_verdict": {
+      "kind": "ui"
+    },
+    "tests/files/test_files_viewer.py::TestFilesViewerConverted::test_files_viewer_strips_active_content": {
+      "kind": "ui"
+    },
+    "tests/files/test_files_viewer.py::TestFilesViewerOriginal::test_files_download_verdict": {
+      "kind": "ui"
+    },
+    "tests/files/test_files_viewer.py::TestFilesViewerOriginal::test_files_viewer_strips_active_content": {
+      "kind": "ui"
+    },
+    "tests/agent/test_agent_injection.py::TestAgentInjection::test_agent_injection_flagged": {
+      "kind": "ui"
+    },
+    "tests/agent/test_agent_injection.py::TestAgentInjection::test_agent_guard_off_follows_page": {
+      "kind": "ui"
+    },
+    "tests/agent/test_agent_injection.py::TestAgentInjection::test_agent_settings_guard_toggle": {
+      "kind": "ui"
+    },
+    "tests/agent/test_agent_api.py::TestAgentApi::test_agent_api_task_flags_injection": {
+      "kind": "api"
+    },
+    "tests/agent/test_agent_api.py::TestAgentApi::test_agent_api_unknown_page": {
+      "kind": "api"
+    },
+    "tests/agent/test_agent_api.py::TestAgentApi::test_agent_api_settings_forbidden": {
+      "kind": "api"
     }
   },
   "tickets": {
@@ -160,6 +232,63 @@
       "status": "fixed",
       "tests": [
         "tests/rules/test_rules.py::TestRules::test_rules_import_file"
+      ]
+    },
+    "STND-113": {
+      "status": "fixed",
+      "tests": [
+        "tests/files/test_files_downloads.py::TestFilesDownloads::test_files_download_type_action"
+      ]
+    },
+    "STND-114": {
+      "status": "fixed",
+      "tests": [
+        "tests/files/test_files_downloads.py::TestFilesDownloads::test_files_download_original_blocked"
+      ]
+    },
+    "STND-115": {
+      "status": "fixed",
+      "tests": [
+        "tests/files/test_files_scanning.py::TestFilesScanning::test_files_scan_hash_blocked"
+      ]
+    },
+    "STND-116": {
+      "status": "open",
+      "tests": [
+        "tests/agent/test_agent_injection.py::TestAgentInjection::test_agent_injection_flagged"
+      ],
+      "history": "still skipped by ticket id in the JSON entry"
+    },
+    "STND-117": {
+      "status": "fixed",
+      "tests": [
+        "tests/files/test_files_archives.py::TestFilesArchives::test_files_archive_member_blocked"
+      ],
+      "history": "JSON entry skip citing the ticket, removed by the fix commit"
+    },
+    "STND-118": {
+      "status": "fixed",
+      "tests": [
+        "tests/files/test_files_scanning.py::TestFilesScanning::test_files_dlp_rule_enforced"
+      ]
+    },
+    "STND-119": {
+      "status": "fixed",
+      "tests": [
+        "tests/files/test_files_archives.py::TestFilesArchives::test_files_encrypted_wrong_password"
+      ]
+    },
+    "STND-120": {
+      "status": "fixed",
+      "tests": [
+        "tests/files/test_files_viewer.py::TestFilesViewerConverted::test_files_viewer_strips_active_content",
+        "tests/files/test_files_viewer.py::TestFilesViewerOriginal::test_files_viewer_strips_active_content"
+      ]
+    },
+    "STND-121": {
+      "status": "fixed",
+      "tests": [
+        "tests/agent/test_agent_api.py::TestAgentApi::test_agent_api_settings_forbidden"
       ]
     }
   }

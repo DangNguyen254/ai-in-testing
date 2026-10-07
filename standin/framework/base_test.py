@@ -69,7 +69,7 @@ class BaseTest(ValidationMixin):
    def apply_seed(self):
       service = {"roles": {self.config.service_user: "admin"}}
       blocks = [{"tenant": tenant, "settings": service} for tenant in self.config.tenants]
-      self.api.seed(blocks + seed_blocks(self.params, self.primary_tenant))
+      self.api.seed(blocks + seed_blocks(self.params, self.primary_tenant), self.params.get("site"))
 
    # --- browser --------------------------------------------------------------------------
 

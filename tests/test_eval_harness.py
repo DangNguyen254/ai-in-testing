@@ -70,6 +70,11 @@ def test_mining_finds_the_code_skip_and_the_data_skip_fixes(tmp_path: Path) -> N
     assert [(m.ticket, m.test, m.kind) for m in mined] == [
         ("STND-103", f"{RULES}::test_rules_add_duplicate_name", "code_skip"),
         ("STND-104", f"{RULES}::test_rules_delete_single", "data_skip"),
+        (
+            "STND-117",
+            "tests/files/test_files_archives.py::TestFilesArchives::test_files_archive_member_blocked",
+            "data_skip",
+        ),
     ]
     # STND-105 is still skipped (open bug): not mined.
     assert all(m.subject.startswith(f"Fix {m.ticket}") for m in mined)
@@ -316,9 +321,9 @@ def test_deterministic_runs_are_identical_and_pairs_are_counted(tmp_path: Path) 
         first, second = runs
         assert first.mean_recall == second.mean_recall
         assert [p.retrieved for p in first.pairs] == [p.retrieved for p in second.pairs]
-    assert [m.agrees for m in report.mined] == [True, True]
+    assert [m.agrees for m in report.mined] == [True, True, True]
     total = sum(len(s.pairs) for s in sets)
-    assert total >= 30 + 2  # 31 distinct pairs + 2 mined duplicates of manual links
+    assert total >= 40 + 3  # 40 distinct pairs + 3 mined duplicates of manual links
 
 
 def test_pair_sets_have_at_least_30_distinct_pairs() -> None:
@@ -341,7 +346,7 @@ def test_cli_mine_and_eval(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
     result = runner.invoke(app, ["mine", str(history), "--out", str(out), "--repo-path", "standin"])
     assert result.exit_code == 0, result.output
     mined = load_pair_set(out)
-    assert [p.ticket for p in mined.pairs] == ["STND-103", "STND-104"]
+    assert [p.ticket for p in mined.pairs] == ["STND-103", "STND-104", "STND-117"]
 
     result = runner.invoke(
         app,

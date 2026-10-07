@@ -16,7 +16,7 @@ from typing import Any
 
 from ticket2test.config import Settings
 from ticket2test.generate.entries import function_of
-from ticket2test.generate.inspect import computed_test_ids, data_use
+from ticket2test.generate.inspect import DataUse, computed_test_ids, data_use
 from ticket2test.index.catalog import ClassEntry, SymbolCatalog
 from ticket2test.index.indexer import IndexData
 from ticket2test.index.tokens import split_identifier
@@ -39,6 +39,7 @@ from ticket2test.validate.code import (
     test_classes,
     test_functions,
 )
+from ticket2test.validate.datause import Resolver
 from ticket2test.validate.report import Finding, Severity, ValidationReport
 
 
@@ -58,6 +59,11 @@ class Subject:
     chains: dict[str, FunctionChains] = field(default_factory=dict)  # by function name
     checks: dict[str, list[CheckCall]] = field(default_factory=dict)
     base: ClassEntry | None = None
+    index: IndexData | None = None
+    resolver: Resolver | None = None
+    uses: dict[str, DataUse] = field(default_factory=dict)  # by test function name
+    inherited_ids: list[str] = field(default_factory=list)  # ids of inherited tests
+    deep_checks: dict[str, bool] = field(default_factory=dict)  # checks via called methods
 
     @property
     def code(self) -> str:
@@ -229,7 +235,7 @@ def check_assertions(s: Subject) -> Iterator[Finding]:
                     test=fn.name,
                     line=call.line,
                 )
-        if not calls:
+        if not calls and not s.deep_checks.get(fn.name):
             yield _f(
                 "assertions",
                 "the test checks nothing: add an assertion or call the validation helper",
@@ -307,12 +313,15 @@ def check_style(s: Subject) -> Iterator[Finding]:
 def check_ids_and_entries(s: Subject) -> Iterator[Finding]:
     d = s.settings.data
     try:
-        ids = computed_test_ids(
+        own = computed_test_ids(
             s.code, s.settings.index.test_function_prefix, s.settings.index.test_class_prefix
         )
     except ValueError as exc:
-        yield _f("ids", str(exc))
-        return
+        if not (s.inherited_ids and str(exc).startswith("no test found")):
+            yield _f("ids", str(exc))
+            return
+        own = []  # a class that only inherits its tests
+    ids = list(dict.fromkeys([*own, *s.inherited_ids]))
     keys = [e.get(d.id_field) for e in s.entries]
     if any(not isinstance(k, str) for k in keys):
         yield _f("ids", f"every entry needs a string {d.id_field!r}")
@@ -322,7 +331,7 @@ def check_ids_and_entries(s: Subject) -> Iterator[Finding]:
     orphans = [k for k in keys if isinstance(k, str) and k not in ids]
     if orphans:
         yield _f("ids", f"entries for ids the code doesn't produce: {orphans} (computed: {ids})")
-    uses = _uses(s)
+    uses = s.uses
     for test_id in ids:
         use = uses.get(function_of(test_id))
         if use and use.reads_data and test_id not in keys:
@@ -334,7 +343,7 @@ def check_ids_and_entries(s: Subject) -> Iterator[Finding]:
 def check_data_keys(s: Subject) -> Iterator[Finding]:
     """Keys the test reads exist in each entry; every key is read or consumed (rule 1)."""
     d = s.settings.data
-    uses = _uses(s)
+    uses = s.uses
     ctx = {
         "id_field": d.id_field,
         "seed_sections": d.seed_sections,
@@ -372,7 +381,7 @@ def check_seeded_names(s: Subject) -> Iterator[Finding]:
     unique = re.compile(v.unique_name_pattern)
     for entry in s.entries:
         test_id = str(entry.get(s.settings.data.id_field, ""))
-        for section in s.settings.data.seed_sections:
+        for section in v.unique_name_sections:
             for key, value in _keyed_strings(entry.get(section)):
                 if key in v.name_keys and not any_placeholder.search(value):
                     yield _f(
@@ -382,7 +391,8 @@ def check_seeded_names(s: Subject) -> Iterator[Finding]:
                         test=test_id,
                     )
         for value in _strings(entry):
-            for match in unique.finditer(value):
+            match = unique.match(value)  # a name starts with the placeholder; messages don't
+            if match is not None:
                 length = int(match.group(1)) + len(unique.sub("", value))
                 if length > cap:
                     yield _f(
@@ -571,13 +581,16 @@ def validate_generated(
     draft: TestCaseDraft | None = None,
     data_text: str | None = None,
     imports: dict[str, list[str]] | None = None,
+    index: IndexData | None = None,
 ) -> ValidationReport:
     """Run every check. ``data_text`` is the written data file, if any (checks formatting);
     ``imports`` are the repo's import statements per module (see ``module_imports``), so names
-    a package re-exports count as existing."""
+    a package re-exports count as existing; ``index`` (the target repo's) lets the checks
+    follow reuse: inherited tests, and helpers or tests the test calls in base classes."""
     subject = Subject(
         generated, settings, catalog, first_party or [], draft, data_text, imports or {}
     )
+    subject.index = index
     report = ValidationReport(checks_run=["syntax"])
     report.findings += list(check_syntax(subject))
     if subject.tree is None:
@@ -597,21 +610,28 @@ def _prepare(s: Subject) -> None:
         s.tree, s.settings.index.test_function_prefix, s.settings.index.test_class_prefix
     )
     helpers = set(d.expectation_sections.values())
+    module = PurePosixPath(s.generated.file_name).with_suffix("").as_posix().replace("/", ".")
+    reuse = Resolver(s.tree, module, s.index, d.access, helpers)
+    s.resolver = reuse
+    prefix = s.settings.index.test_function_prefix
+    s.uses = dict(data_use(s.code, d.access, list(helpers), prefix))  # module-level tests
     for cls, fn in s.tests:
         local = class_local_members(cls) if cls else set()
-        resolver = ChainResolver(s.catalog, s.base, local)
-        s.chains[fn.name] = function_chains(fn, resolver)
+        bases = reuse.repo_bases(cls) if cls else []
+        start = bases[0] if bases else s.base  # the class's own base, else the suite's
+        s.chains[fn.name] = function_chains(fn, ChainResolver(s.catalog, start, local))
         s.checks[fn.name] = check_calls(fn, v.assertion_object, helpers)
-
-
-def _uses(s: Subject) -> dict[str, Any]:
-    d = s.settings.data
-    return data_use(
-        s.code,
-        d.access,
-        list(d.expectation_sections.values()),
-        s.settings.index.test_function_prefix,
-    )
+        if cls is not None:
+            s.uses[fn.name] = reuse.data_use(cls, fn)
+            s.deep_checks[fn.name] = reuse.checks_through_calls(cls, fn, v.assertion_object)
+    for cls in reuse.classes():
+        if not cls.name.startswith(s.settings.index.test_class_prefix):
+            continue
+        for test in reuse.inherited_tests(cls, prefix):
+            s.inherited_ids += test.ids
+            method = reuse.method(cls, test.name)
+            if method is not None:
+                s.uses[test.name] = reuse.data_use(cls, method)
 
 
 def _strings(value: Any) -> Iterator[str]:

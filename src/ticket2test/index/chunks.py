@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import ast
 import fnmatch
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any, NamedTuple
 
 from ticket2test.config import IndexSettings
 from ticket2test.index.catalog import SymbolCatalog
 from ticket2test.index.extract import ClassInfo, FileInfo, FunctionInfo
+from ticket2test.index.inheritance import inherited_tests, variant_classes
 from ticket2test.index.pytest_ids import compute_test_ids, is_parametrize
 from ticket2test.models.chunk import Chunk, DataFormat, Marker, Parametrize
 
@@ -58,7 +59,10 @@ def build_chunks(
     settings: IndexSettings,
     read_data: DataReader,
     custom_id_hook: bool = False,
+    infos: Mapping[str, FileInfo] | None = None,
 ) -> list[Chunk]:
+    """Chunks of one file. ``infos`` (every file, by path) lets test classes collect the tests
+    they inherit from bases in other files."""
     test_file = is_test_file(info.path, settings)
     data: DataFile | None = None
     data_path = data_file_for(info.path, settings)
@@ -83,15 +87,40 @@ def build_chunks(
             chunks.append(_class_chunk(info, cls, "page_object", whole=True))
         else:
             chunks.append(_class_chunk(info, cls, "class", whole=False))
+        collected = (
+            variant_classes(cls.name, cls.decorators, settings.class_variant_decorators)
+            if is_test_class
+            else None
+        ) or []
         for method in cls.methods:
             if is_test_class and method.name.startswith(settings.test_function_prefix):
-                chunks.append(
-                    _test_chunk(
-                        info, method, cls, data, data_path, parametrized_fixtures, custom_id_hook
-                    )
+                chunk = _test_chunk(
+                    info, method, cls, data, data_path, parametrized_fixtures, custom_id_hook
                 )
+                chunks.append(chunk.model_copy(update={"collected_classes": collected}))
             else:
                 chunks.append(_function_chunk(info, method, cls))
+        if is_test_class and infos is not None:
+            prefix = settings.test_function_prefix
+            for base_info, base_cls, method in inherited_tests(info, cls, catalog, infos, prefix):
+                chunk = _test_chunk(
+                    info,
+                    method,
+                    cls,
+                    data,
+                    data_path,
+                    parametrized_fixtures,
+                    custom_id_hook,
+                    extra_class_decorators=base_cls.decorators,
+                )
+                chunks.append(
+                    chunk.model_copy(
+                        update={
+                            "collected_classes": collected,
+                            "inherited_from": f"{base_info.path}::{base_cls.name}.{method.name}",
+                        }
+                    )
+                )
     return chunks
 
 
@@ -137,9 +166,10 @@ def _test_chunk(
     data_path: str,
     parametrized_fixtures: frozenset[str],
     custom_id_hook: bool,
+    extra_class_decorators: list[str] | None = None,
 ) -> Chunk:
     qualname = f"{cls.name}.{fn.name}" if cls else fn.name
-    class_decorators = cls.decorators if cls else []
+    class_decorators = [*(cls.decorators if cls else []), *(extra_class_decorators or [])]
     params = [p.name for p in fn.params if p.name not in ("self", "cls")]
     ids = compute_test_ids(
         fn.name,

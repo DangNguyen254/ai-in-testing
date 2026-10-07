@@ -127,7 +127,13 @@ def check_suite(repo: Path, settings: Settings, collect: bool = False) -> SuiteR
             context_tokens=0,
         )
         result = validate_generated(
-            generated, index.catalog, settings, roots, data_text=data_text, imports=imports
+            generated,
+            index.catalog,
+            settings,
+            roots,
+            data_text=data_text,
+            imports=imports,
+            index=index,
         )
         report.test_files += 1
         report.tests += len(ids)
@@ -168,11 +174,12 @@ def compare_ids(repo: Path, index: IndexData, settings: Settings) -> IdCompariso
     for chunk in index.chunks:
         if chunk.kind != "test":
             continue
-        node = _node_prefix(chunk.file_path, chunk.class_name)
-        if not chunk.test_ids_computed:
-            not_computed.append(f"{node}{chunk.symbol_name}")
-            continue
-        static.update(f"{node}{test_id}" for test_id in chunk.test_ids)
+        for class_name in chunk.collected_classes or [chunk.class_name or ""]:
+            node = _node_prefix(chunk.file_path, class_name)
+            if not chunk.test_ids_computed:
+                not_computed.append(f"{node}{chunk.symbol_name}")
+                continue
+            static.update(f"{node}{test_id}" for test_id in chunk.test_ids)
     run = collect_suite(repo, settings)
     comparison = IdComparison(
         ran=True,
@@ -290,5 +297,5 @@ def _data(
     return [e for e in data if isinstance(e, dict)], "array", text
 
 
-def _node_prefix(file_path: str, class_name: str | None) -> str:
+def _node_prefix(file_path: str, class_name: str) -> str:
     return f"{file_path}::{class_name}::" if class_name else f"{file_path}::"

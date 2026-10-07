@@ -1,0 +1,45 @@
+[
+   {
+      "test_id":"test_files_download_verdict",
+      "site":{
+         "files":[
+            {
+               "name":"report.pdf",
+               "content":"Quarterly numbers",
+               "active":"<script>track()</script>"
+            }
+         ]
+      },
+      "file":"report.pdf",
+      "decision":"converted",
+      "targets":[
+         {
+            "method":"GET",
+            "path":"/api/downloads/v1/log/:tid",
+            "response":[
+               {
+                  "file":"report.pdf",
+                  "decision":"converted"
+               }
+            ]
+         }
+      ]
+   },
+   {
+      "test_id":"test_files_viewer_strips_active_content",
+      "site":{
+         "files":[
+            {
+               "name":"report.pdf",
+               "content":"Quarterly numbers",
+               "active":"<script>track()</script>"
+            }
+         ]
+      },
+      "file":"report.pdf",
+      "decisions":{
+         "converted":"converted",
+         "original":"allowed"
+      }
+   }
+]

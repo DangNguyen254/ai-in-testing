@@ -51,6 +51,7 @@ def validate_test(
         setup.draft,
         data_text,
         module_imports(setup.index),
+        setup.index,
     )
 
 

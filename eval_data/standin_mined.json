@@ -12,7 +12,7 @@
       "tests": [
         "tests/rules/test_rules.py::TestRules::test_rules_add_duplicate_name"
       ],
-      "source": "mined: cf970e38d4 code_skip (Fix STND-103: reject duplicate rule names)"
+      "source": "mined: a18dd34066 code_skip (Fix STND-103: reject duplicate rule names)"
     },
     {
       "id": "mined-STND-104",
@@ -20,7 +20,15 @@
       "tests": [
         "tests/rules/test_rules.py::TestRules::test_rules_delete_single"
       ],
-      "source": "mined: 79e97a9bca data_skip (Fix STND-104: deleted rules stay deleted after publishing)"
+      "source": "mined: d74b052c24 data_skip (Fix STND-104: deleted rules stay deleted after publishing)"
+    },
+    {
+      "id": "mined-STND-117",
+      "ticket": "STND-117",
+      "tests": [
+        "tests/files/test_files_archives.py::TestFilesArchives::test_files_archive_member_blocked"
+      ],
+      "source": "mined: d7f0216ad6 data_skip (Fix STND-117: inspect members of nested archives)"
     }
   ]
 }

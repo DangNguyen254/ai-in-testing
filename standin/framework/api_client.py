@@ -33,9 +33,9 @@ class ApiClient:
    def reset(self):
       self.request("POST", "_reset", {})
 
-   def seed(self, blocks):
-      """Apply per-tenant seed blocks (settings, policy)."""
-      self.request("POST", "_seed", {"tenants": blocks})
+   def seed(self, blocks, site=None):
+      """Apply per-tenant seed blocks (settings, policy) and the fake site's files/pages."""
+      self.request("POST", "_seed", {"tenants": blocks, "site": site or {}})
 
    def revision(self, tenant):
       _, body = self.request("GET", f"policy/v1/revision/{tenant}")

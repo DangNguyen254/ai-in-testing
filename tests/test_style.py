@@ -13,7 +13,7 @@ from ticket2test.style import FormatError, format_entries, format_json, format_p
 from ticket2test.style.python import strip_annotations
 
 STANDIN = REPO_ROOT / "standin"
-FIRST_PARTY = ["app", "framework"]
+FIRST_PARTY = ["app", "framework", "tests"]
 
 MESSY = """from __future__ import annotations
 import pytest

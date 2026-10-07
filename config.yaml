@@ -75,7 +75,7 @@ data:                            # per-test JSON data files (reading accepts bot
   format: array                  # array: [{"test_id": "<pytest id>", ...}]; object: {"<pytest id>": {...}}
   id_field: test_id               # the entry key holding the pytest id
   access: ["self.params", params]        # tests index these to read their entry
-  seed_sections: [settings, policy, tenants]   # applied by the framework before the test
+  seed_sections: [settings, policy, tenants, site]   # applied by the framework before the test
   expectation_sections:                  # section -> the helper that reads it (one per entry)
     targets: self.verify_targets
     interactions: self.verify_interactions
@@ -150,6 +150,7 @@ validation:                     # deterministic checks of generated tests (Phase
     test_class: "Test[A-Z][A-Za-z0-9]*"
     test_function: "test_[a-z0-9_]+"
   name_keys: [name]               # seeded names must use the unique-name placeholder
+  unique_name_sections: [settings, policy, tenants]   # where that applies (not site)
   name_max_length: 32             # the app's name length limit ({test_id:N} + suffix)
   unique_name_helper: self.unique_name
   placeholder_pattern: '\{[a-z_]+\d*(?::\d+)?\}'   # any data placeholder (regex)
