@@ -152,6 +152,8 @@ validation:                     # deterministic checks of generated tests (Phase
   name_keys: [name]               # seeded names must use the unique-name placeholder
   name_max_length: 32             # the app's name length limit ({test_id:N} + suffix)
   unique_name_helper: self.unique_name
+  placeholder_pattern: '\{[a-z_]+\d*(?::\d+)?\}'   # any data placeholder (regex)
+  unique_name_pattern: '\{test_id:(\d+)\}'          # unique name; group 1 = max length
   capability_path: settings.capabilities
   capability_gates:               # component -> gates its features use (warning otherwise)
     rules: [rules, bulk_delete, import]

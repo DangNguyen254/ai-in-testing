@@ -41,9 +41,6 @@ from ticket2test.validate.code import (
 )
 from ticket2test.validate.report import Finding, Severity, ValidationReport
 
-_PLACEHOLDER = re.compile(r"\{test_id:(\d+)\}")
-_ANY_PLACEHOLDER = re.compile(r"\{[a-z_]+\d*(?::\d+)?\}")
-
 
 @dataclass
 class Subject:
@@ -371,11 +368,13 @@ def check_seeded_names(s: Subject) -> Iterator[Finding]:
     """Seeded object names use the unique-name placeholder and fit the name length limit."""
     v = s.settings.validation
     cap = v.name_max_length
+    any_placeholder = re.compile(v.placeholder_pattern)
+    unique = re.compile(v.unique_name_pattern)
     for entry in s.entries:
         test_id = str(entry.get(s.settings.data.id_field, ""))
         for section in s.settings.data.seed_sections:
             for key, value in _keyed_strings(entry.get(section)):
-                if key in v.name_keys and not _ANY_PLACEHOLDER.search(value):
+                if key in v.name_keys and not any_placeholder.search(value):
                     yield _f(
                         "names_unique",
                         f"seeded name {value!r} is a literal: use the unique-name placeholder "
@@ -383,8 +382,8 @@ def check_seeded_names(s: Subject) -> Iterator[Finding]:
                         test=test_id,
                     )
         for value in _strings(entry):
-            for match in _PLACEHOLDER.finditer(value):
-                length = int(match.group(1)) + len(_PLACEHOLDER.sub("", value))
+            for match in unique.finditer(value):
+                length = int(match.group(1)) + len(unique.sub("", value))
                 if length > cap:
                     yield _f(
                         "name_length",

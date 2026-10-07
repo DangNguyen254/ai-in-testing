@@ -19,7 +19,7 @@ from fnmatch import fnmatch
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from ticket2test.config import Settings
 from ticket2test.generate.generator import first_party
@@ -89,6 +89,7 @@ class SuiteReport(BaseModel):
     ids: IdComparison = Field(default_factory=IdComparison)
     seconds: float = 0.0
 
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def ok(self) -> bool:
         no_id_gaps = not (self.ids.only_static or self.ids.only_collected)

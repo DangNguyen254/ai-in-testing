@@ -573,3 +573,32 @@ def test_names_a_package_re_exports_are_known(setup: Any) -> None:
         generated, index.catalog, settings, fp, imports=module_imports(index)
     )
     assert not [f for f in report.findings if f.check == "imports"]
+
+
+def test_placeholder_syntax_comes_from_config(setup: Any) -> None:
+    base_settings, _, _ = setup
+    settings = base_settings.model_copy(
+        update={
+            "validation": base_settings.validation.model_copy(
+                update={
+                    "placeholder_pattern": r"\$\{[a-z]+(?::\d+)?\}",
+                    "unique_name_pattern": r"\$\{unique:(\d+)\}",
+                }
+            )
+        }
+    )
+    entry = copy.deepcopy(GOOD_ENTRY)
+    for rule in entry["policy"]["rules"]:
+        rule["name"] = rule["name"].replace("{test_id:12}", "${unique:12}")
+    entry["page_2_names"] = [
+        n.replace("{test_id:12}", "${unique:12}") for n in entry["page_2_names"]
+    ]
+    report = _validate(setup, entries=[entry], settings=settings)
+    assert not [f for f in report.findings if f.check in ("names_unique", "name_length")]
+    entry["policy"]["rules"][0]["name"] = "${unique:30}-alpha-web"
+    report = _validate(setup, entries=[entry], settings=settings)
+    assert _messages(report, "name_length") == [
+        "'${unique:30}-alpha-web' can be 40 characters; the limit is 32"
+    ]
+    # With the default (stand-in) patterns, the length check can't see the new syntax.
+    assert not _messages(_validate(setup, entries=[entry]), "name_length")

@@ -88,3 +88,11 @@ def test_cli_check_suite(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     assert result.exit_code == 1 and "style.python" in result.output
     result = runner.invoke(app, ["check-suite", str(tmp_path / "missing")])
     assert result.exit_code == 2
+
+
+def test_the_json_report_says_whether_it_is_clean(tmp_path: Path) -> None:
+    import json
+
+    report = check_suite(STANDIN, _settings(tmp_path))
+    data = json.loads(report.model_dump_json())
+    assert data["ok"] is True and data["errors"] == 0

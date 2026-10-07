@@ -261,6 +261,10 @@ class ValidateSettings(_Section):
     name_keys: list[str] = Field(default_factory=lambda: ["name"])
     name_max_length: int = Field(default=32, ge=1)  # the app's name length limit
     unique_name_helper: str = "self.unique_name"
+    # Data placeholders (regexes). Any placeholder makes a seeded name non-literal; the
+    # unique-name one has the name's maximum length as its first group.
+    placeholder_pattern: str = r"\{[a-z_]+\d*(?::\d+)?\}"
+    unique_name_pattern: str = r"\{test_id:(\d+)\}"
     # Capability gates: where they sit in a seed section, and the gates each component's
     # features use. A component missing here is not checked.
     capability_path: str = "settings.capabilities"

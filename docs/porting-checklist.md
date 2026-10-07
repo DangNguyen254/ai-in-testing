@@ -5,6 +5,11 @@ depends on a real company environment sits behind adapters and config. This chec
 what to fill in, in the order it's usually needed. It contains no company data: every value
 below is a placeholder to replace inside the company environment.
 
+An AI assistant that can read the real suite can do sections 3–6 (the private config, the
+conventions doc, the sandbox requirements, the calibration loop): give it
+`docs/integration-brief.md`, which defines the files it writes, the reports it reads, and how to
+find every value.
+
 ## 0. Approvals first
 
 - [ ] Approval to bring this code into the company environment (IP, licence: MIT).
