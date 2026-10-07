@@ -43,7 +43,7 @@ Read this first when resuming in a new session.
 **Next steps (for the human to choose):**
 1. Phase 9 (Rust support), or skip it for now.
 2. Hand-label the 12 LLM-judge verdicts in the baseline report to validate the judge (it marks default metadata such as `deployment_type: both` as "unsupported").
-3. Port to the company environment: `docs/porting-checklist.md`; then the real-codebase style check deferred from Phase 6.
+3. Port to the company environment: `docs/porting-checklist.md`. The order: approvals → install → private config (`T2T_CONFIG`) → `index` → `sandbox --build` with the suite's requirements → **`check-suite <repo> --collect` until clean** → conventions doc → one ticket end to end → the real-codebase style check deferred from Phase 6 → `mine` + eval baseline.
 
 **Known open points (not blocking):**
 - Template choice: STND-106 used `test_rules_add_basic[allow]` as the base instead of a list or pagination test. Ranking is same component first, then the retrieval score.
@@ -58,6 +58,8 @@ Read this first when resuming in a new session.
 - Validate generated tests: `.venv/Scripts/ticket2test.exe validate output/generated/live-v4 --repo standin` (add `--collect` for the sandbox).
 - Sandbox: Podman runs here (Docker's daemon doesn't), so set `T2T_SANDBOX__RUNTIME=podman`. The image `t2t-sandbox:py3.12` is built (`ticket2test sandbox --build`, approved by the human on 2026-10-06: public `python:3.12-slim` + pytest/selenium from PyPI). Real-container tests: `T2T_SANDBOX__RUNTIME=podman .venv/Scripts/python.exe -m pytest -m sandbox`.
 - The machine's Podman store also holds an unrelated image from a private registry. Never use or reference it (Hard Constraint 1); the sandbox uses only its own image.
+- This machine's container setup has a registry credential helper whose login can expire; Podman then fails even for local images. The sandbox now passes an empty credentials file on every runtime call (`sandbox.registry_auth: false`), so it doesn't depend on it. Never touch the developer's registry or cloud logins.
+- Calibration: `.venv/Scripts/ticket2test.exe check-suite standin --collect` (stand-in: clean, 36/36 ids match).
 
 **Working notes for Claude Code:**
 - **Rules:**
@@ -713,6 +715,19 @@ Read this first when resuming in a new session.
 
 ---
 
+## Porting preparation (after Phase 8)
+**Status:** ✅ Done (2026-10-07)
+
+**Why:** the human asked what porting to the real codebase needs. Two generic gaps were closed first, so porting becomes "fill in the private config, rerun `check-suite` until clean".
+
+**Log:**
+- 2026-10-07: Built.
+  - **`check-suite <repo> [--collect]` (`validate/suite.py`):** runs the validators over every existing test file (files matching the test globs that contain tests), groups errors by check with the config keys to look at, counts warnings only, lists files with non-literal parametrize, and with `--collect` compares the statically computed ids with `pytest --collect-only` of the whole suite in the sandbox (`collect_suite`). Report in JSON + Markdown; exit code 1 unless clean.
+  - **Validator fix found by it:** names a package re-exports (`from framework.pages import Navigator`, defined in `framework/pages/nav.py`) were reported as missing. `validate_generated` now takes the repo's import statements per module (`module_imports(index)`); used by `generate`, `validate`, `check-suite`, and the eval.
+  - **Configurable sandbox image:** `sandbox.base_image` and `sandbox.requirements` (default: packaged `sandbox/requirements.txt`, pytest + selenium pinned to `uv.lock`, checked by a test). The build stages the Containerfile + requirements in a temporary context under `.scratch/sandbox/`; the image runs as a numeric non-root user (no user tools needed in the base image).
+  - **Credential isolation:** the first real rebuild failed: this machine's registry credential helper had an expired login, and Podman consulted it even for local images. Every runtime call now gets an empty credentials file / Docker config under the work dir (`sandbox.registry_auth: false`, the default), and runs use `--pull=never`. Rebuild and runs then worked without any login.
+- 2026-10-07: Verified. ruff, mypy strict, pytest 496 passed, 14 deselected; `-m sandbox` 2 passed. `check-suite standin --collect`: clean, 5 test files, 36 static ids = 36 collected. `check-suite` on httpx (untuned, a differently shaped suite): 2,601 errors, mostly markers (none), assertions (bare `assert`), style (4-space indent, annotations), base class (none): the first run on a new suite shows which config sections to change.
+
 ## Global open questions (for the human)
 - Which LLM provider/endpoint will the company environment require?
 - Is there an existing conventions doc for tests at the company?
@@ -749,4 +764,5 @@ Read this first when resuming in a new session.
 | 2026-10-06 | 6 | Closed (real-codebase style check deferred to integration; human decision) |
 | 2026-10-06 | 7 | Validators (errors + reviewer warnings), repair loop, container sandbox (Podman verified); marked ✅ Done |
 | 2026-10-06 | 8 | Eval harness: 31 pairs (+2 mined), mining, generation eval with leave-one-out and sandbox, judge, report; baseline run; marked ✅ Done |
+| 2026-10-07 | – | Porting preparation: `check-suite` (calibration), configurable sandbox image (base image, requirements), registry-credential isolation, re-export fix |
 | 2026-10-06 | 3b | Stand-in v2 built and verified (patterns checked by project tests; indexer reads array data and infers unannotated types; config `data`; `Chunk.data_format`); marked ✅ Done. v1 generator tests skipped until `generate_v2` |

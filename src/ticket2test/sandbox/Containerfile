@@ -1,11 +1,14 @@
-# Sandbox image for collecting generated tests (`pytest --collect-only`).
-# Public base image; test-time dependencies pinned to the versions in uv.lock.
-# Build: ticket2test sandbox --build   (or: podman build -t t2t-sandbox:py3.12 -f Containerfile .)
-FROM docker.io/library/python:3.12-slim
+# Sandbox image for collecting tests (`pytest --collect-only`).
+# The base image and the requirements file come from config (sandbox.base_image,
+# sandbox.requirements); `ticket2test sandbox --build` stages this file with the requirements
+# file as requirements.txt and passes BASE_IMAGE as a build argument.
+ARG BASE_IMAGE=docker.io/library/python:3.12-slim
+FROM ${BASE_IMAGE}
 
-RUN pip install --no-cache-dir pytest==9.1.1 selenium==4.50.0 \
-    && useradd --create-home --uid 10001 runner
+COPY requirements.txt /tmp/t2t-requirements.txt
+RUN python -m pip install --no-cache-dir -r /tmp/t2t-requirements.txt
 
-USER runner
+# A numeric non-root user: works without user-management tools in the base image.
+USER 10001:10001
 WORKDIR /work
-ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONDONTWRITEBYTECODE=1 HOME=/tmp

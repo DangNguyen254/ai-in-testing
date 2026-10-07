@@ -286,6 +286,14 @@ class SandboxSettings(_Section):
     runtime: Literal["docker", "podman"] = "docker"
     timeout_seconds: int = Field(default=120, ge=1)
     image: str = "t2t-sandbox:py3.12"  # built from sandbox/Containerfile (`ticket2test sandbox`)
+    # What the image is built from: an approved base image with Python, and the target suite's
+    # test-time requirements file (None: the packaged default, pytest + selenium pinned).
+    base_image: str = "docker.io/library/python:3.12-slim"
+    requirements: Path | None = None
+    # False: the runtime gets an empty credentials file, so the sandbox never uses the
+    # developer's registry logins (public base images pull anonymously). True: use them (for
+    # a base image in a registry that needs a login).
+    registry_auth: bool = False
     memory: str = "1g"
     pids_limit: int = Field(default=256, ge=16)
     # Staging folder for each run (inside the repo, git-ignored).

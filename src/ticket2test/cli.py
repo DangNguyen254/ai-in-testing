@@ -444,7 +444,7 @@ def validate(
     from ticket2test.index.indexer import update_index
     from ticket2test.models.generated import GeneratedTest
     from ticket2test.sandbox.runner import SandboxError, collect_generated
-    from ticket2test.validate.validator import validate_generated
+    from ticket2test.validate.validator import module_imports, validate_generated
 
     state: AppState = ctx.obj
     settings = state.settings
@@ -460,12 +460,15 @@ def validate(
         raise typer.Exit(code=2)
     index, _, _ = update_index(repo, settings)
     roots = first_party(index, settings)
+    imports = module_imports(index)
     failed = 0
     for path in files:
         generated = GeneratedTest.model_validate_json(path.read_text(encoding="utf-8"))
         data_path = path.parent / generated.data_file_name
         data_text = data_path.read_text(encoding="utf-8") if data_path.is_file() else None
-        report = validate_generated(generated, index.catalog, settings, roots, data_text=data_text)
+        report = validate_generated(
+            generated, index.catalog, settings, roots, data_text=data_text, imports=imports
+        )
         update: dict[str, object] = {"validation_report": report.model_dump(mode="json")}
         typer.echo(
             f"{generated.ticket_id} {generated.file_name}: {'ok' if report.ok else 'FAILED'} "
@@ -647,3 +650,42 @@ def mine(
     for m in mined:
         typer.echo(f"{m.ticket}: {m.test} ({m.kind}, {m.commit[:10]})")
     typer.echo(f"{len(mined)} pair(s) -> {out}")
+
+
+@app.command(name="check-suite")
+def check_suite_cmd(
+    ctx: typer.Context,
+    repo: Annotated[Path, typer.Argument(help="An existing test suite (read only).")],
+    collect: Annotated[
+        bool,
+        typer.Option("--collect", help="Also compare static ids with a sandbox collect."),
+    ] = False,
+    out: Annotated[
+        Path | None, typer.Option(help="Report directory (default: <output_dir>/reports).")
+    ] = None,
+) -> None:
+    """Check the config against an existing suite: its own tests should pass the validators."""
+    from datetime import UTC, datetime
+
+    from ticket2test.sandbox.runner import SandboxError
+    from ticket2test.validate.suite import check_suite, render_markdown
+
+    state: AppState = ctx.obj
+    if not repo.is_dir():
+        typer.echo(f"Error: repo not found: {repo}", err=True)
+        raise typer.Exit(code=2)
+    try:
+        report = check_suite(repo, state.settings, collect=collect)
+    except SandboxError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    folder = out or state.settings.paths.output_dir / "reports"
+    folder.mkdir(parents=True, exist_ok=True)
+    stem = f"check-suite-{datetime.now(UTC):%Y%m%dT%H%M%S}"
+    markdown = render_markdown(report)
+    (folder / f"{stem}.json").write_text(report.model_dump_json(indent=2), encoding="utf-8")
+    (folder / f"{stem}.md").write_text(markdown, encoding="utf-8")
+    typer.echo(markdown)
+    typer.echo(f"Wrote {folder / stem}.json and .md")
+    if not report.ok:
+        raise typer.Exit(code=1)

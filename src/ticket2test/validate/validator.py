@@ -18,6 +18,7 @@ from ticket2test.config import Settings
 from ticket2test.generate.entries import function_of
 from ticket2test.generate.inspect import computed_test_ids, data_use
 from ticket2test.index.catalog import ClassEntry, SymbolCatalog
+from ticket2test.index.indexer import IndexData
 from ticket2test.index.tokens import split_identifier
 from ticket2test.models.draft import TestCaseDraft
 from ticket2test.models.generated import GeneratedTest, _name_problems, _unconsumed_keys
@@ -54,6 +55,7 @@ class Subject:
     first_party: list[str]
     draft: TestCaseDraft | None
     data_text: str | None
+    module_imports: dict[str, list[str]] = field(default_factory=dict)  # module -> imports
     tree: ast.Module | None = None
     tests: list[tuple[ast.ClassDef | None, ast.FunctionDef]] = field(default_factory=list)
     chains: dict[str, FunctionChains] = field(default_factory=dict)  # by function name
@@ -107,12 +109,30 @@ def check_imports(s: Subject) -> Iterator[Finding]:
             if module in modules:
                 for alias in node.names:
                     name = f"{module}.{alias.name}"
-                    if not (s.catalog.find(name) or name in modules):
+                    reexported = _reexports(s.module_imports.get(module, []), alias.name)
+                    if not (s.catalog.find(name) or name in modules or reexported):
                         yield _f(
                             "imports", f"{module} has no name {alias.name!r}", line=node.lineno
                         )
             elif not _known_module(module, modules, external):
                 yield _f("imports", f"unknown module {module!r}", line=node.lineno)
+
+
+def _reexports(imports: list[str], name: str) -> bool:
+    """The module imports ``name`` itself (e.g. a package ``__init__`` re-exporting it)."""
+    word = re.compile(rf"\b{re.escape(name)}\b")
+    return any(
+        " import " in f" {line} " and word.search(line.split("import", 1)[1]) for line in imports
+    )
+
+
+def module_imports(index: IndexData) -> dict[str, list[str]]:
+    """Top-level import statements per module of the indexed repo."""
+    return {
+        record.info.module: record.info.imports
+        for record in index.files.values()
+        if record.info is not None
+    }
 
 
 def _known_module(name: str, modules: set[str], external: set[str]) -> bool:
@@ -551,9 +571,14 @@ def validate_generated(
     first_party: list[str] | None = None,
     draft: TestCaseDraft | None = None,
     data_text: str | None = None,
+    imports: dict[str, list[str]] | None = None,
 ) -> ValidationReport:
-    """Run every check. ``data_text`` is the written data file, if any (checks formatting)."""
-    subject = Subject(generated, settings, catalog, first_party or [], draft, data_text)
+    """Run every check. ``data_text`` is the written data file, if any (checks formatting);
+    ``imports`` are the repo's import statements per module (see ``module_imports``), so names
+    a package re-exports count as existing."""
+    subject = Subject(
+        generated, settings, catalog, first_party or [], draft, data_text, imports or {}
+    )
     report = ValidationReport(checks_run=["syntax"])
     report.findings += list(check_syntax(subject))
     if subject.tree is None:

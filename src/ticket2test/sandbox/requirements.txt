@@ -1,0 +1,4 @@
+# Default test-time dependencies of the sandbox image (the stand-in suite's).
+# For a real suite, point sandbox.requirements at that suite's requirements file instead.
+pytest==9.1.1
+selenium==4.50.0

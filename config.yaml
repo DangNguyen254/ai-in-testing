@@ -169,6 +169,10 @@ sandbox:                          # `pytest --collect-only` in a container (Hard
   runtime: docker                 # docker | podman (or T2T_SANDBOX__RUNTIME)
   timeout_seconds: 120
   image: t2t-sandbox:py3.12       # build: ticket2test sandbox --build
+  base_image: docker.io/library/python:3.12-slim   # an approved image with Python
+  requirements: null              # the target suite's test-time requirements file
+                                  # (null: packaged default, pytest + selenium pinned)
+  registry_auth: false            # false: never use the developer's registry logins
   memory: 1g
   pids_limit: 256
   work_dir: .scratch/sandbox      # staging folder per run (git-ignored)

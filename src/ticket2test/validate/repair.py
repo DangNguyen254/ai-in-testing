@@ -27,7 +27,7 @@ from ticket2test.prompts import PromptTemplate, load_prompt
 from ticket2test.security import scrub_text
 from ticket2test.style import format_entries
 from ticket2test.validate.report import ValidationReport
-from ticket2test.validate.validator import validate_generated
+from ticket2test.validate.validator import module_imports, validate_generated
 
 
 @dataclass(frozen=True)
@@ -50,6 +50,7 @@ def validate_test(
         first_party(setup.index, settings),
         setup.draft,
         data_text,
+        module_imports(setup.index),
     )
 
 

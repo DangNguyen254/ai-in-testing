@@ -63,11 +63,14 @@ below is a placeholder to replace inside the company environment.
 - [ ] `validation.name_max_length` (the app's name limit), `name_keys`.
 - [ ] `validation.capability_gates` (component → gates its features use),
       `capability_path`, `paging_actions`, `constant_properties`.
-- [ ] Check: the real suite's own test files pass the validators with no errors (the same
-      check `tests/test_validate.py` runs on the stand-in).
-- [ ] `sandbox.runtime` (Docker or Podman) and an image with the suite's test-time
-      dependencies: extend `src/ticket2test/sandbox/Containerfile` (pinned versions, approved
-      base image from an allowed registry).
+- [ ] `sandbox.runtime` (Docker or Podman), `sandbox.base_image` (an approved image with
+      Python), `sandbox.requirements` (the suite's test-time requirements file, pinned), and
+      `sandbox.registry_auth` (true only if the base image's registry needs a login). Then
+      `ticket2test sandbox --build`.
+- [ ] **Calibrate:** `ticket2test check-suite <repo> --collect`, fix the config keys it names,
+      and rerun until it reports "clean". The suite's own tests are known-good, so every error
+      is a config value that doesn't describe the suite; `--collect` also compares the
+      statically computed test ids with a real collect in the sandbox.
 - [ ] `repair.max_attempts`.
 
 ## 6. Eval (`eval_data/`)

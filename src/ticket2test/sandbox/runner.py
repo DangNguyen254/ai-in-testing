@@ -1,15 +1,23 @@
-"""Collect a generated test inside a container (Hard Constraint 3).
+"""Collect tests inside a container (Hard Constraint 3).
 
 Generated code is untrusted, and ``pytest --collect-only`` imports it, so it never runs on the
 host. The container gets no network, a read-only root file system, no capabilities, a process
 and memory limit, the target repo mounted read-only at ``/repo``, and one writable staging
 folder at ``/work`` (inside this repo's git-ignored ``.scratch/``). Inside, the repo is copied
-to ``/work/repo``, the generated files are placed at their repo paths, and pytest collects
-only the generated module. A missing runtime or image is a clear error, never a host run.
+to ``/work/repo``, generated files (if any) are placed at their repo paths, and pytest collects
+either the generated module or the whole suite (``collect_suite``, used by ``check-suite``).
+A missing runtime or image is a clear error, never a host run. Runs never pull images
+(``--pull=never``), and unless ``sandbox.registry_auth`` is set, every runtime call gets an
+empty credentials file, so the developer's registry logins (and credential helpers) are never
+used.
+
+The image is built from the packaged ``Containerfile`` with a configurable base image and
+requirements file, so it can hold the target suite's test-time dependencies.
 """
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -28,6 +36,7 @@ from ticket2test.style import format_entries
 Runner = Callable[..., subprocess.CompletedProcess[str]]
 
 CONTAINERFILE = Path(__file__).with_name("Containerfile")
+DEFAULT_REQUIREMENTS = Path(__file__).with_name("requirements.txt")
 _OUTPUT_TAIL = 4000
 
 
@@ -61,18 +70,36 @@ def find_runtime(sandbox: SandboxSettings) -> str:
     return exe
 
 
+def build_args(exe: str, sandbox: SandboxSettings, context: Path) -> list[str]:
+    return [
+        exe,
+        "build",
+        "-t",
+        sandbox.image,
+        "--build-arg",
+        f"BASE_IMAGE={sandbox.base_image}",
+        "-f",
+        str(context / "Containerfile"),
+        str(context),
+    ]
+
+
 def build_image(settings: Settings, runner: Runner = subprocess.run) -> str:
-    """Build the sandbox image from the packaged Containerfile. Returns the build output."""
-    exe = find_runtime(settings.sandbox)
-    args = [exe, "build", "-t", settings.sandbox.image, "-f", str(CONTAINERFILE)]
-    proc = runner(
-        [*args, str(CONTAINERFILE.parent)],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
+    """Build the sandbox image: the packaged Containerfile, ``sandbox.base_image``, and the
+    ``sandbox.requirements`` file (staged as the only build context). Returns the output."""
+    sandbox = settings.sandbox
+    exe = find_runtime(sandbox)
+    requirements = sandbox.requirements or DEFAULT_REQUIREMENTS
+    if not requirements.is_file():
+        raise SandboxError(f"Requirements file not found: {requirements} (sandbox.requirements)")
+    context = sandbox.work_dir / f"build-{uuid.uuid4().hex[:12]}"
+    context.mkdir(parents=True)
+    try:
+        shutil.copyfile(CONTAINERFILE, context / "Containerfile")
+        shutil.copyfile(requirements, context / "requirements.txt")
+        proc = _call(runner, settings, build_args(exe, sandbox, context.resolve()))
+    finally:
+        shutil.rmtree(context, ignore_errors=True)
     if proc.returncode != 0:
         raise SandboxError(f"Image build failed:\n{(proc.stdout + proc.stderr)[-_OUTPUT_TAIL:]}")
     return proc.stdout + proc.stderr
@@ -80,14 +107,7 @@ def build_image(settings: Settings, runner: Runner = subprocess.run) -> str:
 
 def image_exists(settings: Settings, runner: Runner = subprocess.run) -> bool:
     exe = find_runtime(settings.sandbox)
-    proc = runner(
-        [exe, "image", "inspect", settings.sandbox.image],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
+    proc = _call(runner, settings, [exe, "image", "inspect", settings.sandbox.image])
     return proc.returncode == 0
 
 
@@ -97,80 +117,139 @@ def collect_generated(
     settings: Settings,
     runner: Runner = subprocess.run,
 ) -> CollectReport:
-    sandbox = settings.sandbox
-    exe = find_runtime(sandbox)
-    if not image_exists(settings, runner):
-        raise SandboxError(
-            f"Sandbox image {sandbox.image!r} not found. Build it with "
-            "`ticket2test sandbox --build`."
-        )
     stage = _stage(generated, settings)
-    name = f"t2t-collect-{stage.name}"
-    args = run_args(exe, sandbox, repo_root.resolve(), stage.resolve(), name, generated.file_name)
-    started = time.monotonic()
-    try:
-        proc = runner(
-            args,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=sandbox.timeout_seconds,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as exc:
-        runner(
-            [exe, "rm", "-f", name],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=False,
-        )
+    run = _run(repo_root, stage, generated.file_name, settings, runner)
+    expected = list(generated.test_ids)
+    if run.timed_out:
         return CollectReport(
             ok=False,
-            runtime=sandbox.runtime,
-            image=sandbox.image,
+            runtime=settings.sandbox.runtime,
+            image=settings.sandbox.image,
             exit_code=None,
             timed_out=True,
-            duration_seconds=round(time.monotonic() - started, 1),
-            expected=list(generated.test_ids),
-            missing=list(generated.test_ids),
-            output_tail=_tail(_text(exc.stdout) + _text(exc.stderr)),
+            duration_seconds=run.seconds,
+            expected=expected,
+            missing=expected,
+            output_tail=run.output_tail,
         )
-    finally:
-        shutil.rmtree(stage, ignore_errors=True)
-    collected = parse_collected(proc.stdout)
-    missing = [t for t in generated.test_ids if t not in collected]
-    unexpected = [t for t in collected if t not in generated.test_ids]
+    collected = parse_collected(run.stdout)
+    missing = [t for t in expected if t not in collected]
+    unexpected = [t for t in collected if t not in expected]
     return CollectReport(
-        ok=proc.returncode == 0 and not missing and not unexpected,
-        runtime=sandbox.runtime,
-        image=sandbox.image,
-        exit_code=proc.returncode,
-        duration_seconds=round(time.monotonic() - started, 1),
-        expected=list(generated.test_ids),
+        ok=run.exit_code == 0 and not missing and not unexpected,
+        runtime=settings.sandbox.runtime,
+        image=settings.sandbox.image,
+        exit_code=run.exit_code,
+        duration_seconds=run.seconds,
+        expected=expected,
         collected=collected,
         missing=missing,
         unexpected=unexpected,
-        output_tail=_tail(proc.stdout + proc.stderr),
+        output_tail=run.output_tail,
     )
 
 
+class SuiteCollect(BaseModel):
+    """``pytest --collect-only`` over a whole suite (hand-written tests, in the sandbox)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    exit_code: int | None
+    timed_out: bool = False
+    duration_seconds: float
+    node_ids: list[str] = Field(default_factory=list)  # "path::Class::test[id]"
+    output_tail: str = ""
+
+
+def collect_suite(
+    repo_root: Path, settings: Settings, runner: Runner = subprocess.run
+) -> SuiteCollect:
+    stage = settings.sandbox.work_dir / f"run-{uuid.uuid4().hex[:12]}"
+    stage.mkdir(parents=True)
+    run = _run(repo_root, stage, None, settings, runner)
+    return SuiteCollect(
+        exit_code=run.exit_code,
+        timed_out=run.timed_out,
+        duration_seconds=run.seconds,
+        node_ids=[] if run.timed_out else parse_node_ids(run.stdout),
+        output_tail=run.output_tail,
+    )
+
+
+class _Run(BaseModel):
+    exit_code: int | None
+    timed_out: bool
+    seconds: float
+    stdout: str
+    output_tail: str
+
+
+def _run(
+    repo_root: Path,
+    stage: Path,
+    test_file: str | None,
+    settings: Settings,
+    runner: Runner,
+) -> _Run:
+    """One container run; the staging folder is removed afterwards."""
+    sandbox = settings.sandbox
+    try:
+        exe = find_runtime(sandbox)
+        if not image_exists(settings, runner):
+            raise SandboxError(
+                f"Sandbox image {sandbox.image!r} not found. Build it with "
+                "`ticket2test sandbox --build`."
+            )
+        name = f"t2t-collect-{stage.name}"
+        args = run_args(exe, sandbox, repo_root.resolve(), stage.resolve(), name, test_file)
+        started = time.monotonic()
+        try:
+            proc = _call(runner, settings, args, timeout=sandbox.timeout_seconds)
+        except subprocess.TimeoutExpired as exc:
+            _call(runner, settings, [exe, "rm", "-f", name])
+            return _Run(
+                exit_code=None,
+                timed_out=True,
+                seconds=round(time.monotonic() - started, 1),
+                stdout="",
+                output_tail=_tail(_text(exc.stdout) + _text(exc.stderr)),
+            )
+        return _Run(
+            exit_code=proc.returncode,
+            timed_out=False,
+            seconds=round(time.monotonic() - started, 1),
+            stdout=proc.stdout,
+            output_tail=_tail(proc.stdout + proc.stderr),
+        )
+    finally:
+        shutil.rmtree(stage, ignore_errors=True)
+
+
 def run_args(
-    exe: str, sandbox: SandboxSettings, repo: Path, stage: Path, name: str, test_file: str
+    exe: str,
+    sandbox: SandboxSettings,
+    repo: Path,
+    stage: Path,
+    name: str,
+    test_file: str | None,
 ) -> list[str]:
-    target = PurePosixPath(test_file).as_posix()
-    if not re.fullmatch(r"[\w./-]+", target) or ".." in target.split("/"):
-        raise SandboxError(f"unsafe test file path: {test_file!r}")
+    """The container command. ``test_file`` None: collect the whole suite."""
+    target = ""
+    if test_file is not None:
+        target = PurePosixPath(test_file).as_posix()
+        if not re.fullmatch(r"[\w./-]+", target) or ".." in target.split("/"):
+            raise SandboxError(f"unsafe test file path: {test_file!r}")
+        target = f" '{target}'"
     script = (
-        "set -e; cp -r /repo /work/repo; cp -r /work/generated/. /work/repo/; cd /work/repo; "
-        f"python -m pytest --collect-only -q -p no:cacheprovider '{target}'"
+        "set -e; cp -r /repo /work/repo; "
+        "if [ -d /work/generated ]; then cp -r /work/generated/. /work/repo/; fi; cd /work/repo; "
+        f"python -m pytest --collect-only -q -p no:cacheprovider{target}"
     )
     return [
         exe,
         "run",
         "--rm",
+        "--pull=never",
         "--name",
         name,
         "--network=none",
@@ -199,7 +278,14 @@ def run_args(
 
 def parse_collected(stdout: str) -> list[str]:
     """``tests/x.py::TestX::test_y[a]`` lines -> ["test_y[a]"] (pytest -q --collect-only)."""
-    return [line.strip().rsplit("::", 1)[1] for line in stdout.splitlines() if "::" in line]
+    return [node.rsplit("::", 1)[1] for node in parse_node_ids(stdout)]
+
+
+def parse_node_ids(stdout: str) -> list[str]:
+    """Full node ids from ``pytest --collect-only -q`` output."""
+    return [
+        line.strip() for line in stdout.splitlines() if "::" in line and " " not in line.strip()
+    ]
 
 
 def _stage(generated: GeneratedTest, settings: Settings) -> Path:
@@ -224,6 +310,39 @@ def _safe_write(root: Path, relative: str, text: str) -> None:
         raise SandboxError(f"refusing to write outside the staging folder: {relative}")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8", newline="\n")
+
+
+def _call(
+    runner: Runner, settings: Settings, args: list[str], timeout: float | None = None
+) -> subprocess.CompletedProcess[str]:
+    kwargs: dict[str, Any] = {
+        "capture_output": True,
+        "text": True,
+        "encoding": "utf-8",
+        "errors": "replace",
+        "check": False,
+        "env": runtime_env(settings),
+    }
+    if timeout is not None:
+        kwargs["timeout"] = timeout
+    return runner(args, **kwargs)
+
+
+def runtime_env(settings: Settings) -> dict[str, str]:
+    """The environment for runtime calls: the current one, plus (unless registry_auth) an
+    empty credentials file for Podman and an empty config folder for Docker, under the
+    sandbox work dir. That keeps the developer's registry logins out of the sandbox."""
+    env = dict(os.environ)
+    if settings.sandbox.registry_auth:
+        return env
+    folder = (settings.sandbox.work_dir / "auth").resolve()
+    (folder / "docker").mkdir(parents=True, exist_ok=True)
+    for path in (folder / "auth.json", folder / "docker" / "config.json"):
+        if not path.is_file():
+            path.write_text("{}\n", encoding="utf-8")
+    env["REGISTRY_AUTH_FILE"] = str(folder / "auth.json")
+    env["DOCKER_CONFIG"] = str(folder / "docker")
+    return env
 
 
 def _text(value: Any) -> str:

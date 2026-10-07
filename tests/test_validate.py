@@ -535,3 +535,41 @@ def test_claim_clauses_keep_lists_quotes_and_negations_together() -> None:
         "The tenant's policy has the rule",
         "the primary's is unchanged",
     ]
+
+
+def test_names_a_package_re_exports_are_known(setup: Any) -> None:
+    from ticket2test.validate.validator import module_imports
+
+    _, index, _ = setup
+    code = _replace(
+        "from framework.decorators import browsers, data_driven, environments",
+        "from framework.decorators import browsers, data_driven, environments\n"
+        "from framework.pages import Navigator",
+    )
+    code = code.replace("rules.next_page()", "rules.next_page()\n      Navigator")
+    without = _messages(_validate(setup, code=code), "imports")
+    assert without == ["framework.pages has no name 'Navigator'"]
+    settings, _, fp = setup
+    generated = GeneratedTest.model_validate(
+        {
+            "code": code,
+            "file_name": "tests/rules/test_rules_list_filter.py",
+            "data_file_name": "tests/rules/test_rules_list_filter.json",
+            "data_entries": [GOOD_ENTRY],
+            "data_format": "array",
+            "test_ids": computed_test_ids(code),
+            "template_entry_ref": None,
+            "ticket_id": "STND-106",
+            "draft_ref": "d",
+            "retrieved_chunk_ids": [],
+            "prompt_version": "t",
+            "provider": "f",
+            "model": "f",
+            "attempts": 1,
+            "context_tokens": 0,
+        }
+    )
+    report = validate_generated(
+        generated, index.catalog, settings, fp, imports=module_imports(index)
+    )
+    assert not [f for f in report.findings if f.check == "imports"]

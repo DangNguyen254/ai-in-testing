@@ -130,6 +130,18 @@ entries are built from that plan deterministically, keyed by the pytest ids comp
 code. The result is then validated, and validator errors go back to the LLM for repair (at most
 `repair.max_attempts` rounds). The validation report is stored in `generated.json`.
 
+### Check the config against an existing suite
+
+```bash
+uv run ticket2test check-suite standin                 # validators over the suite's own tests
+uv run ticket2test check-suite standin --collect       # + static ids vs. a sandbox collect
+```
+
+The suite's own tests are known-good, so every validator error on them points at a config
+value that doesn't describe the suite. Errors are grouped by check with the config keys to look
+at (e.g. `markers` → `markers.priorities`, `style` → `style.python`). Run it first when
+pointing the tool at a new suite, and rerun until it reports "clean".
+
 ### Validate generated tests, and collect them in a sandbox
 
 ```bash
@@ -149,8 +161,12 @@ page arithmetic without a page-size read.
 Podman, `sandbox.runtime`): no network, read-only root file system, no capabilities, the
 target repo mounted read-only, and one writable staging folder under `.scratch/sandbox/`. If
 the runtime or the image is missing, the command fails; it never falls back to the host.
-Building the image pulls the public `python:3.12-slim` base image and installs pytest and
-selenium (pinned) from PyPI.
+The image is built from `sandbox.base_image` (default: the public `python:3.12-slim`) and the
+requirements file `sandbox.requirements` (default: pytest and selenium, pinned). For a real
+suite, point `sandbox.requirements` at the suite's own test requirements. Runs never pull an
+image, and the runtime gets an empty credentials file, so your registry logins and credential
+helpers are never used (set `sandbox.registry_auth: true` if the base image's registry needs a
+login).
 
 ### Evaluate
 
