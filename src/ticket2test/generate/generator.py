@@ -52,7 +52,7 @@ from ticket2test.models.generated import (
 )
 from ticket2test.models.retrieval import RetrievalResult
 from ticket2test.prompts import load_prompt
-from ticket2test.security import scrub
+from ticket2test.security import scrub, scrub_code
 from ticket2test.security.masking import Masker
 from ticket2test.style import FormatError, format_json, format_python
 
@@ -181,7 +181,7 @@ def assemble(
     entries, record traceability."""
     settings, data, gen = setup.settings, setup.settings.data, setup.settings.generate
     response = unmask_generation(response, masker)
-    code_scrub = scrub(response.code)
+    code_scrub = scrub_code(response.code)  # literals and comments only: code stays valid
     notes = response.notes
     try:
         code = format_python(
@@ -192,7 +192,12 @@ def assemble(
         notes = f"{notes} (not formatted: {exc})".strip()
 
     code, shell_note = with_template_shell(code, setup)
-    order = {test_id: n for n, test_id in enumerate(_ids(code, settings))}
+    try:
+        order = {test_id: n for n, test_id in enumerate(_ids(code, settings))}
+    except ValueError as exc:  # the LLM's code parsed; a step in code broke it: a bug to report
+        raise GenerationError(
+            f"generated code broken after restoring and formatting: {exc}"
+        ) from exc
     plans, fixes = rekey_plans(list(response.entries), code, setup)
     fixes += [shell_note] if shell_note else []
     entries: list[dict[str, Any]] = []

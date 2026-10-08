@@ -309,6 +309,9 @@ def _one(
     except LLMError as exc:
         result.error = str(exc)[:500]
         return _finish(result, started)
+    except Exception as exc:  # one ticket's bug must not lose the whole run
+        result.error = f"unexpected {type(exc).__name__}: {exc}"[:500]
+        return _finish(result, started)
 
     result.reuse_kind, result.decided = outcome.kind, outcome.decision.kind
     result.reuse_target, result.reuse_notes = outcome.decision.target, list(outcome.notes)

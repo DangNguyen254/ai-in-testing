@@ -110,3 +110,60 @@ def _redact(match: re.Match[str], rule: _Rule, counts: Counter[str]) -> str:
     whole_start = match.start(0)
     whole = match.group(0)
     return whole[: start - whole_start] + placeholder + whole[end - whole_start :]
+
+
+_SECRET_NAME = re.compile(rf"(?i)\w*(?:{_SECRET_WORDS})\w*")
+_LITERAL = re.compile(  # a string literal: prefix and quote, body, closing quote
+    r"(?s)^(?P<open>[rRbBuUfF]{0,2}(?:\"\"\"|'''|\"|'))(?P<body>.*)(?P<close>\"\"\"|'''|\"|')$"
+)
+
+
+def scrub_code(code: str) -> ScrubResult:
+    """Scrub Python source without breaking it: only string literals and comments are scrubbed.
+
+    A secret in source code is always a literal (or sits in a comment); an expression such as
+    ``password=self.params["password"]`` is not a secret, and redacting part of it would leave
+    code that doesn't parse. Code that doesn't tokenize is scrubbed as plain text.
+    """
+    import io
+    import tokenize
+
+    kinds = {tokenize.STRING, tokenize.COMMENT}
+    kinds |= {getattr(tokenize, "FSTRING_MIDDLE", tokenize.STRING)}  # Python 3.12+
+    layout = {tokenize.NL, tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT, tokenize.COMMENT}
+    try:
+        tokens = list(tokenize.generate_tokens(io.StringIO(code).readline))
+    except (tokenize.TokenError, SyntaxError, IndentationError):
+        return scrub(code)
+    lines = code.splitlines(keepends=True)
+    starts = [0]
+    for line in lines:
+        starts.append(starts[-1] + len(line))
+    counts: Counter[str] = Counter()
+    pieces: list[tuple[int, int, str]] = []
+    meaningful = [t for t in tokens if t.type not in layout]
+    keyed: set[int] = set()  # string tokens assigned to, or keyed by, a secret-looking name
+    for i, token in enumerate(meaningful):
+        if token.type == tokenize.STRING and i >= 2 and meaningful[i - 1].string in ("=", ":"):
+            key = meaningful[i - 2].string.strip("\"'")
+            if _SECRET_NAME.fullmatch(key):
+                keyed.add(id(token))
+    for token in tokens:
+        if token.type not in kinds:
+            continue
+        begin = starts[token.start[0] - 1] + token.start[1]
+        end = starts[token.end[0] - 1] + token.end[1]
+        if id(token) in keyed:
+            literal = _LITERAL.match(code[begin:end])
+            if literal and len(literal.group("body")) >= 4:
+                counts["credential_assignment"] += 1
+                body = "[REDACTED:credential_assignment]"
+                pieces.append((begin, end, literal.group("open") + body + literal.group("close")))
+                continue
+        found = scrub(code[begin:end])
+        if found.counts:
+            counts.update(found.counts)
+            pieces.append((begin, end, found.text))
+    for begin, end, text in reversed(pieces):
+        code = code[:begin] + text + code[end:]
+    return ScrubResult(text=code, counts=counts)

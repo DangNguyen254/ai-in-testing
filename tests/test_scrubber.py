@@ -110,3 +110,25 @@ def test_ordinary_text_is_untouched(text: str) -> None:
 def test_scrubbing_is_idempotent() -> None:
     once = scrub_text(f"Bearer {BEARER} and {AWS}")
     assert scrub_text(once) == once
+
+
+@pytest.mark.parametrize(
+    ("code", "redacted", "kept"),
+    [
+        ('files.unlock(password=self.params["password"])\n', 0, 'self.params["password"]'),
+        ('PASSWORD = "hunter2x"\n', 1, "PASSWORD = "),
+        ('download(name, password="wrong-pass")\n', 1, "password="),
+        ('cfg = {"api_key": "sk-live-abcdef123456"}\n', 1, '{"api_key": '),
+        ("x = 1  # password=hunter22\n", 1, "x = 1  #"),
+        ('name = "password reset page"\n', 0, "password reset page"),
+    ],
+)
+def test_code_is_scrubbed_without_breaking_it(code: str, redacted: int, kept: str) -> None:
+    import ast
+
+    from ticket2test.security import scrub_code
+
+    result = scrub_code(code)
+    ast.parse(result.text)  # the eval run 2 crash: an expression was partly redacted
+    assert result.redacted == redacted and kept in result.text
+    assert "hunter2" not in result.text and "sk-live" not in result.text

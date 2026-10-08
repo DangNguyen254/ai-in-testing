@@ -396,3 +396,16 @@ def test_leave_one_out_copy_cuts_code_and_data(tmp_path: Path) -> None:
     assert "test_rules_list_pagination" in (standin / "tests/rules/test_rules.py").read_text(
         encoding="utf-8"
     )  # the original is only read
+
+
+def test_an_unexpected_error_fails_one_ticket_not_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def boom(*args: Any, **kwargs: Any) -> Any:
+        raise ValueError("the code does not parse: generated.py")
+
+    monkeypatch.setattr("ticket2test.eval.generation.generate_reusing", boom)
+    replies = [_draft_reply(_DRAFT), _rewrite(["delete"], [])]
+    report = _generation_run(tmp_path, monkeypatch, replies, reuse_drafts=False)
+    assert report.pairs[0].status == "failed"
+    assert report.pairs[0].error.startswith("unexpected ValueError: the code does not parse")
