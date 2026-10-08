@@ -406,7 +406,7 @@ Use exactly this structure:
   (or "not run: waiting for the image build")
 
 ## Values set in company.yaml
-| Key | Value | Evidence (file:line) | Confidence (high/medium/low) |
+| Key | Value | Evidence (file:line) | Seen in (number of files) |
 |---|---|---|---|
 
 ## TODO / not found
