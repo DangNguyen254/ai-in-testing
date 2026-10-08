@@ -406,6 +406,27 @@ class MaskingSettings(_Section):
     legend_prompt: str = "masking_legend_v1"
 
 
+class ResultsSettings(_Section):
+    """Reading a real run's console log (results/console.py)."""
+
+    # Links in the log that belong to a test run (e.g. a remote-browser session).
+    link_pattern: str = r"https?://(?:[\w-]+\.)*saucelabs\.com/\S+"
+    # Error types that mean the test itself is wrong, not that it found the bug.
+    test_problem_errors: list[str] = Field(
+        default_factory=lambda: [
+            "AttributeError",
+            "NameError",
+            "KeyError",
+            "TypeError",
+            "ImportError",
+            "ModuleNotFoundError",
+            "NoSuchElementException",
+            "InvalidSelectorException",
+        ]
+    )
+    max_message_chars: int = Field(default=1500, ge=100)
+
+
 class SecuritySettings(_Section):
     masking: MaskingSettings = MaskingSettings()
     # Names that must never reach an external LLM or this repo (case-insensitive regexes; see
@@ -441,6 +462,7 @@ class Settings(BaseSettings):
     markers: MarkerSettings = MarkerSettings()
     eval: EvalSettings = EvalSettings()
     retrieval: RetrievalSettings = RetrievalSettings()
+    results: ResultsSettings = ResultsSettings()
     context: ContextSettings = ContextSettings()
     generate: GenerateSettings = GenerateSettings()
     validation: ValidateSettings = ValidateSettings()

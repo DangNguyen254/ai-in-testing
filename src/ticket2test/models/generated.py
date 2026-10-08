@@ -276,3 +276,6 @@ class GeneratedTest(BaseModel):
     reuse_reasons: list[str] = Field(default_factory=list)
     variant_plans: list[VariantPlan] = Field(default_factory=list)
     patches: list[PatchedFile] = Field(default_factory=list)
+    # The ids this output adds (a patch's test_ids list the whole patched file); empty: test_ids.
+    new_test_ids: list[str] = Field(default_factory=list)
+    run_report: dict[str, Any] | None = None  # from a real run's log (`ticket2test results`)

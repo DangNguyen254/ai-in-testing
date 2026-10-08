@@ -85,6 +85,9 @@ find every value.
       is a config value that doesn't describe the suite; `--collect` also compares the
       statically computed test ids with a real collect in the sandbox.
 - [ ] `repair.max_attempts`.
+- [ ] `results.link_pattern` (the runner's session links) and
+      `results.test_problem_errors`; check with `ticket2test results <log> <generated>` on a
+      real failed run.
 
 - [ ] `security.masking.keys` (data keys that hold prompt-injection payloads) and, if needed,
       extra `security.masking.patterns`. Masking is on by default: payloads are replaced by

@@ -1,0 +1,38 @@
+root@runner:~/work/suite/tests# ./run-tests rules/test_rules.py -s -v -k 'test_rules_edit'
+============================= test session starts ==============================
+platform linux -- Python 3.8.10, pytest-7.4.2, pluggy-1.5.0 -- /usr/bin/python3
+collected 40 items / 37 deselected / 3 selected
+
+rules/test_rules.py::TestRules_chrome_latest_Windows_10_cloud_r1::test_rules_edit_action time="2026-10-07 07:01:02,000" level=INFO name=framework.selenium.drivers opening the rule editor
+FAILED
+rules/test_rules.py::TestRules_firefox_latest_Windows_10_cloud_r1::test_rules_edit_action PASSED
+rules/test_rules.py::TestRules_chrome_latest_Windows_10_cloud_r1::test_rules_edit_reset ERROR
+
+=================================== ERRORS ===================================
+_______ ERROR at setup of TestRules_chrome_latest_Windows_10_cloud_r1.test_rules_edit_reset _______
+
+self = <rules.test_rules.TestRules_chrome_latest_Windows_10_cloud_r1 object at 0x7f>
+
+    def setup(self):
+>       self.base_setup(fresh_driver=False, policy_wait=True)
+E       KeyError: 'policy'
+
+framework/base_test.py:88: KeyError
+Sauce Labs job: https://app.saucelabs.com/tests/0000aaaa1111bbbb2222cccc3333dddd
+=================================== FAILURES ===================================
+_______ TestRules_chrome_latest_Windows_10_cloud_r1.test_rules_edit_action _______
+
+self = <rules.test_rules.TestRules_chrome_latest_Windows_10_cloud_r1 object at 0x7f>
+
+    def test_rules_edit_action(self):
+>       self.check.assertEqual("deny", editor.action)
+E       AssertionError: 'deny' != 'allow'
+E       - deny
+E       + allow
+
+rules/test_rules.py:61: AssertionError
+Sauce Labs job: https://app.saucelabs.com/tests/4444eeee5555ffff6666aaaa7777bbbb
+=========================== short test summary info ============================
+FAILED rules/test_rules.py::TestRules_chrome_latest_Windows_10_cloud_r1::test_rules_edit_action - AssertionError: 'deny' != 'allow'
+ERROR rules/test_rules.py::TestRules_chrome_latest_Windows_10_cloud_r1::test_rules_edit_reset - KeyError: 'policy'
+============ 1 failed, 1 passed, 1 error, 37 deselected in 95.10s ============

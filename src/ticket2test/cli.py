@@ -777,3 +777,65 @@ def privacy_scan(
     typer.echo(f"{len(files)} file(s) checked, {len(hits)} hit(s)")
     if hits:
         raise typer.Exit(code=1)
+
+
+@app.command()
+def results(
+    ctx: typer.Context,
+    log_file: Annotated[Path, typer.Argument(help="Console log of a real run (pytest -v).")],
+    generated_dir: Annotated[
+        Path, typer.Argument(help="Output of `generate` (folders with generated.json).")
+    ],
+) -> None:
+    """Read a real run's console log and record each generated test's results.
+
+    Verdicts: passed; test_problem (the test itself is wrong, e.g. an unknown name or a missing
+    data key); check_failed (an assertion failed: the test caught the bug, or its expectation is
+    wrong; open the run's link); error (setup or teardown); not_run; unclear.
+    """
+    from pathlib import PurePosixPath
+
+    from ticket2test.models.generated import GeneratedTest
+    from ticket2test.results.console import parse_console, verdict
+
+    state: AppState = ctx.obj
+    settings = state.settings.results
+    try:
+        log = parse_console(log_file.read_text(encoding="utf-8", errors="replace"), settings)
+    except OSError as exc:
+        typer.echo(f"Error: cannot read {log_file}: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    files = sorted(generated_dir.rglob("generated.json"))
+    if not files:
+        typer.echo(f"Error: no generated.json under {generated_dir}", err=True)
+        raise typer.Exit(code=2)
+    typer.echo(f"{log_file.name}: {len(log.results)} result(s); {log.summary or 'no summary'}")
+    for path in files:
+        generated = GeneratedTest.model_validate_json(path.read_text(encoding="utf-8"))
+        ids = set(generated.new_test_ids or generated.test_ids)
+        name = PurePosixPath(generated.file_name)
+        mine = [
+            r
+            for r in log.results
+            if r.test_id in ids
+            and (name.as_posix().endswith(r.file) or PurePosixPath(r.file).name == name.name)
+        ]
+        found = verdict(mine, settings)
+        report = {
+            "log": log_file.name,
+            "summary": log.summary,
+            "verdict": found,
+            "results": [r.model_dump(mode="json") for r in mine],
+        }
+        path.write_text(
+            generated.model_copy(update={"run_report": report}).model_dump_json(indent=2),
+            encoding="utf-8",
+        )
+        typer.echo(f"{generated.ticket_id} {generated.file_name}: {found} ({len(mine)} result(s))")
+        for r in mine:
+            if r.status in ("passed", "skipped", "xfailed"):
+                continue
+            first = r.message.splitlines()[0] if r.message else ""
+            typer.echo(f"  {r.status}: {r.class_name or ''}::{r.test_id} {first}".rstrip())
+            for url in r.links:
+                typer.echo(f"    {url}")

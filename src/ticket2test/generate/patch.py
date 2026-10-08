@@ -534,6 +534,7 @@ def variant_patch(
         reuse_reasons=list(decision.reasons),
         variant_plans=plans,
         patches=[p.record() for p in patches],
+        new_test_ids=[f"{function}[{p.case}]" for p in plans],
     )
 
 
@@ -707,6 +708,7 @@ def method_patch(
             "data_entries": all_entries,
             "data_format": layout,
             "test_ids": [*static_ids(index, file_path), *generated.test_ids],
+            "new_test_ids": list(generated.test_ids),
             "reuse_kind": "method",
             "reuse_target": class_name,
             "reuse_reasons": list(decision.reasons),

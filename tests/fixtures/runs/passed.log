@@ -1,0 +1,23 @@
+root@runner:~/work/suite/tests# ./run-tests rules/test_rules.py -s -v -k 'chrome and test_rules_add_basic' --admin-url=https://admin.example.test
+../bin/env.sh: line 55: /opt/tools/get_config_value: No such file or directory
+time="2026-10-07 06:37:41,680" level=WARNING name=framework.config Failed to get configuration, using default
+============================= test session starts ==============================
+platform linux -- Python 3.8.10, pytest-7.4.2, pluggy-1.5.0 -- /usr/bin/python3
+cachedir: .pytest_cache
+rootdir: /root/work/suite/tests
+configfile: pytest.ini
+plugins: xdist-2.4.0, timeout-2.1.0, forked-1.3.0, flaky-3.7.0
+collected 40 items / 38 deselected / 2 selected
+
+rules/test_rules.py::TestRules_chrome_latest_Windows_10_cloud_r1::test_rules_add_basic[allow] time="2026-10-07 06:40:25,092" level=WARNING name=framework.selenium.drivers input never set; proceeding anyway
+PASSED
+rules/test_rules.py::TestRules_chrome_latest_Windows_10_cloud_r1::test_rules_add_basic[deny] PASSED
+
+=============================== warnings summary ===============================
+rules/test_rules.py::TestRules_chrome_latest_Windows_10_cloud_r1::test_rules_add_basic[allow]
+  /usr/local/lib/python3.8/dist-packages/_pytest/fixtures.py:895: PytestRemovedIn8Warning: Support for nose tests is deprecated.
+  rules/test_rules.py::TestRules_chrome_latest_Windows_10_cloud_r1::test_rules_add_basic[allow] is using nose-specific method: `setup(self)`
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=============== 2 passed, 38 deselected, 7 warnings in 413.07s (0:06:53) ===============
+root@runner:~/work/suite/tests#

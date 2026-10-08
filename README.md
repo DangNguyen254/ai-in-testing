@@ -194,6 +194,20 @@ image, and the runtime gets an empty credentials file, so your registry logins a
 helpers are never used (set `sandbox.registry_auth: true` if the base image's registry needs a
 login).
 
+### Record a real run's results
+
+```bash
+uv run ticket2test results run.log output/generated
+```
+
+ticket2test never runs generated tests outside the sandbox. Run them with the suite's own
+runner, save its console output (pytest `-v`, with or without `-s`), and pass it here. Each
+`generated.json` gets a `run_report`: its results (one per class variant and case), the
+error lines, session links (`results.link_pattern`), and a verdict: `passed`,
+`test_problem` (the test itself is wrong: `results.test_problem_errors`), `check_failed`
+(an assertion failed: the bug, or a wrong expectation; open the link), `error` (setup or
+teardown), `not_run`, or `unclear`. Reports stay in the git-ignored output folder.
+
 ### Evaluate
 
 ```bash

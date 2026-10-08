@@ -730,7 +730,7 @@ Read this first when resuming in a new session.
 - 2026-10-07: Verified. ruff, mypy strict, pytest 496 passed, 14 deselected; `-m sandbox` 2 passed. `check-suite standin --collect`: clean, 5 test files, 36 static ids = 36 collected. `check-suite` on httpx (untuned, a differently shaped suite): 2,601 errors, mostly markers (none), assertions (bare `assert`), style (4-space indent, annotations), base class (none): the first run on a new suite shows which config sections to change.
 
 ## Stand-in v4 and reuse support (refinement while the real suite can't be connected)
-**Status:** 🟡 In progress (steps 1–5 of 7 done)
+**Status:** 🟡 In progress (steps 1–5 of 7 done; step 6 replaced by real-run results)
 
 **Why:** the human described the real suite's scope (generic, no names): besides policy rules, tests for an **AI browsing agent** (prompt injection, API endpoints) and **file-policy enforcement** (document isolation and safe viewing; download policies block/allow/sanitize; malware scanning by signature and hash; DLP rules; encrypted files and password prompts; archive extraction and member inspection; converted vs. original downloads). Reuse dominates: a base class (driver and framework setup), page-object helpers, **tests calling tests**, and **decorator-generated class variants**. Decisions: keep LLM use minimal and prefer logic; mask prompt-injection payloads from our own LLM (not just wrap them); patch output (add a variant / a method to existing files) is approved.
 
@@ -773,6 +773,11 @@ Read this first when resuming in a new session.
   - **Class shell in code:** a new module is rebuilt on the template class: its module imports, decorator stack (decorators of the same name keep the generated arguments, e.g. the component; new ones such as `cloud_only` are added), base class and setup/teardown; the generated test methods are spliced in with only the imports they use. Modules with other top-level code are left as written.
   - **Privacy safeguard (`security.private_terms`):** regexes set only in private config or the environment; `PrivacyClient` (outermost wrapper) redacts them from every request; validator `private` reports a term or a `[PRIVATE]` mark in output; CLI `privacy-scan` checks the files git would commit. Reports give the term's position, not its text. `masker_of` now finds the masking client under other wrappers.
   - **Verified:** ruff, mypy strict (88 files), pytest 600 passed, 14 deselected; `check-suite standin`: clean.
+- 2026-10-08: **Step 6 changed: real-run results instead of sandbox execution.** The human: the real suite runs through its own pytest wrapper script on remote browsers, with console output only (a session link after a failure). Executing generated tests in our no-network sandbox can't reach that environment, so ticket2test reads the run's console log instead.
+  - **Reader (`results/console.py`, no LLM):** pytest sections; verbose results whether the status ends the node-id line or (with `-s`) follows printed output on its own line; xdist lines; the warnings summary ignored (it repeats node ids); failure and setup-error blocks (`E` lines, error type); links by `results.link_pattern` attached to the block they're in or the running test. Class parts may be decorator-generated variants, so one generated test can have several results.
+  - **Verdicts:** passed / test_problem (`results.test_problem_errors`) / check_failed (assertion: the bug or a wrong expectation) / error / not_run / unclear. CLI `results <log> <generated dir>` stores `run_report` in each `generated.json`, matched by file and by `new_test_ids` (the ids a patch added; new field).
+  - **Calibration:** the human's real passed log (kept out of git) parses to 1 result, passed, with the variant class. Fixtures are synthetic logs in the same shape. **Open:** the failed-log layout and where the link line appears are a pytest-standard guess until a real failed log arrives.
+  - **Verified:** ruff, mypy strict (90 files), pytest 613 passed, 14 deselected.
 
 ## Global open questions (for the human)
 - Which LLM provider/endpoint will the company environment require?
