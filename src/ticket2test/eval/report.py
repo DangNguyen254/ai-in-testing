@@ -12,7 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ticket2test.eval.generation import GenerationReport
+from ticket2test.eval.generation import GenerationPairResult, GenerationReport
 from ticket2test.eval.retrieval import RetrievalReport
 
 
@@ -129,8 +129,14 @@ def render_markdown(report: EvalRunReport) -> str:
             "",
             "| Metric | Value |",
             "|---|---|",
-            f"| Tickets | {m['pairs']} (generated {m['generated']}, insufficient info "
-            f"{m['insufficient_info']}, failed {m['failed']}) |",
+            f"| Tickets | {m['pairs']} (generated {m['generated']}, covered {m['covered']}, "
+            f"insufficient info {m['insufficient_info']}, failed {m['failed']}) |",
+            "| Reuse (covered / variant / method / module) | "
+            + " / ".join(
+                str(m["reuse_kinds"][k]) for k in ("covered", "variant", "method", "module")
+            )
+            + f" ({m['fallbacks']} with a fallback) |",
+            f"| Fixed in code instead of an LLM retry | {m['fixed_in_code']} |",
             f"| Validators pass, first attempt | {_fmt(m['first_attempt_pass_rate'])} |",
             f"| Validators pass, after repair | {_fmt(m['final_pass_rate'])} |",
             f"| Invented names, first attempt (share of tests) | {_fmt(m['invented_name_rate'])}"
@@ -142,14 +148,14 @@ def render_markdown(report: EvalRunReport) -> str:
             f"| Leave-one-out violations | {m['leave_one_out_violations']} |",
             f"| LLM calls / time | {gen.llm_calls} / {gen.elapsed_seconds} s |",
             "",
-            "| Ticket | Status | Kind | First-attempt errors | Repairs | Final | Collect | "
+            "| Ticket | Status | Kind | Reuse | First-attempt errors | Repairs | Final | Collect | "
             "Warnings | Calls | s |",
-            "|---|---|---|---|---|---|---|---|---|---|",
+            "|---|---|---|---|---|---|---|---|---|---|---|",
         ]
         for p in gen.pairs:
             lines.append(
                 f"| {p.ticket} | {p.status}{' (cached draft)' if p.draft_cached else ''} | "
-                f"{p.test_kind or '-'} | {len(p.first_errors)} | {p.repairs} | "
+                f"{p.test_kind or '-'} | {_reuse(p)} | {len(p.first_errors)} | {p.repairs} | "
                 f"{'ok' if p.final_ok else '-' if p.status != 'generated' else 'FAIL'} | "
                 f"{_fmt(p.collect_ok)} | {len(p.warnings)} | {p.llm_calls} | {p.seconds} |"
             )
@@ -186,3 +192,11 @@ def render_markdown(report: EvalRunReport) -> str:
         lines += ["", "## Config snapshot", ""]
         lines += [f"- {k}: `{v}`" for k, v in snap.items()]
     return "\n".join(lines) + "\n"
+
+
+def _reuse(p: GenerationPairResult) -> str:
+    if p.reuse_kind is None:
+        return "-"
+    target = (p.reuse_target or "").rsplit("::", 1)[-1]
+    shown = f"{p.reuse_kind} {target}".strip()
+    return shown if p.decided in (None, p.reuse_kind) else f"{shown} (decided {p.decided})"

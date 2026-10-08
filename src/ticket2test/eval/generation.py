@@ -28,6 +28,7 @@ from ticket2test.draft import generate_drafts
 from ticket2test.eval.judge import JudgeVerdict, judge_draft
 from ticket2test.eval.pairs import EvalCache, EvalPair, PairSet
 from ticket2test.eval.retrieval import manifest_test_to_chunk_id
+from ticket2test.generate.pipeline import generate_reusing
 from ticket2test.index.indexer import IndexData, update_index
 from ticket2test.llm.base import LLMClient, LLMError
 from ticket2test.llm.factory import model_name
@@ -37,7 +38,7 @@ from ticket2test.normalize import normalize
 from ticket2test.retrieve.pipeline import retrieve
 from ticket2test.sandbox.runner import SandboxError, collect_generated
 from ticket2test.style import format_entries
-from ticket2test.validate.repair import generate_with_repair
+from ticket2test.validate.suite import static_ids
 
 _INVENTED = ("[names]", "[imports]")
 
@@ -47,8 +48,13 @@ class GenerationPairResult(BaseModel):
 
     pair_id: str
     ticket: str
-    status: str  # "generated", "insufficient_info", "failed"
+    status: str  # "generated", "covered", "insufficient_info", "failed"
     error: str = ""
+    reuse_kind: str | None = None  # covered / variant / method / module (after fallbacks)
+    decided: str | None = None  # the decision before fallbacks
+    reuse_target: str | None = None
+    reuse_notes: list[str] = Field(default_factory=list)  # fallbacks taken
+    fixed_in_code: str = ""  # fixes made in code instead of an LLM retry (from notes)
     draft_cached: bool = False
     test_kind: str | None = None
     file_name: str | None = None
@@ -94,6 +100,13 @@ class GenerationReport(BaseModel):
         return {
             "pairs": len(self.pairs),
             "generated": len(gen),
+            "covered": sum(p.status == "covered" for p in self.pairs),
+            "reuse_kinds": {
+                k: sum(p.reuse_kind == k for p in self.pairs)
+                for k in ("covered", "variant", "method", "module")
+            },
+            "fallbacks": sum(bool(p.reuse_notes) for p in self.pairs),
+            "fixed_in_code": sum(bool(p.fixed_in_code) for p in gen),
             "insufficient_info": sum(p.status == "insufficient_info" for p in self.pairs),
             "failed": sum(p.status == "failed" for p in self.pairs),
             "first_attempt_pass_rate": self._rate([not p.first_errors for p in gen]),
@@ -200,7 +213,7 @@ def _one(
         result.test_kind = primary.test_kind
         retrieval = retrieve(ticket, used_index, settings, client, primary)
         result.llm_calls += retrieval.llm_calls
-        repaired = generate_with_repair(
+        outcome = generate_reusing(
             primary,
             retrieval,
             used_index,
@@ -208,16 +221,31 @@ def _one(
             client,
             provider=settings.llm.provider,
             model=model_name(settings, "generate"),
+            repo_root=repo,
             conventions=conventions,
         )
     except LLMError as exc:
         result.error = str(exc)[:500]
         return _finish(result, started)
 
-    generated, final = repaired.generated, repaired.report
+    result.reuse_kind, result.decided = outcome.kind, outcome.decision.kind
+    result.reuse_target, result.reuse_notes = outcome.decision.target, list(outcome.notes)
+    if outcome.generated is None or outcome.report is None:  # covered: nothing generated
+        result.status = "covered"
+        result.test_ids = [outcome.decision.test_id or ""]
+        return _finish(result, started)
+    generated, final = outcome.generated, outcome.report
+    if generated.patches:  # the files on disk still hold the left-out test: expect its ids too
+        full = static_ids(index, generated.file_name)
+        generated = generated.model_copy(
+            update={"test_ids": list(dict.fromkeys([*full, *generated.new_test_ids]))}
+        )
     result.status = "generated"
-    result.llm_calls += repaired.llm_calls
-    result.file_name, result.test_ids = generated.file_name, generated.test_ids
+    result.llm_calls += generated.attempts  # generation + repairs, or the variant plan
+    fixed = generated.notes.partition("Fixed in code:")[2].strip()
+    result.fixed_in_code = fixed
+    result.file_name = generated.file_name
+    result.test_ids = generated.new_test_ids or generated.test_ids
     ref = generated.template_entry_ref
     result.template = ref.entry_key if ref else None
     result.leave_one_out_ok = not (
