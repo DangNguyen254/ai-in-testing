@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from ticket2test.models.draft import UNKNOWN, DraftResult, DraftSkeleton, TestCaseDraft
+from ticket2test.models.draft import (
+    UNKNOWN,
+    DraftResult,
+    DraftSkeleton,
+    DraftSupport,
+    TestCaseDraft,
+)
 from ticket2test.models.ticket import Ticket
 
 _MISSING_LABELS = {
@@ -57,9 +63,10 @@ def _render_draft(number: int, draft: TestCaseDraft) -> list[str]:
         f"| Suite | {suite} |",
         f"| Test type | {_TEST_KIND_LABELS[draft.test_kind]} |",
         f"| Runs on | {_DEPLOYMENT_LABELS[draft.deployment_type]} |",
-        f"| Confidence | {round(draft.confidence * 100)}% |",
         "",
     ]
+    if draft.support is not None:
+        lines += _render_support(draft.support)
     if draft.preconditions:
         lines += ["**Before you start**", ""]
         lines += [f"- {item}" for item in draft.preconditions]
@@ -75,6 +82,30 @@ def _render_draft(number: int, draft: TestCaseDraft) -> list[str]:
         lines.append("")
     lines += [f"<sub>Draft ID: {draft.id}</sub>", ""]
     return lines
+
+
+def _render_support(support: DraftSupport) -> list[str]:
+    """What the ticket backs up, checked in code (not a model's score)."""
+
+    def mark(ok: bool) -> str:
+        return "yes" if ok else "**no**"
+
+    numbers = f"**{', '.join(support.invented_numbers)}**" if support.invented_numbers else "none"
+    added = ", ".join(support.ungrounded_words) or "none"
+    return [
+        "**How well the ticket supports this draft** (checked in code)",
+        "",
+        "| Check | Result |",
+        "|---|---|",
+        f"| Ticket has explicit steps to reproduce | {mark(support.explicit_steps)} |",
+        f"| Ticket has an explicit expected result | {mark(support.explicit_expected)} |",
+        f"| Ticket has an explicit actual result | {mark(support.explicit_actual)} |",
+        f"| Component named in the ticket | {mark(support.component_from_ticket)} |",
+        f"| Numbers not in the ticket | {numbers} |",
+        f"| Draft words found in the ticket | {round(support.grounding * 100)}% |",
+        f"| Draft words not in the ticket | {_cell(added)} |",
+        "",
+    ]
 
 
 def _render_skeleton(skeleton: DraftSkeleton) -> list[str]:

@@ -458,7 +458,6 @@ def test_the_drafts_expected_outcome_is_a_claim(setup: Any) -> None:
             "steps": ["Filter by allow", "Next page"],
             "expected_outcome": "An audit entry is written",
             "variants": [],
-            "confidence": 0.9,
             "prompt_version": "draft_v1",
         }
     )
@@ -486,7 +485,6 @@ def test_every_draft_variant_has_a_case(setup: Any) -> None:
                 variant("allow rules", "Allow"),
                 variant("quarantine rules", "quarantine"),
             ],
-            "confidence": 0.9,
             "prompt_version": "draft_v1",
         }
     )

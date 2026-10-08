@@ -88,14 +88,12 @@ class EvalSettings(_Section):
 
 
 class DraftSettings(_Section):
-    prompt_version: str = "draft_v1"
+    prompt_version: str = "draft_v2"
     # Comments go into the prompt in order until this many characters; the rest are dropped.
     max_comment_chars: int = Field(default=20000, ge=0)
-    # When the component can't be identified, confidence is capped at this value.
-    unknown_component_max_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
-    # A partial draft with open questions (draft/skeleton.py): "auto" when the ticket is judged
-    # insufficient (one extra LLM call, only then), "always" (also for drafted tickets, to
-    # compare), or "never".
+    # A partial draft with open questions (draft/skeleton.py), one extra LLM call: "auto" when
+    # the ticket is judged insufficient or lacks an explicit steps or expected section (checked
+    # in code), "always" (every ticket, to compare), or "never".
     skeleton: Literal["auto", "always", "never"] = "auto"
     skeleton_prompt: str = "skeleton_v1"
 

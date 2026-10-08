@@ -59,7 +59,6 @@ def _draft(
             "steps": ["Download the file"],
             "expected_outcome": expected,
             "variants": variants,
-            "confidence": 0.9,
             "prompt_version": "x",
         }
     )

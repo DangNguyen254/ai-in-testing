@@ -38,7 +38,6 @@ def _draft(intent: str, steps: list[str], kind: str = "ui") -> TestCaseDraft:
             "steps": steps,
             "expected_outcome": "It works.",
             "variants": [],
-            "confidence": 0.9,
             "prompt_version": "x",
         }
     )

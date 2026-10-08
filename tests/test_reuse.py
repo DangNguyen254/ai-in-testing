@@ -45,7 +45,6 @@ def _draft(key: str, intent: str, steps: list[str], expected: str, **extra: Any)
             "preconditions": [],
             "steps": steps,
             "expected_outcome": expected,
-            "confidence": 0.9,
             "prompt_version": "x",
             "variants": [],
             **extra,

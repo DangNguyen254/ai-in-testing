@@ -80,7 +80,6 @@ class DraftItem(_Frozen):
     steps: list[str] = Field(min_length=1)
     expected_outcome: str = Field(min_length=1)
     variants: list[Variant]
-    confidence: float = Field(ge=0.0, le=1.0)
 
 
 class DraftResponse(_Frozen):
@@ -166,6 +165,18 @@ class DraftSkeleton(_Frozen):
 # --- Stored models -------------------------------------------------------------------------
 
 
+class DraftSupport(_Frozen):
+    """How well a draft is supported by its ticket, checked in code (see draft/support.py)."""
+
+    explicit_steps: bool  # the ticket has a steps-to-reproduce section
+    explicit_expected: bool  # ... an expected-behavior section
+    explicit_actual: bool  # ... an actual-behavior section
+    component_from_ticket: bool  # the draft's component is named in the ticket
+    invented_numbers: list[str]  # numbers in the draft that the ticket doesn't contain
+    grounding: float = Field(ge=0.0, le=1.0)  # share of the draft's content words in the ticket
+    ungrounded_words: list[str]  # the draft's words the ticket doesn't have (most frequent)
+
+
 class TestCaseDraft(_Frozen):
     __test__ = False  # not a pytest test class
 
@@ -180,8 +191,17 @@ class TestCaseDraft(_Frozen):
     steps: list[str]
     expected_outcome: str
     variants: list[Variant]
-    confidence: float = Field(ge=0.0, le=1.0)
     prompt_version: str
+    support: DraftSupport | None = None  # checked in code (draft/support.py)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_self_rating(cls, data: Any) -> Any:
+        """Drafts written before 2026-10-08 carry the LLM's self-rated ``confidence``; it was
+        removed (a model's score of its own output isn't evidence). Old files still load."""
+        if isinstance(data, dict) and "confidence" in data:
+            data = {k: v for k, v in data.items() if k != "confidence"}
+        return data
 
 
 class DraftResult(_Frozen):

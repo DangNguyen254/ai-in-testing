@@ -18,6 +18,7 @@ from ticket2test.draft.generator import draft_schema, precheck_missing, ticket_p
 from ticket2test.llm import FakeLLMClient
 from ticket2test.llm.structured import StructuredOutputError
 from ticket2test.models import DraftResult, Ticket
+from ticket2test.models.draft import TestCaseDraft
 from ticket2test.normalize import normalize
 
 SETTINGS = Settings.model_validate({"draft": {"skeleton": "never"}})  # the normal path
@@ -44,7 +45,6 @@ def _item(**changes: Any) -> dict[str, Any]:
                 "expected": "request succeeds",
             }
         ],
-        "confidence": 0.9,
     }
     item.update(changes)
     return item
@@ -68,19 +68,19 @@ def _run(
 
 
 def test_ok_path_builds_traceable_drafts() -> None:
-    edge = _item(kind="edge_case", intent="Multi-byte characters", confidence=0.7)
+    edge = _item(kind="edge_case", intent="Multi-byte characters")
     fake = FakeLLMClient([_reply(edge, _item())])  # primary deliberately second
     result = _run(fake)
 
     assert result.status == "ok"
     assert result.attempts == 1
-    assert result.prompt_version == "draft_v1"
+    assert result.prompt_version == "draft_v2"
     assert (result.provider, result.model) == ("fake", "fake-model")
     assert [d.kind for d in result.drafts] == ["primary", "edge_case"]  # primary first
     assert [d.id for d in result.drafts] == ["encode/httpx#1482/d1", "encode/httpx#1482/d2"]
     first = result.drafts[0]
     assert first.ticket_id == "encode/httpx#1482"
-    assert first.prompt_version == "draft_v1"
+    assert first.prompt_version == "draft_v2"
     assert first.markers.priority == "p1"
     assert first.test_kind == "api"
     assert first.deployment_type == "both"
@@ -103,17 +103,42 @@ def test_request_carries_schema_prompt_and_allowed_values() -> None:
 
 
 @pytest.mark.parametrize("component", ["unknown", "Unknown", "", "n/a"])
-def test_unknown_component_caps_confidence(component: str) -> None:
+def test_unknown_component(component: str) -> None:
     item = _item(markers={"priority": "p2", "component": component, "suite": "unknown"})
     result = _run(FakeLLMClient([_reply(item)]))
     draft = result.drafts[0]
     assert draft.markers.component == "unknown"
-    assert draft.confidence == 0.5
+    assert draft.support is not None and not draft.support.component_from_ticket
     assert result.status == "ok"  # never insufficient_info for that alone
 
 
-def test_known_component_keeps_confidence() -> None:
-    assert _run(FakeLLMClient([_reply(_item())])).drafts[0].confidence == 0.9
+def test_support_is_checked_in_code() -> None:
+    ticket = _ticket(steps_to_reproduce=["Post a file"], expected="", actual="It fails")
+    item = _item(
+        markers={"priority": "p1", "component": "multipart upload", "suite": "regression"},
+        steps=["Post a file of 4096 bytes via the files parameter"],
+    )
+    support = _run(FakeLLMClient([_reply(item)]), ticket).drafts[0].support
+    assert support is not None
+    assert (support.explicit_steps, support.explicit_expected, support.explicit_actual) == (
+        True,
+        False,
+        True,
+    )
+    assert support.invented_numbers == ["4096"]  # not in the ticket
+    assert 0.0 < support.grounding < 1.0 and support.ungrounded_words
+
+
+def test_a_self_rating_is_no_longer_accepted() -> None:
+    fake = FakeLLMClient([_reply(_item(confidence=0.9)), _reply(_item())])
+    result = _run(fake)
+    assert result.attempts == 2 and "confidence" not in result.drafts[0].model_dump()
+
+
+def test_old_drafts_with_a_self_rating_still_load() -> None:
+    draft = _run(FakeLLMClient([_reply(_item())])).drafts[0]
+    legacy = {**draft.model_dump(), "confidence": 0.9}
+    assert TestCaseDraft.model_validate(legacy) == draft
 
 
 def test_insufficient_info_from_llm() -> None:
@@ -149,7 +174,6 @@ def test_precheck_leaves_tickets_with_a_description_to_the_llm() -> None:
         _reply(_item(markers={"priority": "p1", "component": "c", "suite": "nightly"})),
         _reply(_item(kind="edge_case")),  # no primary
         _reply(_item(), *[_item(kind="edge_case")] * 4),  # too many edge cases
-        _reply(_item(confidence=1.5)),
         _reply(_item(test_kind="browser")),
         _reply(_item(), status="insufficient_info", missing=["steps_to_reproduce"]),
         _reply(status="insufficient_info"),  # no missing_info
@@ -209,7 +233,7 @@ def test_markdown_ok() -> None:
     assert "| Priority | p1 |" in md
     assert "| Test type | API |" in md
     assert "| Runs on | All deployments |" in md
-    assert "| Confidence | 90% |" in md
+    assert "| Ticket has explicit steps to reproduce |" in md and "Confidence" not in md
     assert "unknown (could not tell from the ticket)" in md
     assert "**Steps**" in md and "**Expected result:**" in md
     assert "| latin-1 char | content = é | request succeeds |" in md

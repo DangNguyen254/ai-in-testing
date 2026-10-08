@@ -111,7 +111,6 @@ def _draft(**changes: Any) -> TestCaseDraft:
         steps=["Select one rule", "Delete and confirm", "Save and publish"],
         expected_outcome="The published policy keeps only the other rules.",
         variants=[],
-        confidence=0.9,
         prompt_version="draft_v1",
     )
     return TestCaseDraft.model_validate({**draft.model_dump(), **changes})

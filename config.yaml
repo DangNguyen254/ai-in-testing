@@ -29,10 +29,10 @@ llm:
     model: ""                  # required when provider is gemini
 
 draft:
-  prompt_version: draft_v1
+  prompt_version: draft_v2
   max_comment_chars: 20000
-  unknown_component_max_confidence: 0.5
-  skeleton: auto                 # partial draft with open questions: auto (insufficient only) | always | never
+  skeleton: auto                 # partial draft + open questions: auto (insufficient, or no explicit
+                                 # steps/expected section in the ticket) | always | never
   skeleton_prompt: skeleton_v1
 
 markers:                       # generic placeholders; set real values per environment

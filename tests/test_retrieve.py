@@ -131,7 +131,6 @@ def test_templates_prefer_the_ticket_and_draft_component(
         steps=["Search for ALPHA"],
         expected_outcome="All matching rules are listed.",
         variants=[],
-        confidence=0.8,
         prompt_version="draft_v1",
     )
     result = retrieve(_ticket("STND-102"), index, _settings(tmp_path), None, draft)

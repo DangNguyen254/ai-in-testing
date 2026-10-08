@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from ticket2test.config import Settings
+from ticket2test.draft.support import support_for
 from ticket2test.llm.base import LLMClient, LLMRequest, Message
 from ticket2test.llm.factory import model_name
 from ticket2test.llm.masking import masker_of, unmask_model
@@ -86,9 +87,8 @@ def generate_drafts(
         {CTX_PRIORITIES: markers.priorities, CTX_SUITES: markers.suites},
     )
     response, output_redactions = _scrub_output(restored)
-    cap = settings.draft.unknown_component_max_confidence
     drafts = [
-        _to_stored(item, ticket.id, index, prompt.version, cap)
+        _to_stored(item, ticket, index, prompt.version)
         for index, item in enumerate(_primary_first(response.drafts), start=1)
     ]
     drafted = DraftResult(
@@ -101,7 +101,9 @@ def generate_drafts(
         **base,
     )
     mode = settings.draft.skeleton
-    if mode == "always" or (mode == "auto" and drafted.status == "insufficient_info"):
+    unclear = not ticket.steps_to_reproduce or not (ticket.expected or "").strip()
+    vague = drafted.status == "insufficient_info" or unclear  # checked in code, no score
+    if mode == "always" or (mode == "auto" and vague):
         from ticket2test.draft.skeleton import add_skeleton
 
         drafted = add_skeleton(
@@ -163,21 +165,23 @@ def _primary_first(items: list[DraftItem]) -> list[DraftItem]:
     return sorted(items, key=lambda item: item.kind != "primary")
 
 
-def _to_stored(
-    item: DraftItem, ticket_id: str, index: int, prompt_version: str, unknown_cap: float
-) -> TestCaseDraft:
+def _to_stored(item: DraftItem, ticket: Ticket, index: int, prompt_version: str) -> TestCaseDraft:
     component = item.markers.component.strip()
-    confidence = item.confidence
     if component.lower() in _UNKNOWN_SPELLINGS:
         component = UNKNOWN
-        confidence = min(confidence, unknown_cap)
     data = item.model_dump()
     data["markers"]["component"] = component
-    data["confidence"] = confidence
+    texts = [
+        *item.preconditions,
+        *item.steps,
+        item.expected_outcome,
+        *(f"{v.name} {v.expected} " + " ".join(i.value for i in v.inputs) for v in item.variants),
+    ]
     return TestCaseDraft(
-        id=f"{ticket_id}/d{index}",
-        ticket_id=ticket_id,
+        id=f"{ticket.id}/d{index}",
+        ticket_id=ticket.id,
         prompt_version=prompt_version,
+        support=support_for(ticket, "" if component == UNKNOWN else component, texts),
         **data,
     )
 
