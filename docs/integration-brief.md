@@ -44,9 +44,9 @@ when a search result needs context.
 |---|---|
 | `markers` | `markers.priorities` / `suites` / `project` (exact casing); `markers.required` |
 | `assertions` | `validation.assertion_object` / `assertion_methods` (bare `assert` suite → stop and ask) |
-| `base_class` | `validation.base_class` |
+| `base_class` | `validation.base_classes` |
 | `imports` | add the package to `validation.external_modules` |
-| `names` | `index.chain_roots`, `validation.base_class` |
+| `names` | `index.chain_roots`, `validation.base_classes` |
 | `style` | `style.python.indent_width` / `line_length` / `quote_style`; annotations → `strip_annotations: false` |
 | `data_file` | `style.json.indent` / `key_separator` / `final_newline` |
 | `ids` | `data.id_field`, `data.format`, `index.data_file_suffix`, `data.access` |
@@ -223,7 +223,7 @@ Component values are learned automatically from the suite.
 
 | Key | How to find it | Default |
 |---|---|---|
-| `validation.base_class` | Grep `class Test\w*\((\w+)\)`; the most common base (or the root they all inherit). | `BaseTest` |
+| `validation.base_classes` | Grep `class Test\w*\((\w+)\)` and follow each base up: list every **root** base the test classes inherit (there may be several, with no common root). | `[BaseTest]` |
 | `validation.assertion_object` | Grep `self\.\w+\.assert`; the part before `.assert`. | `self.check` |
 | `validation.assertion_methods` | All `assert*` method names used on that object. | see `config.yaml` |
 | `validation.external_modules` | Top-level packages tests and framework import that are neither stdlib nor the repo's own (e.g. `pytest`, `selenium`, `requests`). | `[pytest, selenium]` |
@@ -284,10 +284,10 @@ table below to change **one or two keys**, then go back to C. Count rounds.
 | `markers` | `priority value 'P1' is not approved` | `markers.priorities` (exact casing) |
 | `markers` | `missing @pytest.mark.suite(...)` | `markers.required` (only markers every test has) |
 | `assertions` | `not a bare assert` / `is not an allowed assertion` | `validation.assertion_object`, `assertion_methods`. If the suite really uses bare `assert`, **stop and ask**. |
-| `base_class` | `class TestX must inherit BaseTest` | `validation.base_class` |
+| `base_class` | `class TestX must inherit BaseTest` | `validation.base_classes` (add the missing root) |
 | `imports` | `unknown module 'requests'` | add it to `validation.external_modules` |
 | `imports` | `<module> has no name 'X'` | usually fine to report as TODO (dynamic exports); check `index.ignore` didn't skip that module |
-| `names` | `X (SomePage) has no member 'y'` | `index.chain_roots`, `validation.base_class`; if the member is created dynamically, report it |
+| `names` | `X (SomePage) has no member 'y'` | `index.chain_roots`, `validation.base_classes`; if the member is created dynamically, report it |
 | `page_objects` | `y is a property: ... don't call it` | the suite may not follow the property style: **stop and ask** |
 | `style` | `not formatted to the suite's style` | `style.python.indent_width`, `line_length`, `quote_style`, `first_party` |
 | `style` | `type annotations are not used` | `style.python.strip_annotations: false` |

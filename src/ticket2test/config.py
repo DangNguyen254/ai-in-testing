@@ -224,6 +224,16 @@ class ContextSettings(_Section):
     chars_per_token: float = Field(default=3.0, gt=0)
 
 
+class ReuseSettings(_Section):
+    """How a draft is matched against existing tests (see generate/reuse.py)."""
+
+    candidates: int = Field(default=8, ge=1)  # domain tests compared with the draft
+    covered_min: float = Field(default=0.8, ge=0.0, le=1.0)  # flow match for "already covered"
+    variant_min: float = Field(default=0.6, ge=0.0, le=1.0)  # flow match for "new variant"
+    method_min: float = Field(default=0.4, ge=0.0, le=1.0)  # class match for "new method"
+    domain_margin: float = Field(default=0.15, ge=0.0, le=1.0)  # closer than this: uncertain
+
+
 class GenerateSettings(_Section):
     prompt_version: str = "generate_v4"
     # Team conventions for tests (Markdown). Always placed in the context when set.
@@ -246,6 +256,12 @@ class GenerateSettings(_Section):
     deployment_decorators: dict[str, str] = Field(
         default_factory=lambda: {"cloud": "cloud_only", "on_prem": "on_prem_only"}
     )
+    # Domains are folders: each folder matching one of these globs (repo-relative, "*" = one
+    # folder level) is a domain, named after its last part. ``domains`` overrides with
+    # explicit names -> folder globs (for domains spread over several folders).
+    domain_globs: list[str] = Field(default_factory=lambda: ["tests/*"])
+    domains: dict[str, list[str]] = Field(default_factory=dict)
+    reuse: ReuseSettings = ReuseSettings()
 
 
 class NamingSettings(_Section):
@@ -259,7 +275,9 @@ class NamingSettings(_Section):
 class ValidateSettings(_Section):
     """Deterministic checks of a generated test (Phase 7). Values describe the target suite."""
 
-    base_class: str = "BaseTest"  # every test class must inherit it (directly or not)
+    # Every test class must inherit one of these (directly or not); there may be no common root.
+    # Empty: the check is off.
+    base_classes: list[str] = Field(default_factory=lambda: ["BaseTest"])
     assertion_object: str = "self.check"
     assertion_methods: list[str] = Field(
         default_factory=lambda: [

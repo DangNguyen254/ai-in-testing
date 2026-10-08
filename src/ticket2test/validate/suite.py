@@ -32,8 +32,8 @@ from ticket2test.validate.validator import module_imports, validate_generated
 CONFIG_HINTS: dict[str, str] = {
     "syntax": "index.ignore (exclude files that aren't Python 3)",
     "imports": "validation.external_modules (libraries the suite imports)",
-    "names": "validation.base_class, index.chain_roots (members must resolve through them)",
-    "base_class": "validation.base_class",
+    "names": "validation.base_classes, index.chain_roots (members must resolve through them)",
+    "base_class": "validation.base_classes (every root base test classes inherit)",
     "page_objects": "index.chain_roots; page objects may not use properties for values",
     "assertions": "validation.assertion_object, validation.assertion_methods",
     "markers": "markers.priorities, markers.suites, markers.project, markers.required",

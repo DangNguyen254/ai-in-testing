@@ -63,7 +63,7 @@ find every value.
 
 ## 5. Validation and sandbox (`validation`, `repair`, `sandbox`)
 
-- [ ] `validation.base_class`, `assertion_object`, `assertion_methods`,
+- [ ] `validation.base_classes` (every root base; there may be several), `assertion_object`, `assertion_methods`,
       `external_modules`, `naming` regexes, `unique_name_helper`.
 - [ ] `validation.name_max_length` (the app's name limit), `name_keys`.
 - [ ] `validation.capability_gates` (component → gates its features use),

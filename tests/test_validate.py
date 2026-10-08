@@ -249,6 +249,20 @@ def test_base_class_is_required(setup: Any) -> None:
     assert messages == ["class TestRulesListFilter must inherit BaseTest"]
 
 
+def test_any_of_several_base_classes_is_accepted(setup: Any) -> None:
+    settings = setup[0].model_copy(deep=True)
+    settings.validation.base_classes = ["BrowsingBase", "BaseTest"]  # one absent from the repo
+    assert _messages(_validate(setup, settings=settings), "base_class") == []
+    code = _replace("class TestRulesListFilter(BaseTest):", "class TestRulesListFilter:")
+    code = _replace("from framework.base_test import BaseTest\n", "", code)
+    assert _messages(_validate(setup, code=code, settings=settings), "base_class") == [
+        "class TestRulesListFilter must inherit one of BrowsingBase, BaseTest"
+    ]
+    settings.validation.base_classes = ["BrowsingBase"]
+    messages = _messages(_validate(setup, settings=settings), "base_class")
+    assert messages and "none of the base classes" in messages[0]
+
+
 def test_required_markers_and_approved_values(setup: Any) -> None:
     missing = _replace('   @pytest.mark.suite("regression")\n', "")
     assert _messages(_validate(setup, code=missing), "markers") == [

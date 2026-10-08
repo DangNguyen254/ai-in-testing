@@ -155,19 +155,25 @@ def check_names(s: Subject) -> Iterator[Finding]:
 
 def check_base_class(s: Subject) -> Iterator[Finding]:
     assert s.tree is not None
-    base_name = s.settings.validation.base_class
-    if s.base is None:
-        yield _f("base_class", f"base class {base_name!r} is not in the target repo's catalog")
+    allowed = s.settings.validation.base_classes
+    if not allowed:
+        return
+    known = [b for b in allowed if s.catalog.class_named(b) is not None]
+    if not known:
+        yield _f(
+            "base_class", f"none of the base classes {allowed} is in the target repo's catalog"
+        )
         return
     for cls in test_classes(s.tree, s.settings.index.test_class_prefix):
         names = [dotted(b) for b in cls.bases]
         inherits = any(
-            n.rsplit(".", 1)[-1] == base_name
-            or any(e.name == base_name for e in _mro_by_name(s.catalog, n))
+            n.rsplit(".", 1)[-1] in allowed
+            or any(e.name in allowed for e in _mro_by_name(s.catalog, n))
             for n in names
         )
         if not inherits:
-            yield _f("base_class", f"class {cls.name} must inherit {base_name}", line=cls.lineno)
+            wanted = allowed[0] if len(allowed) == 1 else f"one of {', '.join(allowed)}"
+            yield _f("base_class", f"class {cls.name} must inherit {wanted}", line=cls.lineno)
 
 
 def _mro_by_name(catalog: SymbolCatalog, name: str) -> list[ClassEntry]:
@@ -654,7 +660,9 @@ def validate_generated(
 def _prepare(s: Subject) -> None:
     assert s.tree is not None
     v, d = s.settings.validation, s.settings.data
-    s.base = s.catalog.class_named(v.base_class)
+    s.base = next(  # where chains start when a class's own bases aren't in the repo
+        (c for c in (s.catalog.class_named(b) for b in v.base_classes) if c is not None), None
+    )
     s.tests = test_functions(
         s.tree, s.settings.index.test_function_prefix, s.settings.index.test_class_prefix
     )

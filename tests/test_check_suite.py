@@ -36,7 +36,7 @@ def test_a_wrong_config_is_reported_by_check_with_the_keys_to_fix(tmp_path: Path
         tmp_path,
         markers={"priorities": ["P0", "P1", "P2", "P3"]},
         style={"python": {"indent_width": 4}, "json": {"indent": 2}},
-        validation={"base_class": "SuiteBase"},
+        validation={"base_classes": ["SuiteBase"]},
     )
     report = check_suite(STANDIN, settings)
     assert not report.ok
