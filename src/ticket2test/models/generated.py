@@ -130,22 +130,24 @@ class GenerationResponse(BaseModel):
         keys = [e.test_id for e in self.entries]
         if len(keys) != len(set(keys)):
             raise ValueError("entries contain duplicate test_id values")
-        extra = [k for k in keys if k not in ids]
-        if extra:
-            raise ValueError(
-                f"entries for ids the code doesn't produce: {extra}. Computed from the code: {ids}."
-            )
-
         uses = data_use(
             self.code,
             ctx.get(CTX_DATA_ACCESS, ["self.params", "params"]),
             list(ctx.get(CTX_EXPECTATIONS, {}).values()),
             test_prefix,
         )
+        extra = [k for k in keys if k not in ids]
         missing = [
             i for i in ids if uses.get(function_of(i)) and uses[function_of(i)].reads_data
             and i not in keys
         ]  # fmt: skip
+        if len(extra) == 1 and len(missing) == 1:  # one mislabelled entry: re-keyed in code
+            keys = [missing[0] if k == extra[0] else k for k in keys]
+            extra, missing = [], []
+        if extra:
+            raise ValueError(
+                f"entries for ids the code doesn't produce: {extra}. Computed from the code: {ids}."
+            )
         if missing:
             raise ValueError(
                 f"these tests use their data entry but have no entry: {missing}. Give one "
@@ -155,12 +157,12 @@ class GenerationResponse(BaseModel):
         base = ctx.get(CTX_BASE_ENTRY)
         if base is None:
             return self
-        for plan in self.entries:
+        for plan, test_id in zip(self.entries, keys, strict=True):
             try:
                 entry = build_entry(
                     base,
                     ctx.get(CTX_BASE_ID, ""),
-                    plan.test_id,
+                    test_id,
                     plan.copy_sections,
                     plan.change_tuples(),
                     id_field=ctx.get(CTX_ID_FIELD, "id"),
@@ -169,42 +171,56 @@ class GenerationResponse(BaseModel):
                 )
             except EntryError as exc:
                 raise ValueError(str(exc)) from exc
-            use = uses.get(function_of(plan.test_id))
+            use = uses.get(function_of(test_id))
             absent = sorted(use.keys - set(entry)) if use else []
             if absent:
                 raise ValueError(
-                    f"{plan.test_id} reads keys its entry lacks: {absent}. Add them with "
+                    f"{test_id} reads keys its entry lacks: {absent}. Add them with "
                     "changes (op set) or copy them from the base entry."
                 )
-            unused = _unconsumed_keys(entry, use, ctx)
-            if unused:
-                raise ValueError(f"{plan.test_id}: {unused}")
+            _unread, conflict = unconsumed_keys(entry, use, ctx)
+            if conflict:  # unread keys alone are removed in code (generator.assemble)
+                raise ValueError(f"{test_id}: {conflict}")
         return self
 
 
-def _unconsumed_keys(entry: dict[str, Any], use: Any, ctx: dict[str, Any]) -> str:
-    """Every key must be read by the test or consumed by the framework or a helper it calls."""
+def unconsumed_keys(
+    entry: dict[str, Any], use: Any, ctx: dict[str, Any]
+) -> tuple[dict[str, str], str]:
+    """Keys nobody reads (key -> why), and a conflict code can't fix ("" if none).
+
+    Every key must be read by the test or consumed by the framework or a helper it calls. An
+    unread key can simply be removed; two expectation sections whose helpers are both called
+    can't (which one is meant?).
+    """
     expectations: dict[str, str] = ctx.get(CTX_EXPECTATIONS, {})
     fixed = {ctx.get(CTX_ID_FIELD, "id"), *ctx.get(CTX_SEED_SECTIONS, [])}
     fixed |= set(ctx.get(CTX_PER_ENTRY_KEYS, []))
     read = (use.keys | use.optional_keys) if use else frozenset()
     helpers = use.helpers if use else frozenset()
-    present = [k for k in expectations if k in entry]
-    if len(present) > 1:
-        return f"an entry has one expectation section, not {present}"
-    problems = []
+    unread: dict[str, str] = {}
     for key in entry:
         if key in fixed or key in read:
             continue
         if key in expectations:
             if expectations[key] not in helpers:
-                problems.append(
+                unread[key] = (
                     f"{key!r} is only read by {expectations[key]}(), which the test never calls"
                 )
         else:
-            problems.append(f"custom key {key!r} is never read by the test")
-    if problems:
-        return "; ".join(problems) + ". Remove it, or read it in the test."
+            unread[key] = f"custom key {key!r} is never read by the test"
+    present = [k for k in expectations if k in entry and k not in unread]
+    conflict = f"an entry has one expectation section, not {present}" if len(present) > 1 else ""
+    return unread, conflict
+
+
+def _unconsumed_keys(entry: dict[str, Any], use: Any, ctx: dict[str, Any]) -> str:
+    """The problems as one message (for the validator)."""
+    unread, conflict = unconsumed_keys(entry, use, ctx)
+    if conflict:
+        return conflict
+    if unread:
+        return "; ".join(unread.values()) + ". Remove it, or read it in the test."
     return ""
 
 

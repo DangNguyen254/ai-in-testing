@@ -263,6 +263,8 @@ Component values are learned automatically from the suite.
 | `eval.ticket_id_pattern` | Regex of ticket ids in skip reasons; the default fits `ABC-123`. |
 | `security.masking.keys` | Data keys where the suite keeps prompt-injection payloads (their values are always hidden from the LLM). Look at the AI-agent tests' data files: which keys hold the injected text? |
 | `security.masking.patterns` | Keep the defaults; add a regex only for payload phrasing the suite uses that the defaults miss (check: `ticket2test` never needs to show those strings to the LLM). |
+| `security.private_terms` | **The human sets it**, in `company.yaml` or `T2T_SECURITY__PRIVATE_TERMS`: regexes for names that must never reach the LLM or the public repo. You may suggest candidates in your report (by description, e.g. "the product name"), never in a file of the public repo. |
+| `retrieval.shape_actions` | Action words in test names, for test shapes: `add`, `edit`, `delete` (and any action the suite names its tests by, e.g. `download: [download]`). Grep test names and list the verbs that start a flow. | add/edit/delete words |
 | `llm.provider` and model | **The human decides.** Don't change. |
 
 ## 6. Procedure: calibrate until clean (max 10 rounds)

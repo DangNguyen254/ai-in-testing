@@ -213,6 +213,15 @@ class RetrievalSettings(_Section):
     # A follow-up round runs only while results are "thin":
     followup_min_tests: int = Field(default=1, ge=0)  # fewer test chunks than this in top_k
     max_templates: int = Field(default=3, ge=0)
+    # Action words for test shapes (retrieve/shape.py): templates of the draft's shape rank first
+    # after the component. Name -> words found in test names, called names, or the draft.
+    shape_actions: dict[str, list[str]] = Field(
+        default_factory=lambda: {
+            "add": ["add", "create", "new"],
+            "edit": ["edit", "update", "change", "rename", "modify", "enable", "disable", "toggle"],
+            "delete": ["delete", "remove"],
+        }
+    )
     max_ticket_chars: int = Field(default=6000, ge=200)  # ticket text sent to the LLM
     rerank: RerankSettings = RerankSettings()
 
@@ -399,6 +408,10 @@ class MaskingSettings(_Section):
 
 class SecuritySettings(_Section):
     masking: MaskingSettings = MaskingSettings()
+    # Names that must never reach an external LLM or this repo (case-insensitive regexes; see
+    # security/private.py). Set them in the private config or T2T_SECURITY__PRIVATE_TERMS
+    # (a JSON list), never in this repo's config.yaml.
+    private_terms: list[str] = Field(default_factory=list)
 
 
 class PathSettings(_Section):

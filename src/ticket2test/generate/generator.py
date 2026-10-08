@@ -22,7 +22,8 @@ from ticket2test.generate.context import (
     chunk_piece,
     template_piece,
 )
-from ticket2test.generate.entries import build_entry
+from ticket2test.generate.entries import build_entry, function_of
+from ticket2test.generate.inspect import data_use
 from ticket2test.index.indexer import IndexData
 from ticket2test.llm.base import LLMClient, LLMError, LLMRequest, Message
 from ticket2test.llm.factory import model_name
@@ -42,9 +43,11 @@ from ticket2test.models.generated import (
     CTX_SEED_SECTIONS,
     CTX_TEST_PREFIX,
     CTX_TICKET_ID,
+    EntryPlan,
     GeneratedTest,
     GenerationResponse,
     TemplateEntryRef,
+    unconsumed_keys,
 )
 from ticket2test.models.retrieval import RetrievalResult
 from ticket2test.prompts import load_prompt
@@ -184,10 +187,13 @@ def assemble(
         code = code_scrub.text
         notes = f"{notes} (not formatted: {exc})".strip()
 
+    code, shell_note = with_template_shell(code, setup)
     order = {test_id: n for n, test_id in enumerate(_ids(code, settings))}
+    plans, fixes = rekey_plans(list(response.entries), code, setup)
+    fixes += [shell_note] if shell_note else []
     entries: list[dict[str, Any]] = []
     output_redactions = code_scrub.redacted
-    for plan in sorted(response.entries, key=lambda p: order.get(p.test_id, len(order))):
+    for plan in sorted(plans, key=lambda p: order.get(p.test_id, len(order))):
         entry = build_entry(
             setup.base_entry,
             setup.entry_key,
@@ -198,9 +204,13 @@ def assemble(
             per_entry_keys=data.per_entry_keys,
             test_prefix=settings.index.test_function_prefix,
         )
+        entry, removed = strip_unread(entry, code, setup)
+        fixes += removed
         cleaned, redacted = _scrub_json(entry)
         output_redactions += redacted
         entries.append(cleaned)
+    if fixes:
+        notes = f"{notes} Fixed in code: {'; '.join(fixes)}.".strip()
 
     folder = PurePosixPath(setup.template_chunk.file_path).parent
     file_name = str(folder / f"{response.module_name}.py")
@@ -226,7 +236,147 @@ def assemble(
         redactions=setup.input_redactions + output_redactions,
         notes=notes,
         review_checklist=checklist,
-        entry_plans=list(response.entries),
+        entry_plans=plans,
+    )
+
+
+def with_template_shell(code: str, setup: GenerationSetup) -> tuple[str, str]:
+    """The generated module rebuilt on the template class's shell, in code: the template
+    module's imports, the class's decorator stack, base class and setup/teardown, then the
+    generated test methods (and only the imports they use).
+
+    Decorators the generated class carries with the same name keep their generated arguments
+    (values chosen for this draft, e.g. the component marker); decorators the template lacks
+    (e.g. a deployment decorator for a cloud-only draft) are added after the stack. A module
+    with other top-level code, or one that doesn't parse, is left as written.
+    Returns (code, note); the note is "" when nothing changed.
+    """
+    import ast
+
+    from ticket2test.generate.patch import PatchError, splice_methods
+
+    settings, chunk = setup.settings, setup.template_chunk
+    shell = class_scaffold(chunk, setup.index, settings.generate.scaffold_methods)
+    if shell is None or chunk.class_name is None:
+        return code, ""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return code, ""
+    prefix = settings.index.test_class_prefix
+    classes = [n for n in tree.body if isinstance(n, ast.ClassDef)]
+    others = [
+        n
+        for n in tree.body
+        if not isinstance(n, ast.Import | ast.ImportFrom | ast.ClassDef)
+        and not (isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant))  # docstring
+    ]
+    if len(classes) != 1 or not classes[0].name.startswith(prefix) or others:
+        return code, ""
+    generated = classes[0]
+    placeholder = "\n" + " " * settings.style.python.indent_width + "pass"
+    bare = shell.rstrip().endswith(":")  # a class without setup/teardown
+    if bare:  # give it a body to parse and splice into; removed again below
+        shell = shell.rstrip() + placeholder
+    try:
+        shell_tree = ast.parse(shell)
+    except SyntaxError:
+        return code, ""
+    template = next(n for n in shell_tree.body if isinstance(n, ast.ClassDef))
+
+    def name_of(node: ast.expr) -> str:
+        return ast.unparse(node.func if isinstance(node, ast.Call) else node)
+
+    ours = {name_of(d): ast.get_source_segment(code, d) or "" for d in generated.decorator_list}
+    stack = []
+    for decorator in template.decorator_list:
+        name = name_of(decorator)
+        stack.append(ours.pop(name, "") or ast.get_source_segment(shell, decorator) or "")
+    stack += list(ours.values())
+    lines = shell.split("\n")
+    first = min([template.lineno, *(d.lineno for d in template.decorator_list)])
+    class_line = lines[template.lineno - 1].replace(
+        f"class {template.name}", f"class {generated.name}", 1
+    )
+    header = [*(f"@{d}" for d in stack), class_line]
+    rebuilt = "\n".join([*lines[: first - 1], *header, *lines[template.lineno :]]).rstrip()
+    doc = ast.get_docstring(tree, clean=False)
+    if doc is not None:
+        rebuilt = f"{ast.get_source_segment(code, tree.body[0])}\n\n{rebuilt}"
+    try:
+        spliced, _added = splice_methods(rebuilt + "\n", generated.name, code, settings)
+        if bare:
+            spliced = spliced.replace(placeholder + "\n", "\n", 1)
+        roots = {name_of(ast.parse(d, mode="eval").body).split(".")[0] for d in stack}
+        spliced = _add_imports(spliced, code, roots)  # for decorators from the generated class
+        result = format_python(spliced, settings.style.python, first_party(setup.index, settings))
+    except (PatchError, SyntaxError, FormatError):
+        return code, ""
+    if result == code:
+        return code, ""
+    return result, f"class shell (imports, decorators, base, setup) from {chunk.class_name}"
+
+
+def _add_imports(target: str, source: str, names: set[str]) -> str:
+    """Import statements of ``source`` that bind any of ``names`` and that ``target`` lacks."""
+    import ast
+
+    have = {
+        (a.asname or a.name).split(".")[0]
+        for n in ast.parse(target).body
+        if isinstance(n, ast.Import | ast.ImportFrom)
+        for a in n.names
+    }
+    missing = [
+        ast.get_source_segment(source, n) or ""
+        for n in ast.parse(source).body
+        if isinstance(n, ast.Import | ast.ImportFrom)
+        and {(a.asname or a.name).split(".")[0] for a in n.names} & (names - have)
+    ]
+    return "\n".join(missing) + "\n" + target if missing else target
+
+
+def rekey_plans(
+    plans: list[EntryPlan], code: str, setup: GenerationSetup
+) -> tuple[list[EntryPlan], list[str]]:
+    """One entry labelled with an id the code doesn't produce, while exactly one test that
+    reads its data has no entry: that entry is the test's (fixed here, not by the LLM)."""
+    settings = setup.settings
+    ids = _ids(code, settings)
+    uses = _uses(code, settings)
+    keys = [p.test_id for p in plans]
+    extra = [k for k in keys if k not in ids]
+    missing = [i for i in ids if (u := uses.get(function_of(i))) and u.reads_data and i not in keys]
+    if len(extra) != 1 or len(missing) != 1:
+        return plans, []
+    fixed = [
+        p.model_copy(update={"test_id": missing[0]}) if p.test_id == extra[0] else p for p in plans
+    ]
+    return fixed, [f"entry {extra[0]!r} re-keyed to {missing[0]!r}"]
+
+
+def strip_unread(
+    entry: dict[str, Any], code: str, setup: GenerationSetup
+) -> tuple[dict[str, Any], list[str]]:
+    """Remove keys the test never reads and no helper it calls consumes (rule 1)."""
+    test_id = str(entry.get(setup.settings.data.id_field, ""))
+    use = _uses(code, setup.settings).get(function_of(test_id))
+    unread, _conflict = unconsumed_keys(entry, use, setup.validation_context)
+    if not unread:
+        return entry, []
+    kept = {k: v for k, v in entry.items() if k not in unread}
+    return kept, [f"removed unread {sorted(unread)} from {test_id}"]
+
+
+def _uses(code: str, settings: Settings) -> dict[str, Any]:
+    data = settings.data
+    return dict(
+        data_use(
+            code,
+            data.access,
+            list(data.expectation_sections.values()),
+            settings.index.test_function_prefix,
+        )
     )
 
 

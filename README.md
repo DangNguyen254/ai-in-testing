@@ -149,6 +149,13 @@ written as `patched/<path>` copies plus `changes.patch` (never into the target r
 validated whole, reporting only findings the unpatched file doesn't already have.
 `--as variant|method|module` forces a kind.
 
+More is done in code, around the one generation call: templates of the draft's **shape**
+(UI or API; add, edit, delete or other, words in `retrieval.shape_actions`) rank first after
+the component; a new module gets the template class's **shell** (imports, decorators, base
+class, setup/teardown) with only the generated test methods spliced in; data keys the test
+never reads are removed and a single mislabelled entry is re-keyed without a retry; and
+every variant the draft lists must become a case (validator `variants`).
+
 ### Check the config against an existing suite
 
 ```bash
@@ -259,6 +266,12 @@ If `uv` isn't on PATH at all, `py -m uv ...` works when uv was installed with `p
   become `[[PAYLOAD_n]]` tokens with a short legend), and the originals are restored in the
   structured result by code. Leftover tokens are a validator error; new instruction-like text
   in generated output is a reviewer warning.
+- Private terms (`security.private_terms`: case-insensitive regexes for company, product or
+  customer names, internal hosts) are set only in the private config or
+  `T2T_SECURITY__PRIVATE_TERMS` (a JSON list). Every LLM request has them redacted to
+  `[PRIVATE]` (outermost wrapper); generated output containing one is a validator error; and
+  `ticket2test privacy-scan` checks the files git would commit before you commit. Reports
+  name a term by its position (`term #2`), never by its text.
 
 ## License
 

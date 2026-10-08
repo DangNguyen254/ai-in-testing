@@ -113,6 +113,10 @@ retrieval:
   followup_max_searches: 3
   followup_min_tests: 1          # follow-ups run only while top_k has fewer tests than this
   max_templates: 3
+  shape_actions:                 # test shapes: templates of the draft's shape rank first
+    add: [add, create, new]
+    edit: [edit, update, change, rename, modify, enable, disable, toggle]
+    delete: [delete, remove]
   max_ticket_chars: 6000
   rerank:                        # deterministic re-scoring + diversity of the final top_k
     enabled: true
@@ -191,6 +195,7 @@ sandbox:                          # `pytest --collect-only` in a container (Hard
   work_dir: .scratch/sandbox      # staging folder per run (git-ignored)
 
 security:
+  private_terms: []               # set ONLY in private config or T2T_SECURITY__PRIVATE_TERMS (JSON list)
   masking:                        # prompt-injection payloads never reach our own LLM
     enabled: true
     patterns:                     # instruction-like phrasing; the enclosing string/sentence is masked

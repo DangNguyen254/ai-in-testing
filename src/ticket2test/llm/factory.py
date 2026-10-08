@@ -43,7 +43,16 @@ def create_llm_client(settings: Settings, debug_log: bool = False) -> LLMClient:
 
     if debug_log:
         client = DebugLoggingClient(client, settings.paths.debug_log_dir)
-    return with_masking(client, settings)
+    return with_privacy(with_masking(client, settings), settings)
+
+
+def with_privacy(client: LLMClient, settings: Settings) -> LLMClient:
+    """Redact private terms from every request (outermost: nothing inside sees them)."""
+    from ticket2test.llm.privacy import PrivacyClient
+    from ticket2test.security.private import PrivateTerms
+
+    terms = PrivateTerms(settings.security.private_terms)
+    return PrivacyClient(client, terms) if terms else client
 
 
 def with_masking(client: LLMClient, settings: Settings) -> LLMClient:

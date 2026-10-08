@@ -358,9 +358,9 @@ def test_data_keys_read_must_exist_and_every_key_must_be_used(setup: Any) -> Non
     unread_target = {**GOOD_ENTRY, "targets": []}
     messages = _messages(_validate(setup, entries=[unread_target]), "data_keys")
     assert messages and "only read by self.verify_targets()" in messages[0]
-    both = {**GOOD_ENTRY, "targets": [], "interactions": []}
+    both = {**GOOD_ENTRY, "targets": [], "interactions": []}  # neither helper is called
     messages = _messages(_validate(setup, entries=[both]), "data_keys")
-    assert messages and "one expectation section" in messages[0]
+    assert messages and "verify_targets()" in messages[0] and "verify_interactions()" in messages[0]
 
 
 def test_data_file_formatting(setup: Any) -> None:
@@ -464,6 +464,35 @@ def test_the_drafts_expected_outcome_is_a_claim(setup: Any) -> None:
     )
     messages = _messages(_validate(setup, draft=draft), "claims", "warning")
     assert messages == ["expected outcome claims 'An audit entry is written': not checked"]
+
+
+def test_every_draft_variant_has_a_case(setup: Any) -> None:
+    def variant(name: str, value: str) -> dict[str, Any]:
+        return {"name": name, "inputs": [{"name": "action", "value": value}], "expected": "x"}
+
+    draft = TestCaseDraft.model_validate(
+        {
+            "id": "STND-106/d1",
+            "ticket_id": "STND-106",
+            "kind": "primary",
+            "intent": "Filter kept on the next page",
+            "markers": {"priority": "p2", "component": "rules", "suite": "regression"},
+            "test_kind": "ui",
+            "deployment_type": "both",
+            "preconditions": [],
+            "steps": ["Filter by the action", "Next page"],
+            "expected_outcome": "Only rules with that action are shown",
+            "variants": [
+                variant("allow rules", "Allow"),
+                variant("quarantine rules", "quarantine"),
+            ],
+            "confidence": 0.9,
+            "prompt_version": "draft_v1",
+        }
+    )
+    messages = _messages(_validate(setup, draft=draft), "variants")
+    assert len(messages) == 1  # "allow" is in the code; "quarantine" is nowhere
+    assert messages[0].startswith("the draft's variant 'quarantine rules' (action='quarantine')")
 
 
 # --- CLI ----------------------------------------------------------------------------------------

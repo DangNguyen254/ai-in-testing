@@ -742,3 +742,38 @@ def check_suite_cmd(
     typer.echo(f"Wrote {folder / stem}.json and .md")
     if not report.ok:
         raise typer.Exit(code=1)
+
+
+@app.command(name="privacy-scan")
+def privacy_scan(
+    ctx: typer.Context,
+    repo: Annotated[Path, typer.Argument(help="Repo to scan (default: this one).")] = Path("."),
+) -> None:
+    """Check files git would commit for private terms (security.private_terms).
+
+    Run before committing to this public repo. Hits name the term by its position in the list,
+    never by its text.
+    """
+    import subprocess
+
+    from ticket2test.security.private import PrivateTerms, repo_files, scan_files
+
+    state: AppState = ctx.obj
+    terms = PrivateTerms(state.settings.security.private_terms)
+    if not terms:
+        typer.echo(
+            "No private terms configured (security.private_terms or "
+            "T2T_SECURITY__PRIVATE_TERMS); nothing checked."
+        )
+        return
+    try:
+        files = repo_files(repo)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        typer.echo(f"Error: cannot list files with git in {repo}: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    hits = scan_files(repo, files, terms)
+    for name, hit in hits:
+        typer.echo(f"{name}:{hit.line}: private term #{hit.term}")
+    typer.echo(f"{len(files)} file(s) checked, {len(hits)} hit(s)")
+    if hits:
+        raise typer.Exit(code=1)

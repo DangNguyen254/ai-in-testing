@@ -137,7 +137,7 @@ def test_templates_prefer_the_ticket_and_draft_component(
     result = retrieve(_ticket("STND-102"), index, _settings(tmp_path), None, draft)
     assert result.templates
     assert all(t.chunk_id.startswith("tests/rules/") for t in result.templates)
-    assert result.templates[0].why == "same component 'rules'"
+    assert result.templates[0].why.startswith("same component 'rules'")
 
 
 # --- LLM steps -------------------------------------------------------------------------------

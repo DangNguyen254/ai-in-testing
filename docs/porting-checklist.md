@@ -18,6 +18,9 @@ find every value.
       google-genai. Flagged earlier: `certifi` (MPL-2.0, via httpx), `pathspec` (MPL-2.0, dev
       only), numpy's bundled licences (BSD / 0BSD / MIT / Zlib / CC0).
 - [ ] Which LLM endpoint is allowed, and whether source code may be sent to it.
+- [ ] `security.private_terms` (private config or `T2T_SECURITY__PRIVATE_TERMS` only):
+      names that must never reach the LLM or this public repo. Run
+      `ticket2test privacy-scan` before every commit to this repo.
 
 ## 1. LLM provider (`llm`)
 
@@ -59,6 +62,8 @@ find every value.
 - [ ] `generate.domain_globs` (the folders that are domains, e.g. `<root>/<group>/*`; one
       domain per feature folder) or `generate.domains` (a domain over several folders).
       Reuse decisions and generation stay inside the ticket's domain.
+- [ ] `retrieval.shape_actions`: the verbs the suite's test names use for add / edit /
+      delete flows (and others it names tests by), so templates match the draft's shape.
 - [ ] `generate.placeholder_token` (the unique-name placeholder and its length),
       `generate.deployment_decorators`, `generate.scaffold_methods`,
       `generate.review_checklist_defaults`.

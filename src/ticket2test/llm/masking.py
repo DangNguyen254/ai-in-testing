@@ -38,8 +38,15 @@ class MaskingClient(LLMClient):
 
 
 def masker_of(client: LLMClient) -> Masker | None:
-    """The masker of a masking client (None when masking is off)."""
-    return client.masker if isinstance(client, MaskingClient) else None
+    """The masker of a masking client, also under other wrappers (None when masking is off)."""
+    seen: LLMClient | None = client
+    for _ in range(10):  # wrappers expose .inner; a short, bounded walk
+        if isinstance(seen, MaskingClient):
+            return seen.masker
+        seen = getattr(seen, "inner", None)
+        if seen is None:
+            return None
+    return None
 
 
 M = TypeVar("M", bound=BaseModel)

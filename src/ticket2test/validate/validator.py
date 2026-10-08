@@ -24,6 +24,7 @@ from ticket2test.index.tokens import split_identifier
 from ticket2test.models.draft import TestCaseDraft
 from ticket2test.models.generated import GeneratedTest, _name_problems, _unconsumed_keys
 from ticket2test.security.masking import TOKEN
+from ticket2test.security.private import MARK, PrivateTerms
 from ticket2test.style import format_entries
 from ticket2test.style.python import FormatError, format_python, strip_annotations
 from ticket2test.validate import claims
@@ -532,6 +533,57 @@ def check_draft_outcome(s: Subject) -> Iterator[Finding]:
         yield _f("claims", f"{gap.source} claims {gap.clause!r}: {gap.reason}", "warning")
 
 
+def check_variants(s: Subject) -> Iterator[Finding]:
+    """Every variant the draft lists becomes a case: one of its input values appears in the
+    code (a string literal, e.g. a parametrize value) or in the data. A draft asking for
+    viewers and editors must not come back with viewers only."""
+    if s.draft is None or not s.draft.variants:
+        return
+    assert s.tree is not None
+    literals = {
+        n.value.lower()
+        for n in ast.walk(s.tree)
+        if isinstance(n, ast.Constant) and isinstance(n.value, str)
+    }
+    texts = (
+        literals
+        | {v.lower() for v in _strings(s.entries)}
+        | {i.lower() for i in s.generated.test_ids}
+    )
+    blob = "\n".join(texts)
+    for variant in s.draft.variants:
+        values = [i.value.strip().lower() for i in variant.inputs if len(i.value.strip()) > 1]
+        if not values:
+            continue
+        if not any(v in blob or (v.endswith("s") and v[:-1] in blob) for v in values):
+            shown = ", ".join(f"{i.name}={i.value!r}" for i in variant.inputs)
+            yield _f(
+                "variants",
+                f"the draft's variant {variant.name!r} ({shown}) has no case: none of its "
+                "values is in the code or the data. Add a parametrize value and an entry for it.",
+            )
+
+
+def check_private(s: Subject) -> Iterator[Finding]:
+    """No private term (``security.private_terms``) and no redaction mark in the output. The
+    term is named by its position in the list, never by its text."""
+    terms = PrivateTerms(s.settings.security.private_terms)
+    data_text = json.dumps(s.entries, ensure_ascii=False, indent=1)
+    for where, text in (("code", s.code), ("data", data_text)):
+        for hit in terms.find(text):
+            yield _f(
+                "private",
+                f"private term #{hit.term} is in the {where} (line {hit.line})",
+                line=hit.line if where == "code" else None,
+            )
+        if MARK in text:
+            yield _f(
+                "private",
+                f"a redacted name {MARK} is in the {where}: the LLM only saw it redacted; "
+                "the reviewer must write the real value",
+            )
+
+
 def check_payloads(s: Subject) -> Iterator[Finding]:
     """Masked payloads were restored, and no new instruction-like text appeared."""
     data_text = json.dumps(s.entries, ensure_ascii=False)
@@ -623,8 +675,10 @@ CHECKS: list[tuple[str, Check]] = [
     ("capabilities", check_capability_gates),
     ("claims", check_claims),
     ("draft_outcome", check_draft_outcome),
+    ("variants", check_variants),
     ("constants", check_unstated_constants),
     ("payloads", check_payloads),
+    ("private", check_private),
 ]
 
 

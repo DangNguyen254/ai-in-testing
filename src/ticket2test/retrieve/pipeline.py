@@ -29,6 +29,7 @@ from ticket2test.prompts import load_prompt
 from ticket2test.retrieve.llm_steps import request_followups, rewrite_query
 from ticket2test.retrieve.query import candidate_identifiers, ticket_text, verify_identifiers
 from ticket2test.retrieve.rerank import Ranked, rerank
+from ticket2test.retrieve.shape import shape_of_draft, shape_of_test
 
 RankedList = list[tuple[Chunk, Reason]]
 
@@ -173,7 +174,8 @@ class Retriever:
         draft: TestCaseDraft | None,
         ticket_components: list[str] | None = None,
     ) -> list[TemplateRef]:
-        """Tests with data entries, same component first, then by retrieval score.
+        """Tests with data entries: same component first, then the draft's shape (UI or API,
+        then add / edit / delete / other; see ``retrieve/shape.py``), then retrieval score.
 
         The component comes from the draft and from the ticket's own components; a free-text
         draft component ("rule search") also matches a component word it contains ("rule[s]").
@@ -196,12 +198,24 @@ class Retriever:
                     return value
             return None
 
-        ranked = sorted(with_data, key=lambda c: (component_of(c) is None, -c.score, c.chunk.id))
+        wanted_shape = shape_of_draft(draft, self.settings) if draft is not None else None
+
+        def shape_gap(candidate: _Candidate) -> tuple[int, int]:
+            if wanted_shape is None:
+                return 0, 0
+            return wanted_shape.distance(shape_of_test(candidate.chunk, self.settings))
+
+        ranked = sorted(
+            with_data,
+            key=lambda c: (component_of(c) is None, shape_gap(c), -c.score, c.chunk.id),
+        )
         refs: list[TemplateRef] = []
         for candidate in ranked[: self.cfg.max_templates]:
             key = next(i for i in candidate.chunk.test_ids if i in candidate.chunk.data_entries)
             matched = component_of(candidate)
             why = f"same component '{matched}'" if matched else "most similar test with data"
+            if wanted_shape is not None and shape_gap(candidate) == (0, 0):
+                why += f", same shape ({wanted_shape.kind} {wanted_shape.action})"
             refs.append(TemplateRef(chunk_id=candidate.chunk.id, entry_key=key, why=why))
             candidate.add_reason(Reason(source="template", detail=f"template entry {key}"))
         return refs

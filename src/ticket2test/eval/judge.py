@@ -21,7 +21,7 @@ from ticket2test.models.ticket import Ticket
 from ticket2test.prompts import load_prompt
 from ticket2test.security import scrub_text
 
-JUDGE_PROMPT = "judge_draft_v1"
+JUDGE_PROMPT = "judge_draft_v2"  # v2: config defaults are neutral
 _MAX_CHARS = 12000
 
 

@@ -327,25 +327,6 @@ _NO_HELPER = GOOD_CODE.replace("        self.verify_targets()\n", "")
             ),
             "not valid JSON",
         ),
-        (
-            _reply(
-                plans=[_plan(i, changes=[*_plan(i)["changes"], _change("extra", 1)]) for i in IDS]
-            ),
-            "custom key 'extra' is never read",
-        ),
-        (
-            _reply(code=_NO_HELPER),
-            "'targets' is only read by self.verify_targets()",
-        ),
-        (
-            _reply(
-                plans=[
-                    _plan(i, changes=[*_plan(i)["changes"], _change("interactions", [])])
-                    for i in IDS
-                ]
-            ),
-            "one expectation section",
-        ),
         (_reply(plans=[*[_plan(i) for i in IDS], _plan("test_other[9]")]), "doesn't produce"),
         (_reply(module_name="test_stnd_104"), "must not contain the ticket id"),
         (
@@ -365,6 +346,72 @@ def test_bad_output_is_retried_with_the_error(
     generated = _generate(index, retrieval, tmp_path, fake)
     assert generated.attempts == 2
     assert fragment in fake.requests[1].messages[-1].content
+
+
+@pytest.mark.parametrize(
+    ("reply", "removed"),
+    [
+        (
+            _reply(
+                plans=[_plan(i, changes=[*_plan(i)["changes"], _change("extra", 1)]) for i in IDS]
+            ),
+            "extra",
+        ),
+        (_reply(code=_NO_HELPER), "targets"),  # the test never calls verify_targets()
+        (
+            _reply(
+                plans=[
+                    _plan(i, changes=[*_plan(i)["changes"], _change("interactions", [])])
+                    for i in IDS
+                ]
+            ),
+            "interactions",  # its helper isn't called; targets' is
+        ),
+    ],
+)
+def test_unread_keys_are_removed_in_code(
+    index: IndexData, retrieval: RetrievalResult, tmp_path: Path, reply: str, removed: str
+) -> None:
+    fake = FakeLLMClient([reply])
+    generated = _generate(index, retrieval, tmp_path, fake)
+    assert generated.attempts == 1  # no LLM retry
+    assert all(removed not in entry for entry in generated.data_entries)
+    assert f"removed unread ['{removed}']" in generated.notes
+
+
+def test_the_class_shell_comes_from_the_template(
+    index: IndexData, retrieval: RetrievalResult, tmp_path: Path
+) -> None:
+    drifted = (
+        GOOD_CODE.replace('@environments("cloud", "on_prem")\n', "")  # a decorator dropped
+        .replace("class TestRulesDelete(BaseTest):", "class TestRulesDelete(object):")
+        .replace("fresh_driver=False", "fresh_driver=True")  # another setup option
+        .replace("@data_driven\n", "@data_driven\n@cloud_only\n")  # draft-specific: kept
+        .replace(
+            "from framework.base_test import BaseTest\n",
+            "from framework.base_test import BaseTest\n"
+            "from framework.decorators import cloud_only\n",
+        )
+    )
+    generated = _generate(index, retrieval, tmp_path, FakeLLMClient([_reply(code=drifted)]))
+    code = generated.code
+    assert "class TestRulesDelete(BaseTest):" in code
+    assert '@environments("cloud", "on_prem")\n' in code
+    assert "fresh_driver=False, policy_wait=True" in code  # the template class's setup
+    assert "@cloud_only\n" in code and "cloud_only" in code.split("class ")[0]  # imported
+    assert code.count("def test_") == GOOD_CODE.count("def test_")
+    assert "class shell (imports, decorators, base, setup) from TestRules" in generated.notes
+
+
+def test_one_mislabelled_entry_is_rekeyed_in_code(
+    index: IndexData, retrieval: RetrievalResult, tmp_path: Path
+) -> None:
+    wrong = "test_rules_delete_keeps_others[middle]"
+    fake = FakeLLMClient([_reply(plans=[_plan(IDS[0]), _plan(wrong)])])
+    generated = _generate(index, retrieval, tmp_path, fake)
+    assert generated.attempts == 1
+    assert [e["test_id"] for e in generated.data_entries] == list(IDS)
+    assert f"entry '{wrong}' re-keyed to '{IDS[1]}'" in generated.notes
 
 
 def test_gives_up_after_the_retry_cap(
