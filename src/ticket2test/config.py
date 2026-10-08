@@ -30,7 +30,7 @@ class _Section(BaseModel):
 
 
 # The pipeline's LLM steps; each provider may map some of them to another model.
-LLMStep = Literal["draft", "query_rewrite", "retrieval_followup", "generate"]
+LLMStep = Literal["draft", "query_rewrite", "retrieval_followup", "generate", "variant_plan"]
 
 
 class ClaudeCodeCLISettings(_Section):
@@ -262,6 +262,9 @@ class GenerateSettings(_Section):
     domain_globs: list[str] = Field(default_factory=lambda: ["tests/*"])
     domains: dict[str, list[str]] = Field(default_factory=dict)
     reuse: ReuseSettings = ReuseSettings()
+    # New cases of an existing test: planned in code when the draft's inputs name the data
+    # keys they change, else by one small LLM call with this prompt.
+    variant_prompt: str = "variant_v1"
 
 
 class NamingSettings(_Section):

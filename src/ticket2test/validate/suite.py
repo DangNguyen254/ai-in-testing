@@ -107,8 +107,8 @@ def check_suite(repo: Path, settings: Settings, collect: bool = False) -> SuiteR
 
     for path in _test_files(index, settings):
         code = (repo / path).read_text(encoding="utf-8")
-        entries, layout, data_text = _data(repo, path, settings)
-        ids = _static_ids(index, path)
+        entries, layout, data_text = read_suite_data(repo, path, settings)
+        ids = static_ids(index, path)
         generated = GeneratedTest(
             code=code,
             file_name=path,
@@ -266,7 +266,7 @@ def _test_files(index: IndexData, settings: Settings) -> list[str]:
     )
 
 
-def _static_ids(index: IndexData, path: str) -> list[str]:
+def static_ids(index: IndexData, path: str) -> list[str]:
     return [
         test_id
         for chunk in index.chunks
@@ -275,7 +275,7 @@ def _static_ids(index: IndexData, path: str) -> list[str]:
     ]
 
 
-def _data(
+def read_suite_data(
     repo: Path, path: str, settings: Settings
 ) -> tuple[list[dict[str, Any]], Any, str | None]:
     """The test file's data entries as a list (object layout converted), the layout, the text."""

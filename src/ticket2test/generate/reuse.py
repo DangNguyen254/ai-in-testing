@@ -17,8 +17,9 @@ test). Then, in order:
 
 1. **covered**: the best test's flow matches (``reuse.covered_min``) and the draft names one of
    its parametrize ids, or every value the draft lists is already in its data: point to it;
-2. **variant**: the flow matches (``reuse.variant_min``), the test is parametrized or reads its
-   data, and it is the same kind (UI or API): add a parametrize value and an entry to it;
+2. **variant**: the flow matches (``reuse.variant_min``), the test is its own (not inherited)
+   with one parametrize decorator, and it is the same kind (UI or API): add a parametrize value
+   and an entry to it;
 3. **method**: a class in the domain matches (``reuse.method_min``): add a method to it;
 4. **module**: a new module; its base and scaffold come from the domain's class whose tests are
    of the same kind and closest in flow (one base class may serve several domains).
@@ -31,7 +32,6 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass, field
-from typing import Literal
 
 from ticket2test.config import ReuseSettings, Settings
 from ticket2test.generate.domain import DomainChoice
@@ -39,10 +39,10 @@ from ticket2test.index.indexer import IndexData
 from ticket2test.index.tokens import split_identifier
 from ticket2test.models.chunk import Chunk
 from ticket2test.models.draft import TestCaseDraft
+from ticket2test.models.generated import ReuseKind
 from ticket2test.models.retrieval import RetrievalResult
 from ticket2test.validate.claims import norm
 
-ReuseKind = Literal["covered", "variant", "method", "module"]
 PARAM_BONUS = 0.2  # the draft names one of a test's parametrize values: strong evidence
 _WORD = re.compile(r"[A-Za-z][A-Za-z0-9]+|\d+")
 _QUOTED = re.compile(r"[\"'`{]{1,2}([^\"'`{}]{1,60})[\"'`}]{1,2}")
@@ -64,7 +64,7 @@ class Candidate:
     file_path: str
     kind: str  # "ui" or "api"
     flow: float  # weighted F1 of words, plus PARAM_BONUS when the draft names a case
-    data_driven: bool
+    parametrized: bool  # its own test with one parametrize decorator: it can take a case
     param_ids: list[str] = field(default_factory=list)
     matched_param: str | None = None  # a parametrize id the draft names
     values_covered: bool = False
@@ -149,7 +149,7 @@ def decide(
     )
 
     same_kind = kind == "hybrid" or best.kind == kind
-    if best.flow >= reuse.variant_min and best.data_driven and same_kind:
+    if best.flow >= reuse.variant_min and best.parametrized and same_kind:
         decision.kind, decision.target, decision.target_file = (
             "variant",
             best.chunk_id,
@@ -162,8 +162,8 @@ def decide(
         + (
             f"best flow {best.flow:.2f} < {reuse.variant_min}"
             if best.flow < reuse.variant_min
-            else f"{best.test} reads no data and isn't parametrized"
-            if not best.data_driven
+            else f"{best.test} has no single parametrize to add a case to"
+            if not best.parametrized
             else f"{best.test} is a {best.kind} test, the draft is {kind}"
         )
     )
@@ -221,7 +221,7 @@ def _candidate(
         file_path=chunk.file_path,
         kind="ui" if ui else "api",
         flow=round(score, 3),
-        data_driven=bool(chunk.data_entries or chunk.parametrize),
+        parametrized=len(chunk.parametrize) == 1 and not chunk.inherited_from,
         param_ids=param_ids,
         matched_param=matched,
         values_covered=bool(values) and values <= entry_values,

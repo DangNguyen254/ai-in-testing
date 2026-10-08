@@ -329,11 +329,27 @@ def generate(
     out: Annotated[
         Path | None, typer.Option(help="Output directory (default: <output_dir>/generated).")
     ] = None,
+    reuse_as: Annotated[
+        str,
+        typer.Option(
+            "--as",
+            help="auto: reuse first (covered, new case, new method, or new module, decided in "
+            "code); or force variant, method or module.",
+        ),
+    ] = "auto",
 ) -> None:
-    """Generate a test (code file + JSON data entries) from a draft and retrieval results."""
+    """Generate a test from a draft and retrieval results, reusing the suite first.
+
+    Writes a new module (code file + JSON data), or for a new case or method, patched copies of
+    the existing files plus changes.patch; the target repo itself is never written.
+    """
+    import dataclasses
+    import json
+
     from pydantic import ValidationError
 
     from ticket2test.generate.context import ContextBudgetError
+    from ticket2test.generate.pipeline import generate_reusing
     from ticket2test.index.indexer import update_index
     from ticket2test.llm.base import LLMError
     from ticket2test.llm.factory import create_llm_client, model_name
@@ -341,7 +357,10 @@ def generate(
     from ticket2test.models.retrieval import RetrievalResult
     from ticket2test.prompts import PromptError
     from ticket2test.style import format_entries
-    from ticket2test.validate.repair import generate_with_repair
+
+    if reuse_as not in ("auto", "variant", "method", "module"):
+        typer.echo("Error: --as must be auto, variant, method or module.", err=True)
+        raise typer.Exit(code=2)
 
     state: AppState = ctx.obj
     settings = state.settings
@@ -379,7 +398,7 @@ def generate(
     index, _, _ = update_index(repo_root, settings)
     try:
         client = create_llm_client(settings, debug_log=state.debug_log)
-        repaired = generate_with_repair(
+        outcome = generate_reusing(
             chosen,
             retrieval,
             index,
@@ -387,9 +406,10 @@ def generate(
             client,
             provider=settings.llm.provider,
             model=model_name(settings),
+            repo_root=repo_root,
             conventions=conventions_text,
+            mode=reuse_as,  # type: ignore[arg-type]  # checked above
         )
-        generated, report = repaired.generated, repaired.report
     except (PromptError, ContextBudgetError) as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=2) from exc
@@ -398,21 +418,44 @@ def generate(
         raise typer.Exit(code=1) from exc
 
     folder = target_dir / _safe_name(chosen.id)
-    code_path = folder / generated.file_name
-    data_path = folder / generated.data_file_name
-    code_path.parent.mkdir(parents=True, exist_ok=True)
+    folder.mkdir(parents=True, exist_ok=True)
+    decision_path = folder / "decision.json"
+    decision_path.write_text(
+        json.dumps(dataclasses.asdict(outcome.decision), indent=2), encoding="utf-8"
+    )
+    typer.echo(f"{chosen.id}: {outcome.kind}")
+    for reason in [*outcome.decision.reasons, *outcome.notes]:
+        typer.echo(f"  - {reason}")
+    if outcome.generated is None or outcome.report is None:  # covered
+        typer.echo(f"Already covered by {outcome.decision.test_id}; nothing generated.")
+        typer.echo(f"Wrote {decision_path}")
+        return
+    generated, report = outcome.generated, outcome.report
     data_text = format_entries(
         generated.data_entries, settings.data, settings.style.json_files, generated.data_format
     )
+    written = [decision_path]
+    if generated.patches:  # whole patched copies of existing files, plus the diff
+        code_path = folder / "patched" / generated.file_name
+        data_path = folder / "patched" / generated.data_file_name
+        diff_path = folder / "changes.patch"
+        diff_path.write_text("".join(p.diff for p in generated.patches), encoding="utf-8")
+        written.append(diff_path)
+    else:
+        code_path = folder / generated.file_name
+        data_path = folder / generated.data_file_name
+    code_path.parent.mkdir(parents=True, exist_ok=True)
     code_path.write_text(generated.code, encoding="utf-8", newline="\n")
     data_path.write_text(data_text, encoding="utf-8", newline="\n")
     (folder / "generated.json").write_text(generated.model_dump_json(indent=2), encoding="utf-8")
+    written += [code_path, data_path, folder / "generated.json"]
     typer.echo(
-        f"{chosen.id}: {len(generated.test_ids)} test id(s), template "
+        f"{len(generated.test_ids)} test id(s) in {generated.file_name}, template "
         f"{generated.template_entry_ref.entry_key if generated.template_entry_ref else '-'}, "
         f"{generated.attempts} LLM call(s), ~{generated.context_tokens} context tokens"
     )
-    typer.echo(f"Wrote {code_path}\nWrote {data_path}\nWrote {folder / 'generated.json'}")
+    for path in written:
+        typer.echo(f"Wrote {path}")
     typer.echo(
         f"Validation: {'ok' if report.ok else 'FAILED'} after {report.repairs} repair round(s), "
         f"{len(report.errors)} error(s), {len(report.warnings)} warning(s)"
@@ -441,6 +484,7 @@ def validate(
 ) -> None:
     """Validate generated tests; with --collect, collect them in a container sandbox."""
     from ticket2test.generate.generator import first_party
+    from ticket2test.generate.patch import validate_patch
     from ticket2test.index.indexer import update_index
     from ticket2test.models.generated import GeneratedTest
     from ticket2test.sandbox.runner import SandboxError, collect_generated
@@ -464,17 +508,20 @@ def validate(
     failed = 0
     for path in files:
         generated = GeneratedTest.model_validate_json(path.read_text(encoding="utf-8"))
-        data_path = path.parent / generated.data_file_name
-        data_text = data_path.read_text(encoding="utf-8") if data_path.is_file() else None
-        report = validate_generated(
-            generated,
-            index.catalog,
-            settings,
-            roots,
-            data_text=data_text,
-            imports=imports,
-            index=index,
-        )
+        if generated.patches:  # a new case or method: the whole patched file, new findings only
+            report = validate_patch(generated, index, settings, repo)
+        else:
+            data_path = path.parent / generated.data_file_name
+            data_text = data_path.read_text(encoding="utf-8") if data_path.is_file() else None
+            report = validate_generated(
+                generated,
+                index.catalog,
+                settings,
+                roots,
+                data_text=data_text,
+                imports=imports,
+                index=index,
+            )
         update: dict[str, object] = {"validation_report": report.model_dump(mode="json")}
         typer.echo(
             f"{generated.ticket_id} {generated.file_name}: {'ok' if report.ok else 'FAILED'} "

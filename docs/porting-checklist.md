@@ -56,6 +56,9 @@ find every value.
 - [ ] `generate.conventions_doc`: the team's conventions, written against the real suite (see
       `standin/CONVENTIONS.md` for the shape: structure, markers, page objects and save flows,
       test shapes, checks, data, list pages, style).
+- [ ] `generate.domain_globs` (the folders that are domains, e.g. `<root>/<group>/*`; one
+      domain per feature folder) or `generate.domains` (a domain over several folders).
+      Reuse decisions and generation stay inside the ticket's domain.
 - [ ] `generate.placeholder_token` (the unique-name placeholder and its length),
       `generate.deployment_decorators`, `generate.scaffold_methods`,
       `generate.review_checklist_defaults`.

@@ -28,6 +28,7 @@ from ticket2test.index.indexer import IndexData, update_index
 from ticket2test.llm import FakeLLMClient
 from ticket2test.llm.structured import StructuredOutputError
 from ticket2test.models import DraftResult, TestCaseDraft
+from ticket2test.models.generated import GeneratedTest
 from ticket2test.models.retrieval import RetrievalResult, TemplateRef
 from ticket2test.normalize import normalize
 from ticket2test.retrieve.pipeline import retrieve
@@ -560,7 +561,7 @@ def test_cli_generate_writes_the_pair_outside_the_repo(
 
     out = tmp_path / "gen"
     args = ["generate", str(tmp_path / "d.json"), "--retrieval", str(tmp_path / "r.json")]
-    result = CliRunner().invoke(app, [*args, "--out", str(out)])
+    result = CliRunner().invoke(app, [*args, "--out", str(out), "--as", "module"])
     assert result.exit_code == 0, result.output
     assert "Review checklist (needs a real run):" in result.output
     folder = out / "STND-104_d1"
@@ -577,3 +578,47 @@ def test_cli_generate_writes_the_pair_outside_the_repo(
 
     inside = CliRunner().invoke(app, [*args, "--out", str(STANDIN / "generated")])
     assert inside.exit_code == 2 and "outside the target repo" in inside.output
+
+
+def test_cli_generate_reuses_first(
+    index: IndexData, retrieval: RetrievalResult, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("T2T_PATHS__CACHE_DIR", str(tmp_path / "cache"))
+    drafts = DraftResult(
+        ticket_id="STND-104",
+        status="ok",
+        drafts=[_draft()],
+        prompt_version="draft_v1",
+        provider="fake",
+        model="m",
+        attempts=1,
+    )
+    (tmp_path / "d.json").write_text(drafts.model_dump_json(), "utf-8")
+    (tmp_path / "r.json").write_text(retrieval.model_dump_json(), "utf-8")
+    fake = FakeLLMClient([_reply()])
+    monkeypatch.setattr("ticket2test.llm.factory.create_llm_client", lambda *a, **k: fake)
+    args = ["generate", str(tmp_path / "d.json"), "--retrieval", str(tmp_path / "r.json")]
+    before = sorted(p.as_posix() for p in STANDIN.rglob("*") if "__pycache__" not in p.parts)
+    result = CliRunner().invoke(app, [*args, "--out", str(tmp_path / "gen")])
+    assert result.exit_code == 0, result.output
+    assert "STND-104/d1: method" in result.output and "new method in TestRules" in result.output
+    folder = tmp_path / "gen" / "STND-104_d1"
+    generated = GeneratedTest.model_validate_json((folder / "generated.json").read_text("utf-8"))
+    assert generated.reuse_kind == "method" and generated.reuse_target == "TestRules"
+    assert generated.file_name == "tests/rules/test_rules.py"
+    diff = (folder / "changes.patch").read_text("utf-8")
+    assert "+++ b/tests/rules/test_rules.py" in diff and "+++ b/tests/rules/test_rules.json" in diff
+    removed = [
+        line for line in diff.splitlines() if line.startswith("-") and not line.startswith("---")
+    ]
+    assert removed == []  # adds a method and entries; changes nothing else
+    patched = (folder / "patched/tests/rules/test_rules.py").read_text("utf-8")
+    original = (STANDIN / "tests/rules/test_rules.py").read_text("utf-8")
+    assert patched.startswith(original[: original.index("class TestRules")])
+    assert all(i in generated.test_ids for i in IDS)
+    assert json.loads((folder / "decision.json").read_text("utf-8"))["kind"] == "method"
+    checked = CliRunner().invoke(app, ["validate", str(tmp_path / "gen"), "--repo", str(STANDIN)])
+    assert checked.exit_code == 0 and "1/1 passed" in checked.output, checked.output
+    assert (
+        sorted(p.as_posix() for p in STANDIN.rglob("*") if "__pycache__" not in p.parts) == before
+    )

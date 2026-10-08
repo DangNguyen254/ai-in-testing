@@ -4,7 +4,7 @@ Turns a bug ticket into **structured draft test cases**, then into **runnable te
 human QE to review. Generic and company-agnostic: ticket source, codebase, LLM endpoint, and
 conventions all sit behind adapters and config. Built and evaluated on public data only.
 
-> Status: Phase 6 (code generation). `normalize`, `draft`, `index`, `search`, `retrieve`, `generate`, and `eval --stage retrieval` work; `validate` is a placeholder. See `PROJECT_STATUS.md`.
+> Status: Phases 0–8 done; refining reuse support on the stand-in (see `PROJECT_STATUS.md`).
 
 ## Quick start
 
@@ -129,6 +129,25 @@ and a plan per entry (sections to copy from the nearest existing entry, values t
 entries are built from that plan deterministically, keyed by the pytest ids computed from the
 code. The result is then validated, and validator errors go back to the LLM for repair (at most
 `repair.max_attempts` rounds). The validation report is stored in `generated.json`.
+
+**Reuse first** (`--as auto`, the default). Before writing anything, code decides how the draft
+fits the suite, inside the ticket's domain (a folder from `generate.domain_globs`):
+
+- **covered**: an existing test already has the case (e.g. the draft names one of its
+  parametrize values); nothing is generated and no LLM is called;
+- **variant**: a new case of an existing parametrized test: the value is appended to its
+  parametrize list and an entry cloned from the nearest case goes into its data file. Planned
+  in code when the draft's inputs name the data keys they change; otherwise one small LLM
+  call (`generate.variant_prompt`);
+- **method**: a new test method in an existing class (generated with that class as template,
+  then spliced in, with only the imports it needs);
+- **module**: a new test file, scaffolded from the domain's closest class.
+
+A variant that can't be patched falls back to a method, and a method that can't be spliced is
+kept as a new module. `decision.json` records the decision and every fallback. Patches are
+written as `patched/<path>` copies plus `changes.patch` (never into the target repo), and are
+validated whole, reporting only findings the unpatched file doesn't already have.
+`--as variant|method|module` forces a kind.
 
 ### Check the config against an existing suite
 

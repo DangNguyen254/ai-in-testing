@@ -117,7 +117,7 @@ requirements file, a ticket export). You are done when `ticket2test check-suite 
 |---|---|---|
 | `ticket2test index <repo>` | an index cache (git-ignored) | the printed counts (section 6, step A) |
 | `ticket2test check-suite <repo> [--collect]` | `output/reports/check-suite-<time>.json` and `.md` | `ok`, `errors`, `by_check[]`, `ids` (section 6) |
-| `ticket2test generate ...` | `output/generated/<draft id>/` with the test file, its JSON data file, and `generated.json` | `generated.json` → `validation_report` |
+| `ticket2test generate ...` | `output/generated/<draft id>/`: `decision.json` (covered / variant / method / module, and why); for a new module the test file, its JSON data file and `generated.json`; for a new case or method `patched/<path>` copies of the existing files, `changes.patch`, and `generated.json` | `decision.json` → `kind`, `reasons`; `generated.json` → `validation_report` |
 | `ticket2test validate <dir> --repo <repo> --collect` | updates each `generated.json` | `validation_report.findings`, `collect_report.ok` |
 
 `check-suite` JSON fields you need:
@@ -246,6 +246,9 @@ Component values are learned automatically from the suite.
 | `generate.scaffold_methods` | Names of per-class setup/teardown methods in test classes | `[setup, teardown, setup_method, teardown_method]` |
 | `generate.deployment_decorators` | Decorators that limit a test to one deployment type (`cloud` / `on_prem`) | `{cloud: cloud_only, on_prem: on_prem_only}` |
 | `generate.review_checklist_defaults` | Things a reviewer must always confirm in a real run. Keep the defaults unless the human gives others. | 3 items |
+| `generate.domain_globs` | Folder globs whose matching folders are the suite's **domains** (one feature area per folder; `*` = one folder level). Look at how test folders are grouped: if tests sit in `<root>/<group>/<domain>/`, use `<root>/<group>/*`. Generation stays inside the ticket's domain. | `["tests/*"]` |
+| `generate.domains` | Only when one domain spans several folders: `name: [folder globs]` (overrides `domain_globs`). Usually `{}`. | `{}` |
+| `generate.reuse` | Thresholds for covered / variant / method. Keep the defaults. | see `config.yaml` |
 
 ### 5.7 Sandbox, tickets, LLM
 

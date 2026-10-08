@@ -14,7 +14,8 @@ llm:
   claude_code_cli:
     executable: claude         # or set T2T_LLM__CLAUDE_CODE_CLI__EXECUTABLE to a full path
     model: claude-sonnet-5-5
-    # Per-step override of `model` (steps: draft, query_rewrite, retrieval_followup, generate).
+    # Per-step override of `model` (steps: draft, query_rewrite, retrieval_followup, generate,
+    # variant_plan).
     # Empty: every step uses `model`. Haiku 4.5 for the retrieval steps was tried on 2026-10-06
     # and was worse, slower, and not cheaper (PROJECT_STATUS, Phase 6 log).
     step_models: {}
@@ -145,6 +146,7 @@ generate:
     variant_min: 0.6
     method_min: 0.4
     domain_margin: 0.15
+  variant_prompt: variant_v1      # only when a new case can't be planned in code
 
 validation:                     # deterministic checks of generated tests (Phase 7)
   base_classes: [BaseTest]        # every test class inherits one of them (no common root needed)

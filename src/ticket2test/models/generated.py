@@ -7,6 +7,7 @@ themselves are built deterministically from the base entry (``generate/entries.p
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any, Literal
 
@@ -26,6 +27,10 @@ CTX_EXPECTATIONS = "expectation_sections"  # section -> helper that reads it
 CTX_SEED_SECTIONS = "seed_sections"
 CTX_TICKET_ID = "ticket_id"
 
+# How a draft becomes code (generate/reuse.py): already covered by an existing test, a new
+# case of an existing parametrized test, a new method in an existing class, or a new module.
+ReuseKind = Literal["covered", "variant", "method", "module"]
+
 
 class EntryChange(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -44,6 +49,51 @@ class EntryPlan(BaseModel):
 
     def change_tuples(self) -> list[tuple[str, str, str]]:
         return [(c.op, c.path, c.value_json) for c in self.changes]
+
+
+class VariantPlan(BaseModel):
+    """A new case of an existing parametrized test: its parametrize value, the existing case
+    whose data entry it clones, and the values that change in the clone."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    case: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,40}$")  # the new parametrize value
+    base_case: str  # an existing parametrize value
+    changes: list[EntryChange] = Field(min_length=1)
+    notes: str  # what else may need to change (reviewer)
+
+    @model_validator(mode="after")
+    def _values_are_json(self) -> VariantPlan:
+        """Caught here, a bad value (e.g. a regex with an unescaped backslash) goes back to the
+        LLM with the error instead of failing the patch."""
+        for change in self.changes:
+            if change.op == "set":
+                try:
+                    json.loads(change.value_json)
+                except json.JSONDecodeError as exc:
+                    raise ValueError(
+                        f"{change.path}: value_json is not valid JSON ({exc}); escape "
+                        "backslashes and quotes inside JSON strings"
+                    ) from exc
+        return self
+
+
+class VariantPlanResponse(BaseModel):
+    """What the ``variant_v1`` prompt returns (only when the deterministic plan can't)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    variants: list[VariantPlan] = Field(min_length=1, max_length=10)
+
+
+class PatchedFile(BaseModel):
+    """An existing target-repo file changed by a reuse patch (the repo itself is never written:
+    the patched copy and this diff go to the output directory)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    path: str  # repo-relative
+    diff: str  # unified diff, a/<path> -> b/<path>
 
 
 class GenerationResponse(BaseModel):
@@ -196,7 +246,7 @@ class GeneratedTest(BaseModel):
     prompt_version: str
     provider: str
     model: str
-    attempts: int = Field(ge=1)
+    attempts: int = Field(ge=0)  # LLM calls (0: a deterministic patch)
     context_tokens: int = Field(ge=0)  # estimated
     redactions: int = Field(default=0, ge=0)
     notes: str = ""
@@ -204,3 +254,9 @@ class GeneratedTest(BaseModel):
     entry_plans: list[EntryPlan] = Field(default_factory=list)  # as the LLM chose them
     validation_report: dict[str, Any] | None = None  # Phase 7
     collect_report: dict[str, Any] | None = None  # Phase 7
+    # Reuse (variant / method): ``code`` and ``data_entries`` are the whole patched files.
+    reuse_kind: ReuseKind = "module"
+    reuse_target: str | None = None  # chunk id (variant) or class name (method)
+    reuse_reasons: list[str] = Field(default_factory=list)
+    variant_plans: list[VariantPlan] = Field(default_factory=list)
+    patches: list[PatchedFile] = Field(default_factory=list)
