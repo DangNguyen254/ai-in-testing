@@ -15,10 +15,12 @@ draft came from the cache.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import shutil
 import time
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -28,17 +30,19 @@ from ticket2test.draft import generate_drafts
 from ticket2test.eval.judge import JudgeVerdict, judge_draft
 from ticket2test.eval.pairs import EvalCache, EvalPair, PairSet
 from ticket2test.eval.retrieval import manifest_test_to_chunk_id
+from ticket2test.generate.generator import first_party
 from ticket2test.generate.pipeline import generate_reusing
 from ticket2test.index.indexer import IndexData, update_index
 from ticket2test.llm.base import LLMClient, LLMError
 from ticket2test.llm.factory import model_name
+from ticket2test.models.chunk import Chunk
 from ticket2test.models.draft import DraftResult
 from ticket2test.models.ticket import Ticket
 from ticket2test.normalize import normalize
 from ticket2test.retrieve.pipeline import retrieve
 from ticket2test.sandbox.runner import SandboxError, collect_generated
-from ticket2test.style import format_entries
-from ticket2test.validate.suite import static_ids
+from ticket2test.style import FormatError, format_entries, format_python
+from ticket2test.validate.suite import read_suite_data
 
 _INVENTED = ("[names]", "[imports]")
 
@@ -133,6 +137,72 @@ def index_without(index: IndexData, chunk_ids: set[str]) -> IndexData:
     )
 
 
+def leave_one_out_repo(
+    repo: Path, index: IndexData, chunk_ids: set[str], settings: Settings, dest: Path
+) -> Path:
+    """A copy of the repo without these tests: their code and their data entries are cut, so
+    the index, patches (which read files) and the sandbox collect all see the same suite.
+
+    The copy goes to ``dest`` (inside the git-ignored cache); the target repo is only read.
+    A class left without methods gets ``pass``.
+    """
+    if dest.exists():
+        shutil.rmtree(dest)
+    shutil.copytree(repo, dest, ignore=shutil.ignore_patterns(".git", "__pycache__"))
+    chunks = [c for c in index.chunks if c.id in chunk_ids and not c.inherited_from]
+    by_file: dict[str, list[Chunk]] = {}
+    for chunk in chunks:
+        by_file.setdefault(chunk.file_path, []).append(chunk)
+    id_field = settings.data.id_field
+    for file_path, cut in by_file.items():
+        path = dest / file_path
+        lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+        for chunk in sorted(cut, key=lambda c: -c.start_line):
+            start, end = chunk.start_line - 1, chunk.end_line
+            while end < len(lines) and not lines[end].strip():  # the blank lines after it
+                end += 1
+            del lines[start:end]
+        text = _fill_empty_classes("".join(lines), settings)
+        with contextlib.suppress(FormatError):  # the cut leaves blank lines: restyle the file
+            text = format_python(text, settings.style.python, first_party(index, settings))
+        path.write_text(text, encoding="utf-8", newline="\n")
+        removed = {i for c in cut for i in c.test_ids}
+        entries, layout, data_text = read_suite_data(dest, file_path, settings)
+        if data_text is not None:
+            kept = [e for e in entries if str(e.get(id_field)) not in removed]
+            data_path = dest / PurePosixPath(file_path).with_suffix(settings.index.data_file_suffix)
+            data_path.write_text(
+                format_entries(kept, settings.data, settings.style.json_files, layout),
+                encoding="utf-8",
+                newline="\n",
+            )
+    return dest
+
+
+def _fill_empty_classes(text: str, settings: Settings) -> str:
+    """``pass`` in a class whose last method was cut (so the module still parses)."""
+    import ast
+
+    try:
+        ast.parse(text)
+        return text
+    except SyntaxError:
+        pass
+    lines = text.splitlines(keepends=True)
+    out: list[str] = []
+    indent = " " * settings.style.python.indent_width
+    for n, line in enumerate(lines):
+        out.append(line)
+        nxt = next((ln for ln in lines[n + 1 :] if ln.strip()), "")
+        if (
+            line.lstrip().startswith("class ")
+            and line.rstrip().endswith(":")
+            and (not nxt or not nxt.startswith((" ", "\t")))
+        ):
+            out.append(f"{indent}pass\n")
+    return "".join(out)
+
+
 def evaluate_generation(
     pair_set: PairSet,
     project_root: Path,
@@ -198,7 +268,19 @@ def _one(
     started = time.monotonic()
     result = GenerationPairResult(pair_id=pair.id, ticket=pair.ticket, status="failed")
     linked = {manifest_test_to_chunk_id(t) for t in pair.tests}
-    used_index = index_without(index, linked) if leave_one_out else index
+    used_repo, used_index = repo, index
+    if leave_one_out:  # a real copy without the linked tests, so files and index agree
+        loo_settings = settings.model_copy(
+            update={
+                "paths": settings.paths.model_copy(
+                    update={"cache_dir": settings.paths.cache_dir / "eval" / "loo-index"}
+                )
+            }
+        )
+        used_repo = leave_one_out_repo(
+            repo, index, linked, settings, settings.paths.cache_dir / "eval" / "loo" / pair.id
+        )
+        used_index, _, _ = update_index(used_repo, loo_settings)
     try:
         ticket = normalize(cache.raw_ticket(pair_set, pair, project_root), settings)
         drafts, cached, calls = _drafts(ticket, client, settings, cache, reuse_drafts)
@@ -221,7 +303,7 @@ def _one(
             client,
             provider=settings.llm.provider,
             model=model_name(settings, "generate"),
-            repo_root=repo,
+            repo_root=used_repo,
             conventions=conventions,
         )
     except LLMError as exc:
@@ -235,11 +317,6 @@ def _one(
         result.test_ids = [outcome.decision.test_id or ""]
         return _finish(result, started)
     generated, final = outcome.generated, outcome.report
-    if generated.patches:  # the files on disk still hold the left-out test: expect its ids too
-        full = static_ids(index, generated.file_name)
-        generated = generated.model_copy(
-            update={"test_ids": list(dict.fromkeys([*full, *generated.new_test_ids]))}
-        )
     result.status = "generated"
     result.llm_calls += generated.attempts  # generation + repairs, or the variant plan
     fixed = generated.notes.partition("Fixed in code:")[2].strip()
@@ -259,7 +336,7 @@ def _one(
     result.repairs = final.repairs
     if collect:
         try:
-            collected = collect_generated(generated, repo, settings)
+            collected = collect_generated(generated, used_repo, settings)
         except SandboxError as exc:
             result.collect_note = f"not run: {exc}"
         else:

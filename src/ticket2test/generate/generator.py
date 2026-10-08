@@ -39,6 +39,7 @@ from ticket2test.models.generated import (
     CTX_DATA_ACCESS,
     CTX_EXPECTATIONS,
     CTX_ID_FIELD,
+    CTX_INHERITED_IDS,
     CTX_PER_ENTRY_KEYS,
     CTX_SEED_SECTIONS,
     CTX_TEST_PREFIX,
@@ -154,6 +155,9 @@ def prepare_generation(
             CTX_EXPECTATIONS: data.expectation_sections,
             CTX_SEED_SECTIONS: data.seed_sections,
             CTX_TICKET_ID: draft.ticket_id,
+            CTX_INHERITED_IDS: [
+                i for c in _inherited_chunks(template_chunk, index) for i in c.test_ids
+            ],
         },
         template_chunk=template_chunk,
         entry_key=entry_key,
@@ -209,6 +213,8 @@ def assemble(
         cleaned, redacted = _scrub_json(entry)
         output_redactions += redacted
         entries.append(cleaned)
+    entries, inherited_ids, added = with_inherited_entries(code, entries, setup)
+    fixes += added
     if fixes:
         notes = f"{notes} Fixed in code: {'; '.join(fixes)}.".strip()
 
@@ -221,7 +227,7 @@ def assemble(
         data_file_name=str(PurePosixPath(file_name).with_suffix(settings.index.data_file_suffix)),
         data_entries=entries,
         data_format=setup.layout,
-        test_ids=list(order),
+        test_ids=[*order, *(i for i in inherited_ids if i not in order)],
         template_entry_ref=TemplateEntryRef(
             chunk_id=setup.template_chunk.id, entry_key=setup.entry_key
         ),
@@ -334,6 +340,89 @@ def _add_imports(target: str, source: str, names: set[str]) -> str:
         and {(a.asname or a.name).split(".")[0] for a in n.names} & (names - have)
     ]
     return "\n".join(missing) + "\n" + target if missing else target
+
+
+def _inherited_chunks(template: Chunk, index: IndexData) -> list[Chunk]:
+    """Tests the template class inherits (indexed as chunks of the class)."""
+    return [
+        c
+        for c in index.chunks
+        if c.kind == "test"
+        and c.inherited_from
+        and c.class_name == template.class_name
+        and c.file_path == template.file_path
+    ]
+
+
+def with_inherited_entries(
+    code: str, entries: list[dict[str, Any]], setup: GenerationSetup
+) -> tuple[list[dict[str, Any]], list[str], list[str]]:
+    """Entries for the tests the generated class inherits from repo base classes.
+
+    A shared test defined in a base class (e.g. a verdict check every file-policy class runs)
+    needs one entry per subclass. The LLM writes only its own tests, so the entry is copied
+    here from the template class's entry for the same test (the nearest existing entry), else
+    from any class's. Returns (entries, inherited ids, notes).
+    """
+    import ast
+
+    from ticket2test.validate.datause import Resolver
+
+    settings, data = setup.settings, setup.settings.data
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return entries, [], []
+    module = PurePosixPath(setup.template_chunk.file_path).with_suffix("").as_posix()
+    resolver = Resolver(
+        tree,
+        module.replace("/", "."),
+        setup.index,
+        data.access,
+        set(data.expectation_sections.values()),
+    )
+    prefix = settings.index.test_class_prefix
+    have = {str(e.get(data.id_field)) for e in entries}
+    inherited: list[str] = []
+    copied: list[dict[str, Any]] = []
+    notes: list[str] = []
+    for cls in (n for n in tree.body if isinstance(n, ast.ClassDef)):
+        if not cls.name.startswith(prefix):
+            continue
+        for test in resolver.inherited_tests(cls, settings.index.test_function_prefix):
+            for test_id in test.ids:
+                inherited.append(test_id)
+                if test_id in have:
+                    continue
+                found = _inherited_entry(test.name, test_id, setup)
+                if found is None:
+                    continue
+                source, owner = found
+                skip = {data.id_field, *data.per_entry_keys}
+                entry = {
+                    data.id_field: test_id,
+                    **{k: v for k, v in source.items() if k not in skip},
+                }
+                copied.append(json.loads(json.dumps(entry)))  # a deep copy
+                have.add(test_id)
+                notes.append(f"entry for inherited {test_id} copied from {owner}")
+    return [*entries, *copied], inherited, notes
+
+
+def _inherited_entry(
+    name: str, test_id: str, setup: GenerationSetup
+) -> tuple[dict[str, Any], str] | None:
+    """(entry, class it belongs to): the template class's first, then any class's."""
+    template = setup.template_chunk
+    candidates = sorted(
+        (c for c in setup.index.chunks if c.kind == "test" and c.symbol_name == name),
+        key=lambda c: (c.class_name != template.class_name, c.file_path != template.file_path),
+    )
+    for chunk in candidates:
+        entry = chunk.data_entries.get(test_id)
+        if isinstance(entry, dict):
+            return entry, chunk.class_name or chunk.file_path
+    return None
 
 
 def rekey_plans(

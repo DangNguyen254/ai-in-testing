@@ -15,8 +15,9 @@ The flow score is the weighted F1 of the draft's words against the test's words,
 draft words that occur somewhere in the domain's tests (ticket prose doesn't count against a
 test). Then, in order:
 
-1. **covered**: the best test's flow matches (``reuse.covered_min``) and the draft names one of
-   its parametrize ids, or every value the draft lists is already in its data: point to it;
+1. **covered**: the best test's words match closely on their own (``reuse.covered_min``) and
+   the draft names one of its parametrize ids, or every value the draft lists is in its data:
+   point to it (strict: nothing is generated);
 2. **variant**: the flow matches (``reuse.variant_min``), the test is its own (not inherited)
    with one parametrize decorator, and it is the same kind (UI or API): add a parametrize value
    and an entry to it;
@@ -43,7 +44,7 @@ from ticket2test.models.generated import ReuseKind
 from ticket2test.models.retrieval import RetrievalResult
 from ticket2test.validate.claims import norm
 
-PARAM_BONUS = 0.2  # the draft names one of a test's parametrize values: strong evidence
+PARAM_BONUS = 0.2  # ranking only: the draft names one of a test's parametrize values
 _WORD = re.compile(r"[A-Za-z][A-Za-z0-9]+|\d+")
 _QUOTED = re.compile(r"[\"'`{]{1,2}([^\"'`{}]{1,60})[\"'`}]{1,2}")
 _STOP = frozenset(
@@ -63,11 +64,16 @@ class Candidate:
     class_name: str | None
     file_path: str
     kind: str  # "ui" or "api"
-    flow: float  # weighted F1 of words, plus PARAM_BONUS when the draft names a case
+    flow: float  # weighted F1 of words (thresholds use this alone)
     parametrized: bool  # its own test with one parametrize decorator: it can take a case
     param_ids: list[str] = field(default_factory=list)
     matched_param: str | None = None  # a parametrize id the draft names
     values_covered: bool = False
+
+    @property
+    def rank_score(self) -> float:
+        """For ordering candidates: a named parametrize value moves a test up, nothing more."""
+        return self.flow + (PARAM_BONUS if self.matched_param else 0.0)
 
 
 @dataclass
@@ -124,7 +130,7 @@ def decide(
             _candidate(c, flows[c.id], draft_words, all_draft_words, values, weights, settings)
             for c in tests
         ),
-        key=lambda c: (-c.flow, -retrieved.get(c.chunk_id, 0.0), c.chunk_id),
+        key=lambda c: (-c.rank_score, -retrieved.get(c.chunk_id, 0.0), c.chunk_id),
     )[: reuse.candidates]
     decision.candidates = candidates
     best = candidates[0]
@@ -210,7 +216,7 @@ def _candidate(
     ui = any(".".join(["self", *chain[:1]]) in roots for chain in chunk.refs.self_chains)
     param_ids = [i for p in chunk.parametrize for i in (p.ids or [])]
     matched = _named_case(chunk, all_draft_words)
-    score = _weighted_f1(flow, draft_words, weights) + (PARAM_BONUS if matched else 0.0)
+    score = _weighted_f1(flow, draft_words, weights)
     entry_values = {
         v.lower() for entry in chunk.data_entries.values() for v in _strings(entry) if len(v) < 80
     }
@@ -229,18 +235,20 @@ def _candidate(
 
 
 def _covers(candidate: Candidate, values: set[str], reuse: ReuseSettings) -> bool:
-    """The test already has the draft's case.
+    """The test already has the draft's case: strict, because "covered" generates nothing.
 
-    Either it is parametrized and the draft names one of its values, with no other concrete
-    value the test's data lacks (a new value means a new variant), and its flow matches like a
-    method in its class would (the named value is the main evidence); or every concrete value the
-    draft lists is in its data and its flow matches closely.
+    The flow must match closely on words alone (``reuse.covered_min``, without the bonus for a
+    named parametrize value: in the step-7 eval, values like ``allow`` or ``low`` matched tests
+    that missed the ticket's point, e.g. a reset or a second tenant), and every concrete value
+    the draft lists must be the named case or in the test's data. A false "covered" silently
+    drops a ticket; a false "not covered" only gives the reviewer a test to discard.
     """
-    if values and not candidate.values_covered:
-        return candidate.matched_param is not None and values <= {candidate.matched_param.lower()}
-    if candidate.matched_param is not None:
-        return candidate.flow >= reuse.method_min
-    return bool(values) and candidate.flow >= reuse.covered_min
+    if candidate.flow < reuse.covered_min:
+        return False
+    if not values:
+        return candidate.matched_param is not None
+    named = {candidate.matched_param.lower()} if candidate.matched_param else set()
+    return candidate.values_covered or values <= named
 
 
 def _named_case(chunk: Chunk, draft_words: set[str]) -> str | None:

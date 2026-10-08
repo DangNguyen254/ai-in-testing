@@ -281,11 +281,20 @@ def parse_collected(stdout: str) -> list[str]:
     return [node.rsplit("::", 1)[1] for node in parse_node_ids(stdout)]
 
 
+_NODE_LINE = re.compile(r"^[^\s<=][^:\s]*\.py::\S")
+
+
 def parse_node_ids(stdout: str) -> list[str]:
-    """Full node ids from ``pytest --collect-only -q`` output."""
-    return [
-        line.strip() for line in stdout.splitlines() if "::" in line and " " not in line.strip()
-    ]
+    """Full node ids from ``pytest --collect-only -q`` output: the first block of lines that
+    start with a ``path.py::`` node id. Parametrize ids may contain spaces; the block ends at
+    the first blank line or section header (a warnings summary may repeat node ids)."""
+    ids: list[str] = []
+    for line in stdout.splitlines():
+        if _NODE_LINE.match(line):
+            ids.append(line.rstrip())
+        elif ids and (not line.strip() or line.startswith("=")):
+            break
+    return ids
 
 
 def _stage(generated: GeneratedTest, settings: Settings) -> Path:

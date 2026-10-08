@@ -26,6 +26,7 @@ CTX_DATA_ACCESS = "data_access"
 CTX_EXPECTATIONS = "expectation_sections"  # section -> helper that reads it
 CTX_SEED_SECTIONS = "seed_sections"
 CTX_TICKET_ID = "ticket_id"
+CTX_INHERITED_IDS = "inherited_ids"  # ids of tests the template class inherits
 
 # How a draft becomes code (generate/reuse.py): already covered by an existing test, a new
 # case of an existing parametrized test, a new method in an existing class, or a new module.
@@ -136,7 +137,8 @@ class GenerationResponse(BaseModel):
             list(ctx.get(CTX_EXPECTATIONS, {}).values()),
             test_prefix,
         )
-        extra = [k for k in keys if k not in ids]
+        inherited = set(ctx.get(CTX_INHERITED_IDS, []))  # their entries are added in code
+        extra = [k for k in keys if k not in ids and k not in inherited]
         missing = [
             i for i in ids if uses.get(function_of(i)) and uses[function_of(i)].reads_data
             and i not in keys

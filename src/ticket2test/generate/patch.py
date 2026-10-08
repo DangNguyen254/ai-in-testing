@@ -684,16 +684,20 @@ def method_patch(
     if not class_name or not file_path:
         raise PatchError("a method decision needs its class and file")
     source = (repo_root / file_path).read_text(encoding="utf-8")
-    spliced, _added = splice_methods(source, class_name, generated.code, settings)
+    spliced, added = splice_methods(source, class_name, generated.code, settings)
     style = settings.style.python
     after_code = format_python(spliced, style, first_party(index, settings))
     entries, layout, data_text = read_suite_data(repo_root, file_path, settings)
     id_field = settings.data.id_field
     have = {str(e.get(id_field)) for e in entries}
-    clash = [e[id_field] for e in generated.data_entries if str(e.get(id_field)) in have]
+    ours = [  # the added methods' entries (the class already has its inherited ones)
+        e for e in generated.data_entries if function_of(str(e.get(id_field))) in added
+    ]
+    new_ids = [i for i in generated.test_ids if function_of(i) in added]
+    clash = [e[id_field] for e in ours if str(e.get(id_field)) in have]
     if clash:
         raise PatchError(f"entries already exist for {clash}; the new test needs another name")
-    all_entries = [*entries, *generated.data_entries]
+    all_entries = [*entries, *ours]
     data_name = str(PurePosixPath(file_path).with_suffix(settings.index.data_file_suffix))
     after_data = format_entries(all_entries, settings.data, settings.style.json_files, layout)
     patches = [
@@ -707,8 +711,8 @@ def method_patch(
             "data_file_name": data_name,
             "data_entries": all_entries,
             "data_format": layout,
-            "test_ids": [*static_ids(index, file_path), *generated.test_ids],
-            "new_test_ids": list(generated.test_ids),
+            "test_ids": [*static_ids(index, file_path), *new_ids],
+            "new_test_ids": new_ids,
             "reuse_kind": "method",
             "reuse_target": class_name,
             "reuse_reasons": list(decision.reasons),

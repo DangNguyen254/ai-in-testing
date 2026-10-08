@@ -368,3 +368,31 @@ def test_cli_mine_and_eval(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
          "generation", "--no-llm", "--out", str(tmp_path / "reports")],
     )  # fmt: skip
     assert result.exit_code == 1 and "needs the LLM" in result.output
+
+
+def test_leave_one_out_copy_cuts_code_and_data(tmp_path: Path) -> None:
+    from tests.conftest import REPO_ROOT
+    from ticket2test.config import Settings
+    from ticket2test.eval.generation import leave_one_out_repo
+    from ticket2test.index.indexer import update_index
+    from ticket2test.validate.suite import check_suite
+
+    standin = REPO_ROOT / "standin"
+    settings = Settings.model_validate({"paths": {"cache_dir": str(tmp_path / "cache")}})
+    index, _, _ = update_index(standin, settings)
+    cut = {  # the last test of its file (blank lines left behind) and one in the middle
+        c.id
+        for c in index.chunks
+        if c.symbol_name in ("test_agent_api_settings_forbidden", "test_rules_list_pagination")
+        and not c.inherited_from
+    }
+    copy = leave_one_out_repo(standin, index, cut, settings, tmp_path / "copy")
+    other = Settings.model_validate({"paths": {"cache_dir": str(tmp_path / "cache2")}})
+    copied, _, _ = update_index(copy, other)
+    assert not cut & {c.id for c in copied.chunks}
+    data = (copy / "tests/rules/test_rules.json").read_text(encoding="utf-8")
+    assert "test_rules_list_pagination" not in data
+    assert check_suite(copy, other).errors == 0  # code, data and style still agree
+    assert "test_rules_list_pagination" in (standin / "tests/rules/test_rules.py").read_text(
+        encoding="utf-8"
+    )  # the original is only read

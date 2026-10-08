@@ -344,15 +344,18 @@ def test_a_method_patch(setup: tuple[Settings, IndexData]) -> None:
     assert [p.path for p in generated.patches] == [path, path.replace(".py", ".json")]
     report = validate_patch(generated, index, settings, STANDIN)
     assert report.errors == [], [f.render() for f in report.errors]
-    existing = {**entry, "test_id": base["test_id"]}
-    with pytest.raises(PatchError, match="already exist"):
-        method_patch(
-            _generated(GENERATED_CLASS, [existing]),
-            _decision("method", "TestFilesArchives", path),
-            index,
-            settings,
-            STANDIN,
-        )
+    assert generated.new_test_ids == ["test_files_archive_encrypted_members"]
+    # an entry for a test the class already has (e.g. an inherited one) is not appended again
+    other = {**entry, "test_id": base["test_id"]}
+    again = method_patch(
+        _generated(GENERATED_CLASS, [entry, other]),
+        _decision("method", "TestFilesArchives", path),
+        index,
+        settings,
+        STANDIN,
+    )
+    ids = [e["test_id"] for e in again.data_entries]
+    assert ids.count(base["test_id"]) == 1 and ids[-1] == "test_files_archive_encrypted_members"
 
 
 def test_method_retrieval_puts_the_class_first(setup: tuple[Settings, IndexData]) -> None:
@@ -464,3 +467,22 @@ def test_a_plan_value_that_isnt_json_is_sent_back(setup: tuple[Settings, IndexDa
         draft, _decision("variant", DLP), index, settings, STANDIN, fake, "fake", "m"
     )
     assert generated.attempts == 2 and "not valid JSON" in fake.requests[1].messages[-1].content
+
+
+def test_inherited_tests_get_entries_from_code(setup: tuple[Settings, IndexData]) -> None:
+    from tests.test_reuse import SCENARIOS
+    from ticket2test.generate.generator import prepare_generation, with_inherited_entries
+
+    settings, index = setup
+    draft = SCENARIOS["method"][0]
+    setup_ = prepare_generation(draft, _ticketed(settings, index, draft), index, settings)
+    assert setup_.template_chunk.file_path.startswith("tests/files/")
+    code = GENERATED_CLASS.replace("TestFilesArchivesEncrypted", "TestFilesArchivesLocked")
+    own = {"test_id": "test_files_archive_encrypted_members", "file": "a.zip", "members": []}
+    entries, inherited, notes = with_inherited_entries(code, [own], setup_)
+    assert inherited == ["test_files_download_verdict"]  # from DownloadChecks
+    copied = entries[-1]
+    assert copied["test_id"] == "test_files_download_verdict" and len(entries) == 2
+    assert notes and notes[0].startswith("entry for inherited test_files_download_verdict")
+    again, _, more = with_inherited_entries(code, entries, setup_)
+    assert again == entries and more == []  # an existing entry is kept as is

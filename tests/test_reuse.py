@@ -120,12 +120,12 @@ def test_standin_tickets_land_in_their_tests_domain_or_are_flagged(
 # --- reuse decisions ----------------------------------------------------------------------------
 
 SCENARIOS = {
-    "covered": (
+    "covered": (  # a near-duplicate of an existing test (strict: words alone must match)
         _draft(
             "X-1",
-            "Executable downloads are blocked by the file-type policy",
-            ["Set the download policy to block exe files and publish", "Download setup.exe"],
-            "The download is blocked; the download log shows it as blocked.",
+            "Downloading an exe file gives the verdict its file type's action decides",
+            ["Download the exe file"],
+            "The verdict is the decision of the exe file type's action.",
         ),
         "test_files_download_type_action",
     ),
@@ -216,3 +216,29 @@ def test_a_domain_without_tests_means_a_new_module(setup: tuple[Settings, IndexD
     decision = decide(draft, _empty_retrieval(), index, settings, empty)
     assert decision.kind == "module" and decision.target is None
     assert "no tests in the domain" in decision.reasons[-1]
+
+
+def test_a_named_value_alone_never_means_covered(setup: tuple[Settings, IndexData]) -> None:
+    """Step-7 eval: with the pagination test left out, a page-2 draft that names ``allow``
+    was "covered" by the filter test. Covered now needs the words to match on their own."""
+    from ticket2test.eval.generation import index_without
+
+    settings, index = setup
+    pagination = next(c.id for c in index.chunks if c.symbol_name == "test_rules_list_pagination")
+    used = index_without(index, {pagination})
+    draft = _draft(
+        "X-6",
+        "Page 2 of the rule list filtered by the allow action shows only allow rules",
+        ["Filter the rule list by the allow action", "Go to the next page"],
+        "Page 2 shows only allow rules and the allow filter stays selected.",
+    ).model_copy(update={"markers": _draft("X", "", [], "").markers.model_copy(
+        update={"component": "rules"})})  # fmt: skip
+    ticket = Ticket(
+        id="X-6", title=draft.intent, description=" ".join(draft.steps),
+        source=SourceInfo(system="jira", ref="X-6"),
+    )  # fmt: skip
+    retrieval = retrieve(ticket, used, settings, None, draft)
+    decision = decide(draft, retrieval, used, settings, choose_domain(retrieval, used, settings))
+    assert decision.kind != "covered", decision.reasons
+    filter_test = next(c for c in decision.candidates if c.test == "test_rules_list_filter_action")
+    assert filter_test.matched_param == "allow"  # named, and still not enough
