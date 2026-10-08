@@ -20,7 +20,7 @@ from ticket2test.llm.structured import StructuredOutputError
 from ticket2test.models import DraftResult, Ticket
 from ticket2test.normalize import normalize
 
-SETTINGS = Settings()
+SETTINGS = Settings.model_validate({"draft": {"skeleton": "never"}})  # the normal path
 
 
 def _ticket(**changes: Any) -> Ticket:

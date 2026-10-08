@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
@@ -107,6 +108,61 @@ class DraftResponse(_Frozen):
         return self
 
 
+# --- Partial draft skeleton (for tickets with insufficient info) ---------------------------
+
+CTX_TICKET_TEXT = "ticket_text"  # the ticket as sent to the LLM: numbers must come from it
+_QUESTION_REF = re.compile(r"\[(Q\d+)\]")
+_NUMBER = re.compile(r"(?<![\w.])\d+(?:[.,]\d+)?")
+
+
+class OpenQuestion(_Frozen):
+    id: str = Field(pattern=r"^Q\d+$")  # "Q1"
+    question: str = Field(min_length=1)  # for the ticket's reporter or developer
+    why: str  # what the test can't decide without the answer
+
+
+class DraftSkeleton(_Frozen):
+    """A partial draft for discussion: what the ticket supports, with every unknown left as a
+    question (``[Q1]`` in the text). Never used for generation; the ticket stays
+    ``insufficient_info`` until the questions are answered."""
+
+    intent: str = Field(min_length=1)
+    test_kind: TestKind | Literal["unknown"]
+    preconditions: list[str]
+    steps: list[str] = Field(min_length=1)
+    expected_outcome: str = Field(min_length=1)
+    open_questions: list[OpenQuestion] = Field(min_length=1)
+    notes: str
+
+    @model_validator(mode="after")
+    def _honest(self, info: ValidationInfo) -> DraftSkeleton:
+        texts = [self.intent, *self.preconditions, *self.steps, self.expected_outcome]
+        ids = [q.id for q in self.open_questions]
+        if len(ids) != len(set(ids)):
+            raise ValueError("open_questions ids must be unique")
+        used = {ref for t in texts for ref in _QUESTION_REF.findall(t)}
+        unknown = sorted(used - set(ids))
+        if unknown:
+            raise ValueError(f"the text refers to questions that don't exist: {unknown}")
+        unused = sorted(set(ids) - used)
+        if unused:
+            raise ValueError(
+                f"questions {unused} are never referenced: mark where each unknown sits with "
+                "[Qn] in the preconditions, steps, or expected outcome"
+            )
+        context: Any = info.context
+        ticket = context.get(CTX_TICKET_TEXT) if isinstance(context, dict) else None
+        if isinstance(ticket, str):
+            body = _QUESTION_REF.sub("", " ".join(texts))
+            invented = sorted({n for n in _NUMBER.findall(body) if n not in ticket})
+            if invented:
+                raise ValueError(
+                    f"numbers {invented} are not in the ticket: never fill in a value; leave "
+                    "it as a question ([Qn])"
+                )
+        return self
+
+
 # --- Stored models -------------------------------------------------------------------------
 
 
@@ -141,3 +197,6 @@ class DraftResult(_Frozen):
     model: str
     attempts: int = Field(ge=0)  # LLM calls made (0 = decided without the LLM)
     redactions: int = Field(default=0, ge=0)  # secrets scrubbed from prompt + output
+    # insufficient_info only: a partial draft with open questions (never generated from)
+    skeleton: DraftSkeleton | None = None
+    skeleton_prompt_version: str | None = None

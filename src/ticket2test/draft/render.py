@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ticket2test.models.draft import UNKNOWN, DraftResult, TestCaseDraft
+from ticket2test.models.draft import UNKNOWN, DraftResult, DraftSkeleton, TestCaseDraft
 from ticket2test.models.ticket import Ticket
 
 _MISSING_LABELS = {
@@ -27,13 +27,16 @@ def render_markdown(result: DraftResult, ticket: Ticket) -> str:
         lines += [f"- {_MISSING_LABELS.get(item, item)}" for item in result.missing_info]
         if result.reason:
             lines += ["", f"Why: {result.reason}"]
-        lines += ["", _footer(result)]
+        lines += [""]
+        lines += _render_skeleton(result.skeleton) if result.skeleton else []
+        lines += [_footer(result)]
         return "\n".join(lines) + "\n"
 
     if result.reason:
         lines += [f"Basis: {result.reason}", ""]
     for number, draft in enumerate(result.drafts, start=1):
         lines += _render_draft(number, draft)
+    lines += _render_skeleton(result.skeleton) if result.skeleton else []
     lines.append(_footer(result))
     return "\n".join(lines) + "\n"
 
@@ -71,6 +74,40 @@ def _render_draft(number: int, draft: TestCaseDraft) -> list[str]:
             lines.append(f"| {_cell(variant.name)} | {_cell(inputs)} | {_cell(variant.expected)} |")
         lines.append("")
     lines += [f"<sub>Draft ID: {draft.id}</sub>", ""]
+    return lines
+
+
+def _render_skeleton(skeleton: DraftSkeleton) -> list[str]:
+    """The partial draft: what the ticket supports, with each unknown as a question."""
+    kind = _TEST_KIND_LABELS.get(skeleton.test_kind, "unknown (the ticket doesn't say)")
+    lines = [
+        "## Partial draft (for discussion, not generated)",
+        "",
+        "What the ticket supports so far. Each [Q] marks something only the reporter can answer;",
+        "no test is written until they are answered.",
+        "",
+        f"**Intent:** {skeleton.intent}",
+        "",
+        f"**Test type:** {kind}",
+        "",
+    ]
+    if skeleton.preconditions:
+        lines += ["**Before you start**", ""]
+        lines += [f"- {item}" for item in skeleton.preconditions]
+        lines.append("")
+    lines += ["**Steps**", ""]
+    lines += [f"{i}. {_one_line(step)}" for i, step in enumerate(skeleton.steps, start=1)]
+    lines += ["", f"**Expected result:** {skeleton.expected_outcome}", ""]
+    lines += [
+        "**Questions for the reporter**",
+        "",
+        "| | Question | Why it matters |",
+        "|---|---|---|",
+    ]
+    lines += [f"| {q.id} | {_cell(q.question)} | {_cell(q.why)} |" for q in skeleton.open_questions]
+    lines.append("")
+    if skeleton.notes:
+        lines += [f"Note: {skeleton.notes}", ""]
     return lines
 
 

@@ -1,0 +1,18 @@
+{
+  "_comment": "Synthetic, generic ticket shaped like a real vague one: a one-line report, a suspected cause, no steps, no expected behavior. Invented names only.",
+  "total": 1,
+  "issues": [
+    {
+      "id": "30901",
+      "key": "STND-901",
+      "self": "https://jira.example.com/rest/api/2/issue/30901",
+      "fields": {
+        "summary": "Report export service runs out of memory with long content",
+        "labels": [],
+        "components": [],
+        "description": "The OOM in the report export service reproducing 100% using long content (~7K-words) with long_content_load.py script.\nProbably cause: number of clients is unlimited, quickly raising memory usage on big load.",
+        "comment": {"total": 0, "comments": []}
+      }
+    }
+  ]
+}

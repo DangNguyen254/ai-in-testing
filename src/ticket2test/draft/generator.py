@@ -91,7 +91,7 @@ def generate_drafts(
         _to_stored(item, ticket.id, index, prompt.version, cap)
         for index, item in enumerate(_primary_first(response.drafts), start=1)
     ]
-    return DraftResult(
+    drafted = DraftResult(
         status=response.status,
         missing_info=response.missing_info,
         reason=response.reason,
@@ -100,6 +100,14 @@ def generate_drafts(
         redactions=ticket_scrub.redacted + output_redactions,
         **base,
     )
+    mode = settings.draft.skeleton
+    if mode == "always" or (mode == "auto" and drafted.status == "insufficient_info"):
+        from ticket2test.draft.skeleton import add_skeleton
+
+        drafted = add_skeleton(
+            drafted, ticket_prompt_json(ticket, settings.draft.max_comment_chars), client, settings
+        )
+    return drafted
 
 
 def precheck_missing(ticket: Ticket) -> list[MissingInfo]:

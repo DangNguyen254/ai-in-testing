@@ -363,7 +363,12 @@ def _drafts(
     path = cache.root / "drafts" / f"{key}.json"
     if reuse and path.is_file():
         return DraftResult.model_validate_json(path.read_text(encoding="utf-8")), True, 0
-    drafts = generate_drafts(ticket, client, settings, provider=settings.llm.provider, model=model)
+    no_skeleton = settings.model_copy(  # the eval measures drafts and generation only
+        update={"draft": settings.draft.model_copy(update={"skeleton": "never"})}
+    )
+    drafts = generate_drafts(
+        ticket, client, no_skeleton, provider=settings.llm.provider, model=model
+    )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(drafts.model_dump_json(indent=2), encoding="utf-8")
     return drafts, False, drafts.attempts

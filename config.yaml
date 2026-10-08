@@ -32,6 +32,8 @@ draft:
   prompt_version: draft_v1
   max_comment_chars: 20000
   unknown_component_max_confidence: 0.5
+  skeleton: auto                 # partial draft with open questions: auto (insufficient only) | always | never
+  skeleton_prompt: skeleton_v1
 
 markers:                       # generic placeholders; set real values per environment
   priorities: [p0, p1, p2, p3]  # first = highest

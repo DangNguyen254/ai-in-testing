@@ -93,6 +93,11 @@ class DraftSettings(_Section):
     max_comment_chars: int = Field(default=20000, ge=0)
     # When the component can't be identified, confidence is capped at this value.
     unknown_component_max_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+    # A partial draft with open questions (draft/skeleton.py): "auto" when the ticket is judged
+    # insufficient (one extra LLM call, only then), "always" (also for drafted tickets, to
+    # compare), or "never".
+    skeleton: Literal["auto", "always", "never"] = "auto"
+    skeleton_prompt: str = "skeleton_v1"
 
 
 class ClassVariantRule(_Section):
