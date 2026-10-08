@@ -352,6 +352,34 @@ class NormalizeSettings(_Section):
     max_comment_chars: int = Field(default=4000, ge=100)
 
 
+class MaskingSettings(_Section):
+    """Prompt-injection payloads are masked before any text reaches the LLM."""
+
+    enabled: bool = True
+    # Instruction-like phrasing (case-insensitive regexes): the enclosing string or sentence is
+    # masked wherever it appears (tickets, data, code, validator messages).
+    patterns: list[str] = Field(
+        default_factory=lambda: [
+            r"\bignore (?:all |any |previous |prior |the |above |earlier )*"
+            r"(?:instructions|prompts?|rules)\b",
+            r"\bdisregard (?:all |any |previous |prior |the |above )*(?:instructions|rules)\b",
+            r"\byou (?:are|must) now\b",
+            r"\bnew task:",
+            r"\bsystem prompt\b",
+            r"\bact as (?:an? )?(?:admin|administrator|developer|system)\b",
+            r"</?\s*(?:system|assistant|tool_call|function_call)\b",
+        ]
+    )
+    # JSON keys whose string values are always masked (where the suite keeps payloads).
+    keys: list[str] = Field(default_factory=lambda: ["hidden_text", "comment", "alt", "meta"])
+    min_chars: int = Field(default=1, ge=1)
+    legend_prompt: str = "masking_legend_v1"
+
+
+class SecuritySettings(_Section):
+    masking: MaskingSettings = MaskingSettings()
+
+
 class PathSettings(_Section):
     output_dir: Path = Path("output")
     cache_dir: Path = Path(".t2t_cache")
@@ -384,6 +412,7 @@ class Settings(BaseSettings):
     validation: ValidateSettings = ValidateSettings()
     repair: RepairSettings = RepairSettings()
     sandbox: SandboxSettings = SandboxSettings()
+    security: SecuritySettings = SecuritySettings()
     paths: PathSettings = PathSettings()
 
     @classmethod

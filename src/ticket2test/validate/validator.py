@@ -7,6 +7,7 @@ Each check returns findings; ``error`` findings block the test (and feed the rep
 from __future__ import annotations
 
 import ast
+import json
 import re
 import sys
 from collections.abc import Callable, Iterator
@@ -22,6 +23,7 @@ from ticket2test.index.indexer import IndexData
 from ticket2test.index.tokens import split_identifier
 from ticket2test.models.draft import TestCaseDraft
 from ticket2test.models.generated import GeneratedTest, _name_problems, _unconsumed_keys
+from ticket2test.security.masking import TOKEN
 from ticket2test.style import format_entries
 from ticket2test.style.python import FormatError, format_python, strip_annotations
 from ticket2test.validate import claims
@@ -524,6 +526,52 @@ def check_draft_outcome(s: Subject) -> Iterator[Finding]:
         yield _f("claims", f"{gap.source} claims {gap.clause!r}: {gap.reason}", "warning")
 
 
+def check_payloads(s: Subject) -> Iterator[Finding]:
+    """Masked payloads were restored, and no new instruction-like text appeared."""
+    data_text = json.dumps(s.entries, ensure_ascii=False)
+    for where, text in (("code", s.code), ("data", data_text)):
+        for token in sorted(set(TOKEN.findall(text))):
+            yield _f(
+                "payloads",
+                f"masked payload token [[PAYLOAD_{token}]] left in the {where}: it was not "
+                "restored (an unknown token, or not inside a plain string literal)",
+            )
+    patterns = [re.compile(p, re.IGNORECASE) for p in s.settings.security.masking.patterns]
+    if not patterns:
+        return
+    known = _known_texts(s)
+    for value in _strings(s.entries) | _code_strings(s.tree):
+        if any(p.search(value) for p in patterns) and not any(value in k for k in known):
+            yield _f(
+                "payloads",
+                f"instruction-like text not found in the suite's data or the draft: "
+                f"{value[:80]!r}. Confirm it is intended test data.",
+                "warning",
+            )
+
+
+def _known_texts(s: Subject) -> list[str]:
+    """Texts a payload may legitimately come from: the suite's data entries and the draft."""
+    known: list[str] = []
+    if s.index is not None:
+        for chunk in s.index.chunks:
+            if chunk.data_entries:
+                known.append(json.dumps(chunk.data_entries, ensure_ascii=False))
+                known.extend(_strings(chunk.data_entries))
+    if s.draft is not None:
+        known.append(s.draft.model_dump_json())
+        known.extend(_strings(s.draft.model_dump()))
+    return known
+
+
+def _code_strings(tree: ast.Module | None) -> set[str]:
+    if tree is None:
+        return set()
+    return {
+        n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)
+    }
+
+
 def check_unstated_constants(s: Subject) -> Iterator[Finding]:
     v = s.settings.validation
     paging = set(v.paging_actions)
@@ -570,6 +618,7 @@ CHECKS: list[tuple[str, Check]] = [
     ("claims", check_claims),
     ("draft_outcome", check_draft_outcome),
     ("constants", check_unstated_constants),
+    ("payloads", check_payloads),
 ]
 
 
@@ -634,15 +683,21 @@ def _prepare(s: Subject) -> None:
                 s.uses[test.name] = reuse.data_use(cls, method)
 
 
-def _strings(value: Any) -> Iterator[str]:
-    if isinstance(value, str):
-        yield value
-    elif isinstance(value, list):
-        for item in value:
-            yield from _strings(item)
-    elif isinstance(value, dict):
-        for item in value.values():
-            yield from _strings(item)
+def _strings(value: Any) -> set[str]:
+    found: set[str] = set()
+
+    def walk(node: Any) -> None:
+        if isinstance(node, str):
+            found.add(node)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+        elif isinstance(node, dict):
+            for item in node.values():
+                walk(item)
+
+    walk(value)
+    return found
 
 
 def _keyed_strings(value: Any) -> Iterator[tuple[str, str]]:

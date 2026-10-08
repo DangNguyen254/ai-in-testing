@@ -19,6 +19,7 @@ from ticket2test.generate.generator import (
 )
 from ticket2test.index.indexer import IndexData
 from ticket2test.llm.base import LLMClient, Message
+from ticket2test.llm.masking import masker_of
 from ticket2test.llm.structured import StructuredOutputError, complete_structured
 from ticket2test.models.draft import TestCaseDraft
 from ticket2test.models.generated import GeneratedTest, GenerationResponse
@@ -75,7 +76,7 @@ def generate_with_repair(
         context=setup.validation_context,
     )
     calls = result.attempts
-    generated = assemble(setup, result.value, calls, provider, model)
+    generated = assemble(setup, result.value, calls, provider, model, masker_of(client))
     report = validate_test(generated, setup, settings)
 
     prompt = load_prompt(settings.repair.prompt_version, settings.paths.prompts_dir)
@@ -102,7 +103,7 @@ def generate_with_repair(
             break  # keep the last valid version and its report
         calls += result.attempts
         last_reply = result.response.text
-        generated = assemble(setup, result.value, calls, provider, model)
+        generated = assemble(setup, result.value, calls, provider, model, masker_of(client))
         report = validate_test(generated, setup, settings)
 
     report.repairs = len(history)

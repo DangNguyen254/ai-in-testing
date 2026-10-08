@@ -26,6 +26,7 @@ from ticket2test.generate.entries import build_entry
 from ticket2test.index.indexer import IndexData
 from ticket2test.llm.base import LLMClient, LLMError, LLMRequest, Message
 from ticket2test.llm.factory import model_name
+from ticket2test.llm.masking import masker_of
 from ticket2test.llm.schema import strict_schema
 from ticket2test.llm.structured import complete_structured
 from ticket2test.models.chunk import Chunk, DataFormat
@@ -48,6 +49,7 @@ from ticket2test.models.generated import (
 from ticket2test.models.retrieval import RetrievalResult
 from ticket2test.prompts import load_prompt
 from ticket2test.security import scrub
+from ticket2test.security.masking import Masker
 from ticket2test.style import FormatError, format_json, format_python
 
 
@@ -73,7 +75,7 @@ def generate_test(
         max_retries=settings.llm.max_retries_on_bad_json,
         context=setup.validation_context,
     )
-    return assemble(setup, result.value, result.attempts, provider, model)
+    return assemble(setup, result.value, result.attempts, provider, model, masker_of(client))
 
 
 @dataclass(frozen=True)
@@ -166,9 +168,12 @@ def assemble(
     attempts: int,
     provider: str,
     model: str,
+    masker: Masker | None = None,
 ) -> GeneratedTest:
-    """Deterministic part after the LLM: scrub, format, build the entries, record traceability."""
+    """Deterministic part after the LLM: restore masked payloads, scrub, format, build the
+    entries, record traceability."""
     settings, data, gen = setup.settings, setup.settings.data, setup.settings.generate
+    response = unmask_generation(response, masker)
     code_scrub = scrub(response.code)
     notes = response.notes
     try:
@@ -226,6 +231,33 @@ def assemble(
 
 
 # --- deterministic parts --------------------------------------------------------------------
+
+
+def unmask_generation(response: GenerationResponse, masker: Masker | None) -> GenerationResponse:
+    """Put masked payloads back: in code string literals, in JSON values, in plain text."""
+    if masker is None:
+        return response
+    plans = [
+        plan.model_copy(
+            update={
+                "changes": [
+                    change.model_copy(
+                        update={"value_json": masker.unmask_json_text(change.value_json)}
+                    )
+                    for change in plan.changes
+                ]
+            }
+        )
+        for plan in response.entries
+    ]
+    return response.model_copy(
+        update={
+            "code": masker.unmask_code(response.code),
+            "entries": plans,
+            "review_checklist": [masker.unmask(item) for item in response.review_checklist],
+            "notes": masker.unmask(response.notes),
+        }
+    )
 
 
 def first_party(index: IndexData, settings: Settings) -> list[str]:

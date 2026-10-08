@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from ticket2test.config import Settings
 from ticket2test.llm.base import LLMClient, LLMRequest, Message
 from ticket2test.llm.factory import model_name
+from ticket2test.llm.masking import masker_of, unmask_model
 from ticket2test.llm.schema import strict_schema
 from ticket2test.llm.structured import complete_structured
 from ticket2test.models.draft import DraftResult
@@ -60,4 +61,4 @@ def judge_draft(
     result = complete_structured(
         client, request, JudgeVerdict, max_retries=settings.llm.max_retries_on_bad_json
     )
-    return result.value, result.attempts
+    return unmask_model(result.value, masker_of(client)), result.attempts

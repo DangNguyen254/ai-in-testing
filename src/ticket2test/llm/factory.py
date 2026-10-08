@@ -5,6 +5,9 @@ from __future__ import annotations
 from ticket2test.config import LLMStep, Settings
 from ticket2test.llm.base import LLMClient
 from ticket2test.llm.debug import DebugLoggingClient
+from ticket2test.llm.masking import MaskingClient
+from ticket2test.prompts import load_prompt
+from ticket2test.security.masking import Masker
 
 
 def create_llm_client(settings: Settings, debug_log: bool = False) -> LLMClient:
@@ -40,7 +43,17 @@ def create_llm_client(settings: Settings, debug_log: bool = False) -> LLMClient:
 
     if debug_log:
         client = DebugLoggingClient(client, settings.paths.debug_log_dir)
-    return client
+    return with_masking(client, settings)
+
+
+def with_masking(client: LLMClient, settings: Settings) -> LLMClient:
+    """Wrap a client so prompt-injection payloads are masked (outermost: logs see masks)."""
+    masking = settings.security.masking
+    if not masking.enabled:
+        return client
+    masker = Masker.from_config(masking.patterns, masking.keys, masking.min_chars)
+    legend = load_prompt(masking.legend_prompt, settings.paths.prompts_dir)
+    return MaskingClient(client, masker, legend)
 
 
 def model_name(settings: Settings, step: LLMStep | None = None) -> str:

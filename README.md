@@ -235,6 +235,11 @@ If `uv` isn't on PATH at all, `py -m uv ...` works when uv was installed with `p
 - Generated tests are untrusted and run only inside a network-less container, never on the host.
 - Target repos are read-only. The pipeline writes only to its own output directory.
 - Full prompts/responses are logged only with `--debug-log`, to a git-ignored directory.
+- Prompt-injection payloads (in tickets, test data, code) never reach the LLM: every request is
+  masked (`security.masking`: instruction-like phrasing, and the values of configured data keys
+  become `[[PAYLOAD_n]]` tokens with a short legend), and the originals are restored in the
+  structured result by code. Leftover tokens are a validator error; new instruction-like text
+  in generated output is a reviewer warning.
 
 ## License
 

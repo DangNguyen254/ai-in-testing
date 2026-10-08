@@ -8,6 +8,7 @@ from typing import Any
 from ticket2test.config import Settings
 from ticket2test.llm.base import LLMClient, LLMRequest, Message
 from ticket2test.llm.factory import model_name
+from ticket2test.llm.masking import masker_of, unmask_model
 from ticket2test.llm.schema import strict_schema
 from ticket2test.llm.structured import complete_structured
 from ticket2test.models.draft import (
@@ -79,7 +80,12 @@ def generate_drafts(
         context={CTX_PRIORITIES: markers.priorities, CTX_SUITES: markers.suites},
     )
 
-    response, output_redactions = _scrub_output(result.value)
+    restored = unmask_model(
+        result.value,
+        masker_of(client),
+        {CTX_PRIORITIES: markers.priorities, CTX_SUITES: markers.suites},
+    )
+    response, output_redactions = _scrub_output(restored)
     cap = settings.draft.unknown_component_max_confidence
     drafts = [
         _to_stored(item, ticket.id, index, prompt.version, cap)

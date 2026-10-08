@@ -258,6 +258,8 @@ Component values are learned automatically from the suite.
 | `tickets.jira.field_map` | Custom Jira field IDs for `steps_to_reproduce`, `expected`, `actual` (section 9). |
 | `tickets.jira.browse_url` | e.g. `https://<jira host>/browse` (private file only). |
 | `eval.ticket_id_pattern` | Regex of ticket ids in skip reasons; the default fits `ABC-123`. |
+| `security.masking.keys` | Data keys where the suite keeps prompt-injection payloads (their values are always hidden from the LLM). Look at the AI-agent tests' data files: which keys hold the injected text? |
+| `security.masking.patterns` | Keep the defaults; add a regex only for payload phrasing the suite uses that the defaults miss (check: `ticket2test` never needs to show those strings to the LLM). |
 | `llm.provider` and model | **The human decides.** Don't change. |
 
 ## 6. Procedure: calibrate until clean (max 10 rounds)

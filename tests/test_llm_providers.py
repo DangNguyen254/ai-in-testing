@@ -18,6 +18,7 @@ from ticket2test.llm.claude_code_cli import ClaudeCodeCLIClient, render_messages
 from ticket2test.llm.debug import DebugLoggingClient
 from ticket2test.llm.factory import create_llm_client, model_name
 from ticket2test.llm.gemini import GeminiClient
+from ticket2test.llm.masking import MaskingClient
 
 SCHEMA = {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"]}
 
@@ -283,8 +284,12 @@ def test_gemini_empty_response() -> None:
 
 def test_factory_default_is_claude_code_cli() -> None:
     settings = Settings()
-    assert isinstance(create_llm_client(settings), ClaudeCodeCLIClient)
+    client = create_llm_client(settings)
+    assert isinstance(client, MaskingClient)  # payload masking is on by default
+    assert isinstance(client.inner, ClaudeCodeCLIClient)
     assert model_name(settings) == "claude-sonnet-5-5"
+    off = Settings.model_validate({"security": {"masking": {"enabled": False}}})
+    assert isinstance(create_llm_client(off), ClaudeCodeCLIClient)
 
 
 def test_factory_gemini_needs_model() -> None:
@@ -296,13 +301,16 @@ def test_factory_gemini_needs_model() -> None:
 def test_factory_claude_api(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key-not-real")
     settings = Settings.model_validate({"llm": {"provider": "claude"}})
-    assert isinstance(create_llm_client(settings), ClaudeAPIClient)
+    client = create_llm_client(settings)
+    assert isinstance(client, MaskingClient) and isinstance(client.inner, ClaudeAPIClient)
 
 
 def test_debug_log_only_when_enabled(tmp_path: Path) -> None:
     settings = Settings.model_validate({"paths": {"debug_log_dir": str(tmp_path / "dbg")}})
-    assert not isinstance(create_llm_client(settings), DebugLoggingClient)
-    assert isinstance(create_llm_client(settings, debug_log=True), DebugLoggingClient)
+    plain, logged = create_llm_client(settings), create_llm_client(settings, debug_log=True)
+    assert isinstance(plain, MaskingClient) and isinstance(logged, MaskingClient)
+    assert not isinstance(plain.inner, DebugLoggingClient)
+    assert isinstance(logged.inner, DebugLoggingClient)  # masking is outermost: logs see masks
 
     client = DebugLoggingClient(FakeLLMClient(["reply"]), tmp_path / "dbg")
     client.complete(_request())

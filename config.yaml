@@ -180,6 +180,21 @@ sandbox:                          # `pytest --collect-only` in a container (Hard
   pids_limit: 256
   work_dir: .scratch/sandbox      # staging folder per run (git-ignored)
 
+security:
+  masking:                        # prompt-injection payloads never reach our own LLM
+    enabled: true
+    patterns:                     # instruction-like phrasing; the enclosing string/sentence is masked
+      - '\bignore (?:all |any |previous |prior |the |above |earlier )*(?:instructions|prompts?|rules)\b'
+      - '\bdisregard (?:all |any |previous |prior |the |above )*(?:instructions|rules)\b'
+      - '\byou (?:are|must) now\b'
+      - '\bnew task:'
+      - '\bsystem prompt\b'
+      - '\bact as (?:an? )?(?:admin|administrator|developer|system)\b'
+      - '</?\s*(?:system|assistant|tool_call|function_call)\b'
+    keys: [hidden_text, comment, alt, meta]   # JSON keys whose values are always masked
+    min_chars: 1
+    legend_prompt: masking_legend_v1
+
 paths:
   output_dir: output
   cache_dir: .t2t_cache

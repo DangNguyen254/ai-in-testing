@@ -78,6 +78,10 @@ find every value.
       statically computed test ids with a real collect in the sandbox.
 - [ ] `repair.max_attempts`.
 
+- [ ] `security.masking.keys` (data keys that hold prompt-injection payloads) and, if needed,
+      extra `security.masking.patterns`. Masking is on by default: payloads are replaced by
+      tokens before any text reaches the LLM and restored afterwards.
+
 ## 6. Eval (`eval_data/`)
 
 - [ ] Mine ticket ↔ test pairs from the real repo's history: `ticket2test mine <repo> --out

@@ -730,7 +730,7 @@ Read this first when resuming in a new session.
 - 2026-10-07: Verified. ruff, mypy strict, pytest 496 passed, 14 deselected; `-m sandbox` 2 passed. `check-suite standin --collect`: clean, 5 test files, 36 static ids = 36 collected. `check-suite` on httpx (untuned, a differently shaped suite): 2,601 errors, mostly markers (none), assertions (bare `assert`), style (4-space indent, annotations), base class (none): the first run on a new suite shows which config sections to change.
 
 ## Stand-in v4 and reuse support (refinement while the real suite can't be connected)
-**Status:** 🟡 In progress (steps 1–2 of 7 done)
+**Status:** 🟡 In progress (steps 1–3 of 7 done)
 
 **Why:** the human described the real suite's scope (generic, no names): besides policy rules, tests for an **AI browsing agent** (prompt injection, API endpoints) and **file-policy enforcement** (document isolation and safe viewing; download policies block/allow/sanitize; malware scanning by signature and hash; DLP rules; encrypted files and password prompts; archive extraction and member inspection; converted vs. original downloads). Reuse dominates: a base class (driver and framework setup), page-object helpers, **tests calling tests**, and **decorator-generated class variants**. Decisions: keep LLM use minimal and prefer logic; mask prompt-injection payloads from our own LLM (not just wrap them); patch output (add a variant / a method to existing files) is approved.
 
@@ -750,6 +750,13 @@ Read this first when resuming in a new session.
   - **check-suite on stand-in v4:** clean; `--collect` in the Podman sandbox: 68 static ids = 68 collected. It first reported `site` unread and literal DLP rule names (the stand-in then gave DLP rules unique names): the calibration loop working on our own config.
   - **Retrieval (deterministic):** stand-in 21 tickets recall@10 0.952 (STND-104 missed as before), MRR about 0.2; mined 3 pairs.
   - **Verified:** ruff, mypy strict (79 files), pytest 537 passed, 14 deselected; `-m sandbox` 2 passed.
+- 2026-10-08: **Payload masking (step 3).** The human's choice: mask payloads from our own LLM rather than only wrapping them.
+  - **Masker (`security/masking.py`):** instruction-like phrasing (config `security.masking.patterns`) and the values of configured data keys (`security.masking.keys`, stand-in: `hidden_text`, `comment`, `alt`, `meta`) become `[[PAYLOAD_n]]` tokens; the same payload keeps its token. Span rules: a short quoted string around the match (also escaped quotes inside JSON) is masked whole; inside long strings (a ticket description held in JSON) only the sentence is masked, so the ticket stays readable.
+  - **Client (`llm/masking.py`):** `MaskingClient` masks every message of every request and adds the legend (prompt `masking_legend_v1`: what each token is, copy tokens exactly, never write payload text). It is the outermost wrapper (debug logs see masks); `create_llm_client` adds it unless `security.masking.enabled` is false.
+  - **Restoring:** drafts and judge verdicts (`unmask_model`), generation (`unmask_generation`: code through Python's tokenizer, re-quoting string literals so quotes or backslashes in a payload can't break the code; JSON values re-escaped; notes and checklist as text). Data entries copy payloads from the base entry in code, never through the LLM.
+  - **Validator (`payloads` check):** a leftover token in code or data is an error (unknown token, or in an f-string or comment); instruction-like text in generated output that is in neither the suite's data nor the draft is a reviewer warning.
+  - **Checked:** for STND-116 the draft prompt keeps the whole ticket readable with only the quoted payload as a token; the restored draft step has the original.
+  - **Verified:** ruff, mypy strict (81 files), pytest 549 passed, 14 deselected.
 
 ## Global open questions (for the human)
 - Which LLM provider/endpoint will the company environment require?
