@@ -113,7 +113,7 @@ def test_standin_tickets_land_in_their_tests_domain_or_are_flagged(
         got = choice.domain.folders[0] if choice.domain else None
         right += got in wanted
         assert got in wanted or choice.uncertain, f"{key}: {choice.reason}"
-    assert right >= 19
+    assert right == sum(1 for i in manifest["tickets"].values() if i["tests"])  # all routed
 
 
 # --- reuse decisions ----------------------------------------------------------------------------
@@ -241,3 +241,26 @@ def test_a_named_value_alone_never_means_covered(setup: tuple[Settings, IndexDat
     assert decision.kind != "covered", decision.reasons
     filter_test = next(c for c in decision.candidates if c.test == "test_rules_list_filter_action")
     assert filter_test.matched_param == "allow"  # named, and still not enough
+
+
+def test_the_tickets_component_routes_it(setup: tuple[Settings, IndexData]) -> None:
+    """Step-7 eval: retrieval and the draft's broad component pointed elsewhere, while the
+    ticket's own component named the right folder. In `generate` the ticket itself isn't
+    there, so its components travel in the retrieval result."""
+    settings, index = setup
+    retrieval = _empty_retrieval().model_copy(update={"ticket_components": ["Tenants"]})
+    choice = choose_domain(retrieval, index, settings)
+    assert choice.domain is not None and choice.domain.name == "tenants"
+    assert not choice.uncertain and "component" in choice.reason
+    two = retrieval.model_copy(update={"ticket_components": ["tenants", "rules"]})
+    assert "component" not in choose_domain(two, index, settings).reason  # not one: scored
+
+
+def test_domain_names_match_stemmed_words(setup: tuple[Settings, IndexData]) -> None:
+    settings, index = setup
+    draft = SCENARIOS["module"][0].model_copy(
+        update={"markers": SCENARIOS["module"][0].markers.model_copy(
+            update={"component": "file download"})}
+    )  # fmt: skip
+    choice = choose_domain(_empty_retrieval(), index, settings, None, draft)
+    assert choice.domain is not None and choice.domain.name == "files"  # "file" ~ "files"

@@ -452,14 +452,53 @@ def rekey_plans(
 def strip_unread(
     entry: dict[str, Any], code: str, setup: GenerationSetup
 ) -> tuple[dict[str, Any], list[str]]:
-    """Remove keys the test never reads and no helper it calls consumes (rule 1)."""
+    """Remove keys the test never reads and no helper it calls consumes (rule 1).
+
+    Reads are followed the way the validator follows them: into ``self.<method>()`` helpers,
+    also in repo base classes, and through inherited tests. A test whose reads can't be
+    resolved (not found in the code) is left alone: removing keys there is a guess.
+    """
     test_id = str(entry.get(setup.settings.data.id_field, ""))
-    use = _uses(code, setup.settings).get(function_of(test_id))
+    use = resolved_uses(code, setup).get(function_of(test_id))
+    if use is None:
+        return entry, []
     unread, _conflict = unconsumed_keys(entry, use, setup.validation_context)
     if not unread:
         return entry, []
     kept = {k: v for k, v in entry.items() if k not in unread}
     return kept, [f"removed unread {sorted(unread)} from {test_id}"]
+
+
+def resolved_uses(code: str, setup: GenerationSetup) -> dict[str, Any]:
+    """Data use per test name (own and inherited), following helpers into repo base classes."""
+    import ast
+
+    from ticket2test.validate.datause import Resolver
+
+    settings, data = setup.settings, setup.settings.data
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return {}
+    uses = dict(_uses(code, settings))  # module-level tests and the plain reading
+    module = PurePosixPath(setup.template_chunk.file_path).with_suffix("").as_posix()
+    resolver = Resolver(
+        tree,
+        module.replace("/", "."),
+        setup.index,
+        data.access,
+        set(data.expectation_sections.values()),
+    )
+    prefix = settings.index.test_function_prefix
+    for cls in resolver.classes():
+        for fn in cls.body:
+            if isinstance(fn, ast.FunctionDef) and fn.name.startswith(prefix):
+                uses[fn.name] = resolver.data_use(cls, fn)
+        for test in resolver.inherited_tests(cls, prefix):
+            method = resolver.method(cls, test.name)
+            if method is not None:
+                uses[test.name] = resolver.data_use(cls, method)
+    return uses
 
 
 def _uses(code: str, settings: Settings) -> dict[str, Any]:

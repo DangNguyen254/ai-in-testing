@@ -485,3 +485,31 @@ def test_inherited_tests_get_entries_from_code(setup: tuple[Settings, IndexData]
     assert notes and notes[0].startswith("entry for inherited test_files_download_verdict")
     again, _, more = with_inherited_entries(code, entries, setup_)
     assert again == entries and more == []  # an existing entry is kept as is
+
+
+def test_unread_keys_follow_inheritance(setup: tuple[Settings, IndexData]) -> None:
+    """Eval run 2: keys read only by the base class's shared test were stripped."""
+    from tests.test_reuse import SCENARIOS
+    from ticket2test.generate.generator import prepare_generation, strip_unread
+
+    settings, index = setup
+    draft = SCENARIOS["method"][0]
+    setup_ = prepare_generation(draft, _ticketed(settings, index, draft), index, settings)
+    code = GENERATED_CLASS.replace("TestFilesArchivesEncrypted", "TestFilesArchivesLocked")
+    inherited = {
+        "test_id": "test_files_download_verdict",
+        "file": "a.zip",
+        "decision": "blocked",
+        "reason": "wrong password",
+        "targets": [],
+        "junk": 1,
+    }
+    kept, notes = strip_unread(inherited, code, setup_)
+    assert set(kept) == {"test_id", "file", "decision", "reason", "targets"}  # all read
+    assert notes == ["removed unread ['junk'] from test_files_download_verdict"]
+    own = {"test_id": "test_files_archive_encrypted_members", "file": "a.zip", "members": [],
+           "decision": "blocked"}  # fmt: skip
+    kept, notes = strip_unread(own, code, setup_)
+    assert set(kept) == {"test_id", "file", "members"}  # its own code reads only these
+    unknown = {"test_id": "test_files_not_here", "file": "a.zip"}
+    assert strip_unread(unknown, code, setup_) == (unknown, [])  # unresolved: left alone

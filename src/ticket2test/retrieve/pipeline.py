@@ -313,6 +313,8 @@ def retrieve(
         followup_rounds=rounds,
         llm_calls=llm_calls,
         prompt_versions=prompt_versions,
+        ticket_components=list(ticket.components),
+        ticket_labels=list(ticket.labels),
     )
 
 

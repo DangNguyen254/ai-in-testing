@@ -86,3 +86,6 @@ class RetrievalResult(BaseModel):
     followup_rounds: int = 0
     llm_calls: int = 0
     prompt_versions: list[str] = Field(default_factory=list)
+    # The ticket's own routing hints, kept for later steps (domain choice in `generate`).
+    ticket_components: list[str] = Field(default_factory=list)
+    ticket_labels: list[str] = Field(default_factory=list)

@@ -8,6 +8,10 @@ Choosing the domain is code, no LLM: retrieval already ranked the repo's chunks 
 so the hit scores are summed per domain (the folder where the best-matching tests and page
 objects live wins), plus a bonus when the ticket's components or labels, or the draft's
 component, name the domain. If the top two are close, the choice is flagged as uncertain.
+
+The reporter's routing comes first: when the ticket's own components name exactly one domain,
+that is the domain (the step-7 eval had three tickets whose component named the right folder
+while retrieval and the draft's broader component pointed elsewhere).
 """
 
 from __future__ import annotations
@@ -22,6 +26,7 @@ from ticket2test.index.indexer import IndexData
 from ticket2test.models.draft import TestCaseDraft
 from ticket2test.models.retrieval import RetrievalResult
 from ticket2test.models.ticket import Ticket
+from ticket2test.validate.claims import norm
 
 COMPONENT_BONUS = 0.25  # added when the ticket's component or the draft's names the domain
 LABEL_BONUS = 0.1  # added when one of the ticket's labels names it
@@ -85,6 +90,12 @@ def choose_domain(
     if not all_domains:
         return DomainChoice(None, reason="no domain folders match generate.domain_globs")
     by_name = {d.name: d for d in all_domains}
+    ticket_components = list(ticket.components) if ticket else list(retrieval.ticket_components)
+    named = [d for d in all_domains if any(_words(d.name) & _words(c) for c in ticket_components)]
+    if len(named) == 1:  # the reporter routed the ticket: that is the domain
+        return DomainChoice(
+            named[0], {named[0].name: 1.0}, False, f"{named[0].name}: the ticket's component"
+        )
     totals = dict.fromkeys(by_name, 0.0)
     for hit in retrieval.hits:
         found = domain_of(hit.file_path, all_domains)
@@ -98,7 +109,7 @@ def choose_domain(
             totals[found.name] += max(totals.values() or [0.0]) * 0.1  # a nudge, not a vote
     total = sum(totals.values())
     shares = {n: (v / total if total else 0.0) for n, v in totals.items()}
-    components, labels = _named(ticket, draft)
+    components, labels = _named(ticket, draft, retrieval)
     for name in shares:
         if _words(name) & components:
             shares[name] += COMPONENT_BONUS
@@ -120,19 +131,21 @@ def choose_domain(
     )
 
 
-def _named(ticket: Ticket | None, draft: TestCaseDraft | None) -> tuple[set[str], set[str]]:
+def _named(
+    ticket: Ticket | None, draft: TestCaseDraft | None, retrieval: RetrievalResult
+) -> tuple[set[str], set[str]]:
     """(words of the ticket's components and the draft's component, words of its labels)."""
     components: set[str] = set()
     labels: set[str] = set()
-    if ticket is not None:
-        for text in ticket.components:
-            components |= _words(text)
-        for text in ticket.labels:
-            labels |= _words(text)
+    for text in ticket.components if ticket else retrieval.ticket_components:
+        components |= _words(text)
+    for text in ticket.labels if ticket else retrieval.ticket_labels:
+        labels |= _words(text)
     if draft is not None:
         components |= _words(draft.markers.component)
     return components, labels
 
 
 def _words(text: str) -> set[str]:
-    return {w for w in re.split(r"[^a-z0-9]+", text.lower()) if w}
+    """Stemmed words, so a component "file download" names the folder "files"."""
+    return {norm(w) for w in re.split(r"[^a-z0-9]+", text.lower()) if w}
