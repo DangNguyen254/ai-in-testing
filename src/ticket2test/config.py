@@ -430,6 +430,22 @@ class ResultsSettings(_Section):
             "InvalidSelectorException",
         ]
     )
+    # Error types that mean the run couldn't reach the system under test (not the test's
+    # fault, not the bug): network, DNS, TLS, timeouts while connecting.
+    environment_errors: list[str] = Field(
+        default_factory=lambda: [
+            "ConnectionError",
+            "NewConnectionError",
+            "MaxRetryError",
+            "ConnectTimeout",
+            "ConnectTimeoutError",
+            "ReadTimeout",
+            "SSLError",
+            "gaierror",
+            "ConnectionRefusedError",
+            "ConnectionResetError",
+        ]
+    )
     max_message_chars: int = Field(default=1500, ge=100)
 
 

@@ -830,6 +830,13 @@ Read this first when resuming in a new session.
 
   - The run-2 failures are gone: STND-113, 117, 119, 120 (inheritance stripping) pass; STND-104, 109, 110 land in their own folders and classes (`TestRules`, `TestTenantsSecondary`, `TestPolicyApi`).
   - **Left (judgment, not bugs):** STND-120 became a method in `TestFilesArchives` rather than `TestFilesViewer`: with its own test left out, `TestFilesViewer` holds only the inherited shared test, so nothing in it matches; the first attempt used the viewer class's variant attribute `delivery` and was repaired. STND-118 and STND-121 are new modules (scaffolds from `TestFilesDownloads` and `TestAgentBrowserLimit`) where a reviewer might prefer `TestFilesScanning` / `TestAgentApi`. Three reviewer warnings are docstring-claim heuristics.
+- 2026-10-09: **Console-log reader calibrated on a real failed log** (the human's, kept in the git-ignored `.scratch/private/`; only its shape is used). It was a setup failure: the test host couldn't be resolved, so no browser started and no remote-browser link was printed. What it showed, and what changed in `results/console.py`:
+  - block titles for long ids have one underscore each side (`_ ERROR at setup of Class.test _`), and `_ _ _` lines inside a traceback separate frames: titles now match `_+ title _+`, separators are skipped (the old `_{3,}` pattern found no block at all);
+  - chained exceptions print several `E` lines (`socket.gaierror`, then `NewConnectionError`, ..., then `requests.exceptions.ConnectionError`): the error type and message come from the short-summary line when there is one, else from the **last** exception in the block; exception names no longer need to end in `Error` (`gaierror`);
+  - new verdict **environment** when every failure is a connection/network error (`results.environment_errors`): the run couldn't reach the system, which says nothing about the test (rerun, nothing to repair).
+  - The real failed log now reads: 1 result, `error`, `requests.exceptions.ConnectionError`, no link, verdict environment; the real passed log still reads passed. Synthetic fixture `tests/fixtures/runs/connection_error.log` in the same shape (invented names).
+  - **Still open:** a real failure that reaches the browser (with its remote-browser link), to place the link line.
+- 2026-10-09: **Decision (human): keep the stand-in's UI-share floor at 75%.**
 
 ## Global open questions (for the human)
 - Which LLM provider/endpoint will the company environment require?

@@ -789,7 +789,8 @@ def results(
 ) -> None:
     """Read a real run's console log and record each generated test's results.
 
-    Verdicts: passed; test_problem (the test itself is wrong, e.g. an unknown name or a missing
+    Verdicts: passed; environment (the run couldn't reach the system: rerun, nothing to fix in
+    the test); test_problem (the test itself is wrong, e.g. an unknown name or a missing
     data key); check_failed (an assertion failed: the test caught the bug, or its expectation is
     wrong; open the run's link); error (setup or teardown); not_run; unclear.
     """

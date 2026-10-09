@@ -116,3 +116,27 @@ def test_cli_results_records_the_run(tmp_path: Path) -> None:
     stored = GeneratedTest.model_validate_json((folder / "generated.json").read_text("utf-8"))
     assert stored.run_report is not None and stored.run_report["verdict"] == "check_failed"
     assert len(stored.run_report["results"]) == 2  # chrome failed, firefox passed
+
+
+def test_a_connection_error_is_the_environment_not_the_test() -> None:
+    """The shape of a real setup failure: a one-underscore block title (long id), chained
+    exceptions with frame separators, the final cause in the summary line, no link."""
+    text = _log("connection_error.log")
+    (result,) = parse_console(text, CFG).results
+    assert result.status == "error" and result.links == []
+    assert result.error_type == "requests.exceptions.ConnectionError"  # the last, not gaierror
+    assert result.message.startswith("requests.exceptions.ConnectionError: HTTPSConnectionPool")
+    assert verdict([result], CFG) == "environment"
+    no_summary = text.split("=========================== short test summary")[0]
+    (result,) = parse_console(no_summary, CFG).results  # only the block: its last exception
+    assert result.error_type == "requests.exceptions.ConnectionError"
+    assert result.message.startswith("requests.exceptions.ConnectionError")
+    assert verdict([result], CFG) == "environment"
+
+
+def test_frame_separators_are_not_block_titles() -> None:
+    text = _log("connection_error.log")
+    log = parse_console(text, CFG)
+    assert [r.test_id for r in log.results] == [
+        "test_rules_add_with_a_rather_long_name_that_shrinks_the_title_frame"
+    ]

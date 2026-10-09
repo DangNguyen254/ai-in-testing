@@ -31,7 +31,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from ticket2test.config import ResultsSettings
 
 Status = Literal["passed", "failed", "error", "skipped", "xfailed", "xpassed"]
-Verdict = Literal["passed", "test_problem", "check_failed", "error", "not_run", "unclear"]
+Verdict = Literal[
+    "passed", "environment", "test_problem", "check_failed", "error", "not_run", "unclear"
+]
 
 _STATUS = {
     "PASSED": "passed",
@@ -43,15 +45,19 @@ _STATUS = {
 }
 _WORDS = "|".join(_STATUS)
 _SECTION = re.compile(r"^={3,}\s*(.*?)\s*={3,}\s*$")
-_BLOCK = re.compile(r"^_{3,}\s*(.*?)\s*_{3,}\s*$")
+# A failure block title: "____ Class.test ____", or "_ ERROR at setup of Class.test _" when
+# the id is long; "_ _ _ _" lines inside a traceback separate frames (not titles).
+_BLOCK = re.compile(r"^_+ (.+?) _+$")
+_SEPARATOR = re.compile(r"^[_ ]+$")
 _NODE = re.compile(r"(?P<node>[\w./\\-]+\.py::[^\s]+)")
 _AT_END = re.compile(rf"\s(?P<status>{_WORDS})(?:\s+\[\s*\d+%\])?\s*$")
 _ALONE = re.compile(rf"^\s*(?P<status>{_WORDS})(?:\s+\[\s*\d+%\])?\s*$")
 _XDIST = re.compile(rf"^\[gw\d+\]\s+(?:\[\s*\d+%\]\s+)?(?P<status>{_WORDS})\s+(?P<node>\S+)")
 _SUMMARY = re.compile(rf"^(?P<status>{_WORDS})\s+(?P<node>\S+?)(?:\s+-\s+(?P<reason>.*))?$")
-_ERROR_TYPE = re.compile(
-    r"^E\s+(?P<type>[A-Za-z_][\w.]*(?:Error|Exception|Exit|Failure|Timeout))\b"
-)
+# "E   requests.exceptions.ConnectionError: ..." or "E   socket.gaierror: ...": an exception
+# line. Chained exceptions print several; the last one is what the test failed with.
+_ERROR_TYPE = re.compile(r"^E\s+(?P<type>[A-Za-z_][\w.]*)(?::\s|:?$)")
+_REASON_TYPE = re.compile(r"^(?P<type>[A-Za-z_][\w.]*):\s")
 
 
 class RunResult(BaseModel):
@@ -121,7 +127,7 @@ def parse_console(text: str, settings: ResultsSettings) -> RunLog:
                 links.setdefault(last, []).extend(link.findall(line))
         elif section in ("failures", "errors"):
             title = _BLOCK.match(line)
-            if title:
+            if title and not _SEPARATOR.match(title.group(1)):
                 if block is not None:
                     blocks[block] = block_lines
                 block, block_lines = title.group(1), []
@@ -132,8 +138,11 @@ def parse_console(text: str, settings: ResultsSettings) -> RunLog:
             if summary:
                 node = summary.group("node")
                 record(node, summary.group("status"))
-                if summary.group("reason") and not results[node].message:
-                    results[node].message = _short(summary.group("reason"), settings)
+                reason = summary.group("reason")
+                if reason:  # the final exception in one line: the best summary there is
+                    results[node].message = _short(reason, settings)
+                    typed = _REASON_TYPE.match(reason)
+                    results[node].error_type = typed.group("type") if typed else None
     if block is not None:
         blocks[block] = block_lines
 
@@ -143,10 +152,14 @@ def parse_console(text: str, settings: ResultsSettings) -> RunLog:
             continue
         result = results[node]
         errors = [ln for ln in lines if ln.startswith("E ")]
-        if errors:
+        raised = [n for n, e in enumerate(errors) if _ERROR_TYPE.match(e)]
+        if raised and result.error_type is None:  # no summary line: the last exception
+            final = raised[-1]
+            match = _ERROR_TYPE.match(errors[final])
+            result.error_type = match.group("type") if match else None
+            result.message = _short("\n".join(e[1:].strip() for e in errors[final:]), settings)
+        elif errors and not result.message:
             result.message = _short("\n".join(e[1:].strip() for e in errors), settings)
-            typed = next((m for e in errors if (m := _ERROR_TYPE.match(e))), None)
-            result.error_type = typed.group("type") if typed else result.error_type
         if link:
             links.setdefault(node, []).extend(u for ln in lines for u in link.findall(ln))
     for node, found in links.items():
@@ -165,7 +178,9 @@ def parse_console(text: str, settings: ResultsSettings) -> RunLog:
 def verdict(results: list[RunResult], settings: ResultsSettings) -> Verdict:
     """One verdict over a test's results (all its variants and cases).
 
-    passed: every result passed. test_problem: an error type that means the test itself is
+    passed: every result passed. environment: every failure is a network or connection error
+    (``results.environment_errors``: the run couldn't reach the system; it says nothing about
+    the test; rerun). test_problem: an error type that means the test itself is
     wrong (``results.test_problem_errors``: a name that doesn't exist, a missing data key, an
     element not found). check_failed: an assertion failed; either the test caught the bug or
     its expectation is wrong; the reviewer decides (the link shows the run). error: an error in
@@ -177,6 +192,8 @@ def verdict(results: list[RunResult], settings: ResultsSettings) -> Verdict:
     if not bad:
         return "passed" if any(r.status == "passed" for r in results) else "not_run"
     types = {(r.error_type or "").rsplit(".", 1)[-1] for r in bad}
+    if types and types <= set(settings.environment_errors):
+        return "environment"
     if types & set(settings.test_problem_errors):
         return "test_problem"
     if all(r.status == "failed" and "AssertionError" in types for r in bad):

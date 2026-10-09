@@ -1,0 +1,48 @@
+../bin/env.sh: line 55: /opt/tools/get_config_value: No such file or directory
+time="2026-10-09 10:04:49,035" level=WARNING name=framework.config Failed to get configuration, using default
+============================= test session starts ==============================
+platform linux -- Python 3.8.10, pytest-7.4.2, pluggy-1.5.0 -- /usr/bin/python3
+collected 40 items / 39 deselected / 1 selected
+
+rules/test_rules.py::TestRules_chrome_latest_Windows_10_cloud_r1::test_rules_add_with_a_rather_long_name_that_shrinks_the_title_frame ERROR
+
+==================================== ERRORS ====================================
+_ ERROR at setup of TestRules_chrome_latest_Windows_10_cloud_r1.test_rules_add_with_a_rather_long_name_that_shrinks_the_title_frame _
+
+self = <urllib3.connection.HTTPSConnection object at 0x7f>
+
+    def _new_conn(self):
+>           conn = connection.create_connection(
+                (self._dns_host, self.port), self.timeout, **extra_kw
+            )
+
+/usr/local/lib/python3.8/dist-packages/urllib3/connection.py:174:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+host = 'admin.example.test', port = 443
+
+>       for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+E       socket.gaierror: [Errno -5] No address associated with hostname
+
+/usr/lib/python3.8/socket.py:918: gaierror
+
+During handling of the above exception, another exception occurred:
+
+>           raise NewConnectionError(
+                self, "Failed to establish a new connection: %s" % e
+            )
+E           urllib3.exceptions.NewConnectionError: <urllib3.connection.HTTPSConnection object at 0x7f>: Failed to establish a new connection: [Errno -5] No address associated with hostname
+
+During handling of the above exception, another exception occurred:
+
+>           raise ConnectionError(e, request=request)
+E           requests.exceptions.ConnectionError: HTTPSConnectionPool(host='admin.example.test', port=443): Max retries exceeded with url: /api/auth/v1/login
+
+/usr/local/lib/python3.8/dist-packages/requests/adapters.py:516: ConnectionError
+=============================== warnings summary ===============================
+framework/policy.py:12
+  /root/work/suite/framework/policy.py:12: DeprecationWarning: Using or importing the ABCs from 'collections'
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+ERROR rules/test_rules.py::TestRules_chrome_latest_Windows_10_cloud_r1::test_rules_add_with_a_rather_long_name_that_shrinks_the_title_frame - requests.exceptions.ConnectionError: HTTPSConnectionPool(host='admin.example.test', p...
+================== 39 deselected, 1 warning, 1 error in 2.90s ==================

@@ -202,6 +202,9 @@ results:                        # reading a real run's console log (`ticket2test
   link_pattern: 'https?://(?:[\w-]+\.)*saucelabs\.com/\S+'   # remote-browser session links
   test_problem_errors: [AttributeError, NameError, KeyError, TypeError, ImportError,
                         ModuleNotFoundError, NoSuchElementException, InvalidSelectorException]
+  environment_errors: [ConnectionError, NewConnectionError, MaxRetryError, ConnectTimeout,
+                       ConnectTimeoutError, ReadTimeout, SSLError, gaierror,
+                       ConnectionRefusedError, ConnectionResetError]   # couldn't reach the system
   max_message_chars: 1500
 
 security:
