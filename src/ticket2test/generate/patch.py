@@ -39,6 +39,7 @@ from ticket2test.generate.entries import EntryError, delete_path, function_of, p
 from ticket2test.generate.generator import first_party
 from ticket2test.generate.reuse import ReuseDecision
 from ticket2test.index.indexer import IndexData
+from ticket2test.index.tokens import split_identifier
 from ticket2test.llm.base import LLMClient, LLMRequest, Message
 from ticket2test.llm.factory import model_name
 from ticket2test.llm.masking import masker_of, unmask_model
@@ -107,9 +108,18 @@ class ParamSite:
     multiline: bool
     indent: str  # of the last value's line
     quote: str
+    numeric: bool = False  # a list of whole numbers (written without quotes)
+
+    def literal(self, case: str) -> str:
+        """The new value as the list writes it; raises PatchError if it doesn't fit."""
+        if not self.numeric:
+            return f"{self.quote}{case}{self.quote}"
+        if not case.lstrip("-").isdigit():
+            raise PatchError(f"{self.argname} takes whole numbers; {case!r} isn't one")
+        return str(int(case))
 
     def insert(self, source: str, new: list[str]) -> str:
-        items = [f"{self.quote}{v}{self.quote}" for v in new]
+        items = [self.literal(v) for v in new]
         if self.multiline and self.trailing_comma is not None:
             at, text = self.trailing_comma, "".join(f"\n{self.indent}{i}," for i in items)
         elif self.multiline:
@@ -139,12 +149,18 @@ def parametrize_site(source: str, class_name: str | None, function: str) -> Para
         names.value
     ):
         raise PatchError(f"{function}: parametrize over several arguments is not supported")
+    constants = [e.value for e in getattr(values, "elts", []) if isinstance(e, ast.Constant)]
+    strings = all(isinstance(v, str) for v in constants)
+    numbers = all(isinstance(v, int) and not isinstance(v, bool) for v in constants)
     if (
         not isinstance(values, ast.List | ast.Tuple)
         or not values.elts
-        or not all(isinstance(e, ast.Constant) and isinstance(e.value, str) for e in values.elts)
+        or len(constants) != len(values.elts)
+        or not (strings or numbers)
     ):
-        raise PatchError(f"{function}: parametrize values are not a literal list of strings")
+        raise PatchError(
+            f"{function}: parametrize values are not a literal list of strings or whole numbers"
+        )
     last = values.elts[-1]
     lines = source.splitlines(keepends=True)
     end = _offset(lines, last.end_lineno or last.lineno, last.end_col_offset or 0)
@@ -162,6 +178,7 @@ def parametrize_site(source: str, class_name: str | None, function: str) -> Para
         multiline=last.lineno != values.lineno,
         indent=line[: len(line) - len(line.lstrip())],
         quote=segment[0] if segment[0] in "'\"" else '"',
+        numeric=numbers and not strings,
     )
 
 
@@ -233,7 +250,7 @@ def plan_variants_in_code(
                 return None
             path, current = found[0]
             ok, value = _coerce(given.value, current)
-            copies, derived = _dependents(base, path, current)
+            copies, derived = _dependents(base, path, current, expectations)
             if not ok or derived:
                 return None
             if any(v == value for _, v in _leaves(base)):
@@ -247,7 +264,9 @@ def plan_variants_in_code(
                 ]
         if not changes:
             continue
-        case = _case_name(variant, taken)
+        case = _case_from_argument(variant, site) or _case_name(variant, taken)
+        if case in taken:
+            continue  # the case exists already: nothing new to add
         taken.add(case)
         plans.append(
             VariantPlan(
@@ -397,7 +416,23 @@ def _key_paths(entry: Any, key: str, skip: set[str], path: str = "") -> list[tup
     return found
 
 
-def _dependents(entry: dict[str, Any], path: str, old: Any) -> tuple[list[str], bool]:
+def _case_from_argument(variant: Variant, site: ParamSite) -> str | None:
+    """The new parametrize value, when one of the draft's inputs is named like the argument
+    (``browser_limit`` = 2 for the argument ``limit``): the value the test receives."""
+    wanted = {norm(w) for w in split_identifier(site.argname)}
+    for given in variant.inputs:
+        words = {norm(w) for w in split_identifier(_key(given.name))}
+        if wanted and wanted <= words:
+            value = given.value.strip()
+            if site.numeric and not value.lstrip("-").isdigit():
+                return None
+            return str(int(value)) if site.numeric else value
+    return None
+
+
+def _dependents(
+    entry: dict[str, Any], path: str, old: Any, expectations: set[str] | None = None
+) -> tuple[list[str], bool]:
     """Other values in the entry that follow from ``old``: (paths of exact copies, whether any
     value is derived from it).
 
@@ -405,6 +440,19 @@ def _dependents(entry: dict[str, Any], path: str, old: Any) -> tuple[list[str], 
     (one that contains it, or that it matches as a pattern, e.g. a DLP pattern and the content
     it must find) can't be updated in code, so the case needs the LLM.
     """
+    if isinstance(old, int | float) and not isinstance(old, bool):
+        # a number restated in the expectations (e.g. an open count equal to the limit) is
+        # the same fact; equal numbers in seed data may be coincidence and stay
+        sections = expectations or set()
+        restated = [
+            other
+            for other, value in _leaves(entry)
+            if other != path
+            and other.split(".", 1)[0] in sections
+            and type(value) is type(old)
+            and value == old
+        ]
+        return restated, False
     if not isinstance(old, str) or len(old) < 3:
         return [], False
     try:

@@ -34,6 +34,7 @@
     {"id": "standin-124", "ticket": "STND-124", "tests": ["tests/agent/test_agent_browser_limit.py::TestAgentBrowserLimit::test_agent_browser_limit_lowered_keeps_sessions"]},
     {"id": "standin-125", "ticket": "STND-125", "tests": ["tests/agent/test_agent_browser_limit.py::TestAgentBrowserLimit::test_agent_browser_limit_read_back", "tests/agent/test_agent_browser_limit.py::TestAgentBrowserLimit::test_agent_browser_limit_per_tenant"]},
     {"id": "standin-126", "ticket": "STND-126", "tests": ["tests/agent/test_agent_browser_console.py::TestAgentBrowserConsole::test_agent_console_browser_limit_message"]},
-    {"id": "standin-127", "ticket": "STND-127", "tests": ["tests/agent/test_agent_browser_limit.py::TestAgentBrowserLimit::test_agent_browser_limit_change_forbidden", "tests/settings/test_settings.py::TestSettingsCapabilities::test_settings_capabilities_browser_limit"]}
+    {"id": "standin-127", "ticket": "STND-127", "tests": ["tests/agent/test_agent_browser_limit.py::TestAgentBrowserLimit::test_agent_browser_limit_change_forbidden", "tests/settings/test_settings.py::TestSettingsCapabilities::test_settings_capabilities_browser_limit"]},
+    {"id": "standin-128", "ticket": "STND-128", "tests": ["tests/agent/test_agent_browser_limit.py::TestAgentBrowserLimit::test_agent_browser_limit_refused"]}
   ]
 }

@@ -1,6 +1,6 @@
 {
   "_comment": "Hand-written FAKE tickets for the synthetic stand-in app (Jira API v2 export shape, wiki markup). Not real data.",
-  "total": 27,
+  "total": 28,
   "issues": [
     {
       "id": "30101",
@@ -596,6 +596,28 @@
           }
         ],
         "description": "The browser limit can be changed by users who are not admins.\n\nh3. Steps to Reproduce\n# As an editor, send PUT /api/settings/v1/capabilities/<tenant> with browser_limit 10\n\nh3. Expected Behavior\nThe API answers 403 for viewers and editors, and the limit stays 3. Admins can still set it on the Settings page.\n\nh3. Actual Behavior\nThe API answers 200 and the limit becomes 10.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30128",
+      "key": "STND-128",
+      "self": "https://jira.example.com/rest/api/2/issue/30128",
+      "fields": {
+        "summary": "A browser limit of 2 is not enforced",
+        "labels": [
+          "agent",
+          "browser-limit"
+        ],
+        "components": [
+          {
+            "name": "agent"
+          }
+        ],
+        "description": "With the tenant's browser limit at 2, a third agent browser session still connects. Limits of 1 and 3 work.\n\nh3. Steps to Reproduce\n# Set the tenant's browser_limit to 2\n# Open two agent browser sessions (WebSocket /ws/browser/<tenant>)\n# Open a third\n\nh3. Expected Behavior\nThe third connection attempt gets HTTP 429 with the body \"Browser limit reached\" before the WebSocket upgrade, and two sessions stay open.\n\nh3. Actual Behavior\nThe third session is upgraded (101).",
         "comment": {
           "total": 0,
           "comments": []

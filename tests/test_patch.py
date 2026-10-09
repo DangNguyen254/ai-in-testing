@@ -124,7 +124,7 @@ def test_a_value_is_appended_in_the_lists_own_style(values: str, expected: str) 
         '@pytest.mark.parametrize("kind", ["a"], ids=["x"])',
         '@pytest.mark.parametrize("kind, other", [("a", 1)])',
         '@pytest.mark.parametrize("kind", KINDS)',
-        '@pytest.mark.parametrize("kind", [1, 2])',
+        '@pytest.mark.parametrize("kind", ["a", 1])',  # mixed types
     ],
 )
 def test_lists_that_cant_be_patched_in_place_are_refused(decorator: str) -> None:
@@ -513,3 +513,27 @@ def test_unread_keys_follow_inheritance(setup: tuple[Settings, IndexData]) -> No
     assert set(kept) == {"test_id", "file", "members"}  # its own code reads only these
     unknown = {"test_id": "test_files_not_here", "file": "a.zip"}
     assert strip_unread(unknown, code, setup_) == (unknown, [])  # unresolved: left alone
+
+
+def test_a_numeric_case_takes_its_value_from_the_matching_input(
+    setup: tuple[Settings, IndexData],
+) -> None:
+    """refused is parametrized over [1, 3]; a draft for a limit of 2 adds case 2, and the
+    expected open count (equal to the limit) follows the limit."""
+    settings, index = setup
+    target = "tests/agent/test_agent_browser_limit.py::TestAgentBrowserLimit."
+    target += "test_agent_browser_limit_refused"
+    draft = _draft(
+        [_variant("limit of two", "refused", browser_limit="2")],
+        "The third attempt gets 429 Browser limit reached.",
+    )
+    generated = variant_patch(draft, _decision("variant", target), index, settings, STANDIN)
+    assert "[1, 3, 2])" in generated.code  # a number, not "2"
+    assert generated.new_test_ids == ["test_agent_browser_limit_refused[2]"]
+    entry = next(e for e in generated.data_entries if e["test_id"].endswith("[2]"))
+    assert entry["settings"]["capabilities"]["browser_limit"] == 2
+    assert entry["targets"][0]["response"] == {"open": 2}  # restated count follows
+    assert validate_patch(generated, index, settings, STANDIN, draft).findings == []
+    numeric = parametrize_site(ONE_LINE.replace('["a", "b"]', "[1, 3]"), "TestA", "test_x")
+    with pytest.raises(PatchError, match="whole numbers"):
+        numeric.literal("two")

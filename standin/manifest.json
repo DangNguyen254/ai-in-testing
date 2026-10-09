@@ -356,6 +356,12 @@
         "tests/agent/test_agent_browser_limit.py::TestAgentBrowserLimit::test_agent_browser_limit_change_forbidden",
         "tests/settings/test_settings.py::TestSettingsCapabilities::test_settings_capabilities_browser_limit"
       ]
+    },
+    "STND-128": {
+      "status": "fixed",
+      "tests": [
+        "tests/agent/test_agent_browser_limit.py::TestAgentBrowserLimit::test_agent_browser_limit_refused"
+      ]
     }
   }
 }

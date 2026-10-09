@@ -328,9 +328,10 @@ def _one(
     result.test_ids = generated.new_test_ids or generated.test_ids
     ref = generated.template_entry_ref
     result.template = ref.entry_key if ref else None
-    result.leave_one_out_ok = not (
-        linked & set(generated.retrieved_chunk_ids) or (ref and ref.chunk_id in linked)
-    )
+    if leave_one_out:  # off: the linked test is meant to be used (e.g. to add a case to it)
+        result.leave_one_out_ok = not (
+            linked & set(generated.retrieved_chunk_ids) or (ref and ref.chunk_id in linked)
+        )
     result.first_errors = final.history[0] if final.history else [f.render() for f in final.errors]
     result.invented_names = sum(e.startswith(_INVENTED) for e in result.first_errors)
     result.final_ok = final.ok
