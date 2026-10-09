@@ -816,6 +816,20 @@ Read this first when resuming in a new session.
   - **Result:** decision "variant of test_agent_browser_limit_refused"; patch `[1, 3]` -> `[1, 3, 2]` plus an entry cloned from case 3 with `browser_limit` 2 and expected `open` 2; validators pass first attempt; sandbox collect ok. The case was planned by the LLM (`variant_v1`, 1 call): the primary draft had no variants (the limit was only in its preconditions), so code had no input to plan from, as designed.
   - **Also:** the eval no longer reports a leave-one-out violation when leave-one-out is off.
   - **Verified:** ruff, mypy strict (92 files), pytest 652 passed, 14 deselected.
+- 2026-10-09: **Step 7, eval run 3** (the original 21 stand-in tickets, same setup as runs 1-2 with all fixes since; drafts cached from run 2; 65 LLM calls, 14.7 min; report `output/reports/step7-run3/eval-20261009T090053.*`). **Step 7 done.**
+
+  | | Run 1 | Run 2 | Run 3 |
+  |---|---|---|---|
+  | Generated | 17 (4 false covered) | 21 | 21 |
+  | Validators pass, first attempt / after repair | 0.18 / 0.35 | 0.71 / 0.81 | **0.90 / 1.00** |
+  | Collect in the sandbox | 12/17 | 21/21 | 21/21 |
+  | Invented names, first attempt | 2 | 0 | 2 (both repaired) |
+  | Reuse: method / module | 9 / 8 | 18 / 3 | 18 / 3 |
+  | LLM calls / time | 114 / 29 min | 83 / 22 min | 65 / 15 min |
+  | Judge mean (unvalidated) | 0.93 | 0.94 | 0.94 |
+
+  - The run-2 failures are gone: STND-113, 117, 119, 120 (inheritance stripping) pass; STND-104, 109, 110 land in their own folders and classes (`TestRules`, `TestTenantsSecondary`, `TestPolicyApi`).
+  - **Left (judgment, not bugs):** STND-120 became a method in `TestFilesArchives` rather than `TestFilesViewer`: with its own test left out, `TestFilesViewer` holds only the inherited shared test, so nothing in it matches; the first attempt used the viewer class's variant attribute `delivery` and was repaired. STND-118 and STND-121 are new modules (scaffolds from `TestFilesDownloads` and `TestAgentBrowserLimit`) where a reviewer might prefer `TestFilesScanning` / `TestAgentApi`. Three reviewer warnings are docstring-claim heuristics.
 
 ## Global open questions (for the human)
 - Which LLM provider/endpoint will the company environment require?
