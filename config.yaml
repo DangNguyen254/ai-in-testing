@@ -151,6 +151,7 @@ generate:
     covered_min: 0.8
     variant_min: 0.6
     method_min: 0.4
+    method_named_min: 0.25         # ... when the class is named after the draft's subject
     domain_margin: 0.15
   variant_prompt: variant_v1      # only when a new case can't be planned in code
 
@@ -175,7 +176,8 @@ validation:                     # deterministic checks of generated tests (Phase
   capability_gates:               # component -> gates its features use (warning otherwise)
     rules: [rules, bulk_delete, import]
     profiles: [profiles]
-    settings: [rules, profiles, bulk_delete, import]
+    settings: [rules, profiles, bulk_delete, import, browser_limit]
+    agent: [browser_limit]
     tenants: [rules, profiles]
   paging_actions: [next_page, previous_page]   # with count checks, expect a page-size read
   constant_properties: [page_size]

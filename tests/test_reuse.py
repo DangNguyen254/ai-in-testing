@@ -264,3 +264,29 @@ def test_domain_names_match_stemmed_words(setup: tuple[Settings, IndexData]) -> 
     )  # fmt: skip
     choice = choose_domain(_empty_retrieval(), index, settings, None, draft)
     assert choice.domain is not None and choice.domain.name == "files"  # "file" ~ "files"
+
+
+def test_a_class_named_after_the_draft_gets_the_method(setup: tuple[Settings, IndexData]) -> None:
+    """Eval on the browser-limit tickets: with its own test left out, a draft about the limit
+    scored 0.39 against TestAgentBrowserLimit (bar 0.40) and became a duplicate module."""
+    from ticket2test.eval.generation import index_without
+
+    settings, index = setup
+    refused = {c.id for c in index.chunks if c.symbol_name == "test_agent_browser_limit_refused"}
+    used = index_without(index, refused)
+    draft = _draft(
+        "X-7",
+        "A fourth agent browser session is refused at a browser limit of three",
+        ["Open three agent browser sessions", "Open a fourth"],
+        "The fourth attempt gets 429 before the upgrade.",
+        test_kind="api",
+    ).model_copy(update={"markers": _draft("X", "", [], "").markers.model_copy(
+        update={"component": "agent"})})  # fmt: skip
+    ticket = Ticket(
+        id="X-7", title=draft.intent, description=" ".join(draft.steps),
+        components=["agent"], source=SourceInfo(system="jira", ref="X-7"),
+    )  # fmt: skip
+    retrieval = retrieve(ticket, used, settings, None, draft)
+    decision = decide(draft, retrieval, used, settings, choose_domain(retrieval, used, settings))
+    assert (decision.kind, decision.target) == ("method", "TestAgentBrowserLimit"), decision.reasons
+    assert "named after" in decision.reasons[-1]

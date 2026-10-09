@@ -243,6 +243,8 @@ class ReuseSettings(_Section):
     covered_min: float = Field(default=0.8, ge=0.0, le=1.0)  # flow match for "already covered"
     variant_min: float = Field(default=0.6, ge=0.0, le=1.0)  # flow match for "new variant"
     method_min: float = Field(default=0.4, ge=0.0, le=1.0)  # class match for "new method"
+    # ... or this much when the class is named after the draft's subject (generate/reuse.py)
+    method_named_min: float = Field(default=0.25, ge=0.0, le=1.0)
     domain_margin: float = Field(default=0.15, ge=0.0, le=1.0)  # closer than this: uncertain
 
 
@@ -324,8 +326,9 @@ class ValidateSettings(_Section):
         default_factory=lambda: {
             "rules": ["rules", "bulk_delete", "import"],
             "profiles": ["profiles"],
-            "settings": ["rules", "profiles", "bulk_delete", "import"],
+            "settings": ["rules", "profiles", "bulk_delete", "import", "browser_limit"],
             "tenants": ["rules", "profiles"],
+            "agent": ["browser_limit"],
         }
     )
     # Heuristic: a test that pages and checks counts should read the page size.

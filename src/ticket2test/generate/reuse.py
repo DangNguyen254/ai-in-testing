@@ -21,7 +21,8 @@ test). Then, in order:
 2. **variant**: the flow matches (``reuse.variant_min``), the test is its own (not inherited)
    with one parametrize decorator, and it is the same kind (UI or API): add a parametrize value
    and an entry to it;
-3. **method**: a class in the domain matches (``reuse.method_min``): add a method to it;
+3. **method**: a class in the domain matches (``reuse.method_min``), or is named after what the
+   draft tests and matches at least weakly (``reuse.method_named_min``): add a method to it;
 4. **module**: a new module; its base and scaffold come from the domain's class whose tests are
    of the same kind and closest in flow (one base class may serve several domains).
 
@@ -44,6 +45,9 @@ from ticket2test.models.generated import ReuseKind
 from ticket2test.models.retrieval import RetrievalResult
 from ticket2test.validate.claims import norm
 
+# A class-name word names the draft's subject only if at most this share of the domain's tests
+# use it (stand-in: "download" is in 100% of file tests; "browser", "limit" in 57% of agent tests).
+NAME_WORD_MAX_SHARE = 0.75
 PARAM_BONUS = 0.2  # ranking only: the draft names one of a test's parametrize values
 _WORD = re.compile(r"[A-Za-z][A-Za-z0-9]+|\d+")
 _QUOTED = re.compile(r"[\"'`{]{1,2}([^\"'`{}]{1,60})[\"'`}]{1,2}")
@@ -182,12 +186,23 @@ def decide(
     decision.class_scores = dict(sorted(scores.items(), key=lambda kv: -kv[1]))
     if scores:
         target, score = max(scores.items(), key=lambda kv: (kv[1], kv[0]))
-        if score >= reuse.method_min:
-            path, name = target.split("::", 1)
+        path, name = target.split("::", 1)
+        named = _named_after(name, all_draft_words, domain.name if domain else "", settings)
+        common = {
+            w
+            for w in named
+            if sum(w in f for f in flows.values()) > NAME_WORD_MAX_SHARE * len(flows)
+        }
+        named -= common  # "download" in every file test names nothing
+        if score >= reuse.method_min or (named and score >= reuse.method_named_min):
             decision.kind, decision.target, decision.target_file = "method", name, path
-            decision.reasons.append(f"new method in {name} (class match {score:.2f})")
+            why = f"class match {score:.2f}" + (f", named after {sorted(named)}" if named else "")
+            decision.reasons.append(f"new method in {name} ({why})")
             return decision
-        decision.reasons.append(f"no method: best class match {score:.2f} < {reuse.method_min}")
+        decision.reasons.append(
+            f"no method: best class match {score:.2f} < {reuse.method_min}"
+            + ("" if named else f", and {name}'s name says nothing the draft does")
+        )
     else:
         decision.reasons.append(f"no method: no {kind} test class in the domain")
 
@@ -266,6 +281,20 @@ def _named_case(chunk: Chunk, draft_words: set[str]) -> str | None:
             if norm(case.lower()) in draft_words:
                 return case
     return None
+
+
+def _named_after(
+    class_name: str, draft_words: set[str], domain: str, settings: Settings
+) -> set[str]:
+    """Words of the class name (without the test prefix and the domain's own name) that the
+    draft uses: ``TestAgentBrowserLimit`` is named after a draft about the browser limit, while
+    ``TestFilesDownloads`` says nothing about a print policy. Step-7 eval: classes named after
+    the draft's subject scored just under ``method_min`` and became duplicate modules. The
+    caller drops words most of the domain's tests use (they don't single out a class)."""
+    prefix = settings.index.test_class_prefix
+    parts = {norm(w.lower()) for w in split_identifier(class_name.removeprefix(prefix))}
+    parts -= {norm(domain.lower()), *_STOP}
+    return {w for w in parts if len(w) > 2} & draft_words
 
 
 def _generic_words(settings: Settings) -> set[str]:
