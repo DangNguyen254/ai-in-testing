@@ -9,6 +9,9 @@ JSON API under ``/api`` (tests seed state and check backend results through it):
 - ``GET /api/policy/v1/revision/<tenant>``: the latest revision number
 - ``PUT /api/policy/v1/rules/<tenant>``: replace the rules and publish (admin role only)
 - ``GET /api/settings/v1/settings/<tenant>``; ``PUT /api/settings/v1/agent/<tenant>`` (admin)
+- ``GET /api/settings/v1/capabilities/<tenant>``; ``PUT`` the same path (admin): each
+  tenant's capabilities, incl. ``browser_limit`` (agent browser sessions open at once)
+- ``GET /api/agent/v1/sessions/<tenant>``: the open agent browser sessions
 - ``GET /api/files/v1/policy/<tenant>/<rev_id>``: the file policy of a published revision
 - ``POST /api/downloads/v1/download/<tenant>`` ``{file, mode, password}``: a download verdict
 - ``GET /api/downloads/v1/log/<tenant>``: the download log
@@ -17,10 +20,18 @@ JSON API under ``/api`` (tests seed state and check backend results through it):
 
 File-policy and agent pages live in ``app/pages_v4.py``; the fake external site's pages are
 served under ``/site``.
+
+Agent browser sessions are WebSocket connections: ``GET /ws/browser/<tenant>`` with
+``Upgrade: websocket``. At the tenant's ``browser_limit`` the attempt gets HTTP 429 with the
+body ``Browser limit reached`` before any upgrade; otherwise 101, and the session stays open
+until the client closes it (close frame or disconnect), which frees its slot.
 """
 
 import argparse
+import base64
+import hashlib
 import json
+import threading
 from html import escape
 from http import HTTPStatus
 from http.cookies import SimpleCookie
@@ -28,10 +39,21 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from app import agent, files, pages_v4
-from app.state import ACTIONS, LEVELS, PAGE_SIZE, PermissionDenied, Store, ValidationError
+from app.state import (
+   ACTIONS,
+   LEVELS,
+   NUMERIC_CAPABILITIES,
+   PAGE_SIZE,
+   LimitReached,
+   PermissionDenied,
+   Store,
+   ValidationError,
+)
 
 STORE = Store()
 WIZARDS = {}  # (tenant, user) -> rule fields from step 1 of the add wizard
+SESSIONS_LOCK = threading.Lock()  # connection attempts may arrive at the same time
+_WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"  # RFC 6455 handshake constant
 
 
 def options(values, selected):
@@ -216,9 +238,15 @@ def capabilities_page(tenant_id, toast):
       f'<label><input type="checkbox" id="cap-{key}" name="{key}" form="settings-form"'
       f"{' checked' if on else ''}>{key}</label>"
       for key, on in caps.items()
+      if key not in NUMERIC_CAPABILITIES
+   )
+   numbers = "".join(
+      f'<label>{key} <input type="number" min="1" id="cap-{key}" name="{key}" '
+      f'value="{caps[key]}" form="settings-form"></label>'
+      for key in NUMERIC_CAPABILITIES
    )
    body = (
-      f'<form id="settings-form" method="post" action="/settings/save">{boxes}'
+      f'<form id="settings-form" method="post" action="/settings/save">{boxes}{numbers}'
       '<button id="settings-save">Apply settings</button></form>'
    )
    return page(tenant_id, "Capabilities", body, "/settings/capabilities", toast)
@@ -287,6 +315,9 @@ class Handler(BaseHTTPRequestHandler):
       if parts[:1] == ["api"]:
          self._api("GET", parts[1:])
          return
+      if parts[:2] == ["ws", "browser"] and len(parts) == 3:
+         self._browser_session(parts[2])
+         return
       if parts == ["login"]:
          session = quote(f"{query.get('tenant', '')}|{query.get('user', '')}")
          self._redirect("/rules", cookie=session)
@@ -340,12 +371,47 @@ class Handler(BaseHTTPRequestHandler):
          policy = STORE.file_policy(tenant)
          self._v4(tenant, pages_v4.download_policy_page(policy), "/settings/downloads", toast)
       elif parts == ["agent"]:
-         self._v4(tenant, pages_v4.agent_console(STORE.site["pages"]), "/agent", toast)
+         sessions = STORE.sessions(tenant)["sessions"]
+         title_body = pages_v4.agent_console(STORE.site["pages"], sessions=sessions)
+         self._v4(tenant, title_body, "/agent", toast)
       elif parts == ["settings", "agent"]:
          settings = STORE.tenant(tenant).settings
          self._v4(tenant, pages_v4.agent_settings_page(settings), "/settings/agent", toast)
       else:
          raise KeyError(self.path)
+
+   def _browser_session(self, tenant):
+      """An agent browser session over WebSocket. At the tenant's limit: 429 before the upgrade.
+      Otherwise 101; the session holds its slot until the client closes the connection."""
+      key = self.headers.get("Sec-WebSocket-Key", "")
+      if self.headers.get("Upgrade", "").lower() != "websocket" or not key:
+         self._json({"error": "WebSocket upgrade required"}, HTTPStatus.BAD_REQUEST)
+         return
+      try:
+         with SESSIONS_LOCK:
+            session = STORE.open_session(tenant, self.headers.get("X-User", ""))
+      except LimitReached as exc:
+         self._send(HTTPStatus.TOO_MANY_REQUESTS, str(exc), "text/plain")
+         return
+      accept = base64.b64encode(hashlib.sha1((key + _WS_GUID).encode()).digest()).decode()
+      self.send_response(HTTPStatus.SWITCHING_PROTOCOLS)
+      self.send_header("Upgrade", "websocket")
+      self.send_header("Connection", "Upgrade")
+      self.send_header("Sec-WebSocket-Accept", accept)
+      self.end_headers()
+      self.wfile.flush()
+      closed_by_client = False
+      try:
+         closed_by_client = _wait_for_close(self.rfile)
+      finally:
+         STORE.close_session(tenant, session["id"])  # the slot is free before the reply
+         self.close_connection = True
+      if closed_by_client:
+         try:
+            self.wfile.write(b"\x88\x00")  # answer the client's close frame
+            self.wfile.flush()
+         except OSError:
+            pass
 
    def _v4(self, tenant, title_body, here, toast="", status=HTTPStatus.OK):
       title, body = title_body
@@ -433,7 +499,13 @@ class Handler(BaseHTTPRequestHandler):
          self._redirect("/profiles", "Profile deleted")
       elif parts == ["settings", "save"]:
          caps = STORE.tenant(tenant).settings["capabilities"]
-         STORE.update_capabilities(tenant, {key: key in form for key in caps})
+         changes = {key: key in form for key in caps if key not in NUMERIC_CAPABILITIES}
+         for key in NUMERIC_CAPABILITIES:
+            try:
+               changes[key] = int(form.get(key, ""))
+            except ValueError:
+               raise ValidationError(f"{key} must be a whole number of at least 1") from None
+         STORE.update_capabilities(tenant, changes)
          self._redirect("/settings/capabilities", "Settings applied")
       elif len(parts) == 3 and parts[0] == "files" and parts[2] == "download":
          mode = form.get("mode", "converted")
@@ -445,7 +517,22 @@ class Handler(BaseHTTPRequestHandler):
          self._redirect("/settings/downloads", "Download policy saved")
       elif parts == ["agent", "run"]:
          task = STORE.run_agent(tenant, form.get("goal", ""), form.get("start_page", ""))
-         self._v4(tenant, pages_v4.agent_console(STORE.site["pages"], task), "/agent")
+         sessions = STORE.sessions(tenant)["sessions"]
+         self._v4(tenant, pages_v4.agent_console(STORE.site["pages"], task, sessions), "/agent")
+      elif parts == ["agent", "browser"]:  # the console opens a browser session for the user
+         _, user = self._session()
+         try:
+            with SESSIONS_LOCK:
+               STORE.open_session(tenant, user or "")
+         except LimitReached as exc:
+            sessions = STORE.sessions(tenant)["sessions"]
+            title_body = pages_v4.agent_console(STORE.site["pages"], None, sessions, str(exc))
+            self._v4(tenant, title_body, "/agent", status=HTTPStatus.TOO_MANY_REQUESTS)
+            return
+         self._redirect("/agent", "Browser opened")
+      elif len(parts) == 4 and parts[:2] == ["agent", "browser"] and parts[3] == "close":
+         STORE.close_session(tenant, parts[2])
+         self._redirect("/agent", "Browser closed")
       elif parts == ["settings", "agent"]:
          STORE.update_agent_settings(tenant, {"injection_guard": "injection_guard" in form})
          self._redirect("/settings/agent", "Agent settings applied")
@@ -486,6 +573,24 @@ class Handler(BaseHTTPRequestHandler):
          self._json(result)
 
 
+def _wait_for_close(rfile):
+   """Read client frames until a close frame (True) or a disconnect (False)."""
+   while True:
+      head = rfile.read(2)
+      if len(head) < 2:
+         return False
+      opcode, length = head[0] & 0x0F, head[1] & 0x7F
+      if length == 126:
+         length = int.from_bytes(rfile.read(2), "big")
+      elif length == 127:
+         length = int.from_bytes(rfile.read(8), "big")
+      if head[1] & 0x80:  # client frames are masked: skip the 4-byte mask
+         rfile.read(4)
+      rfile.read(length)
+      if opcode == 0x8:  # close
+         return True
+
+
 def route_api(method, parts, payload, user=""):
    """JSON API routing, separate from the handler so it can be tested without a server."""
    match method, parts:
@@ -507,6 +612,15 @@ def route_api(method, parts, payload, user=""):
          return {"rev_id": STORE.api_replace_rules(tenant, user, payload.get("rules", []))}
       case "GET", ["settings", "v1", "settings", tenant]:
          return STORE.tenant(tenant).settings
+      case "GET", ["settings", "v1", "capabilities", tenant]:
+         return STORE.tenant(tenant).settings["capabilities"]
+      case "PUT", ["settings", "v1", "capabilities", tenant]:
+         role = STORE.tenant(tenant).settings["roles"].get(user, "viewer")
+         if role != "admin":
+            raise PermissionDenied(f"Role '{role}' cannot change capabilities")
+         return STORE.update_capabilities(tenant, payload)["capabilities"]
+      case "GET", ["agent", "v1", "sessions", tenant]:
+         return STORE.sessions(tenant)
       case "PUT", ["settings", "v1", "agent", tenant]:
          role = STORE.tenant(tenant).settings["roles"].get(user, "viewer")
          if role != "admin":

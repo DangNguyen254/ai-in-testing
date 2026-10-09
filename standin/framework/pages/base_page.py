@@ -39,6 +39,11 @@ class BasePage:
    def click(self, locator):
       self.wait().until(ec.element_to_be_clickable(locator)).click()
 
+   def click_nth(self, locator, number):
+      """Click the n-th matching element (1-based), once the list has that many."""
+      self.wait().until(lambda driver: len(driver.find_elements(*locator)) >= number)
+      self.find_all(locator)[number - 1].click()
+
    def type(self, locator, text):
       element = self.find(locator)
       element.clear()

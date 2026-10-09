@@ -1,0 +1,38 @@
+[
+   {
+      "test_id":"test_agent_console_browser_limit_message",
+      "settings":{
+         "capabilities":{
+            "browser_limit":2
+         }
+      },
+      "limit":2,
+      "refusal":"Browser limit reached",
+      "targets":[
+         {
+            "method":"GET",
+            "path":"/api/agent/v1/sessions/:tid",
+            "response":{
+               "open":2
+            }
+         }
+      ]
+   },
+   {
+      "test_id":"test_agent_console_browser_close_frees_slot",
+      "settings":{
+         "capabilities":{
+            "browser_limit":1
+         }
+      },
+      "targets":[
+         {
+            "method":"GET",
+            "path":"/api/agent/v1/sessions/:tid",
+            "response":{
+               "open":1
+            }
+         }
+      ]
+   }
+]

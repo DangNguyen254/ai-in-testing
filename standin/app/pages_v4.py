@@ -108,13 +108,23 @@ def file_policy_changes(form, current):
    }
 
 
-def agent_console(pages, task=None):
+def agent_console(pages, task=None, sessions=(), message=""):
    options = _options(sorted(pages), task["start_page"] if task else "")
+   rows = "".join(
+      f'<li class="agent-browser">browser {s["id"]}'
+      f'<form method="post" action="/agent/browser/{s["id"]}/close">'
+      f'<button class="agent-browser-close">Close</button></form></li>'
+      for s in sessions
+   )
    body = (
       '<form method="post" action="/agent/run">'
       '<input id="agent-goal" name="goal">'
       f'<select id="agent-start" name="start_page">{options}</select>'
       '<button id="agent-run">Run</button></form>'
+      '<form method="post" action="/agent/browser">'
+      '<button id="agent-open-browser">Open browser</button></form>'
+      f'<ul id="agent-browsers">{rows}</ul>'
+      f'<div id="agent-browser-message">{escape(message)}</div>'
    )
    if task is not None:
       actions = "".join(f'<li class="agent-action">{escape(a)}</li>' for a in task["actions"])

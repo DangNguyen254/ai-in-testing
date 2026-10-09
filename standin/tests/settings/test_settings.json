@@ -36,5 +36,18 @@
             }
          }
       ]
+   },
+   {
+      "test_id":"test_settings_capabilities_browser_limit",
+      "browser_limit":5,
+      "targets":[
+         {
+            "method":"GET",
+            "path":"/api/settings/v1/capabilities/:tid",
+            "response":{
+               "browser_limit":5
+            }
+         }
+      ]
    }
 ]

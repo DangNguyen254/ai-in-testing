@@ -12,6 +12,7 @@ class CapabilitiesPage(BasePage):
    PROFILES = (By.ID, "cap-profiles")
    BULK_DELETE = (By.ID, "cap-bulk_delete")
    IMPORT = (By.ID, "cap-import")
+   BROWSER_LIMIT = (By.ID, "cap-browser_limit")
 
    @property
    def rules_enabled(self):
@@ -44,6 +45,15 @@ class CapabilitiesPage(BasePage):
    @import_enabled.setter
    def import_enabled(self, value):
       self.set_checkbox(self.IMPORT, value)
+
+   @property
+   def browser_limit(self):
+      """Agent browser sessions the tenant may have open at once."""
+      return int(self.value_of(self.BROWSER_LIMIT))
+
+   @browser_limit.setter
+   def browser_limit(self, value):
+      self.type(self.BROWSER_LIMIT, str(value))
 
 
 class SettingsArea:

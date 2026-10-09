@@ -14,6 +14,10 @@ class AgentConsolePage(BasePage):
    STATUS = (By.ID, "agent-status")
    ACTIONS = (By.CSS_SELECTOR, "#agent-actions .agent-action")
    FLAGS = (By.CSS_SELECTOR, "#agent-flags .agent-flag")
+   OPEN_BROWSER = (By.ID, "agent-open-browser")
+   BROWSERS = (By.CSS_SELECTOR, "#agent-browsers .agent-browser")
+   CLOSE_BROWSER = (By.CSS_SELECTOR, "#agent-browsers .agent-browser-close")
+   BROWSER_MESSAGE = (By.ID, "agent-browser-message")
 
    @property
    def goal(self):
@@ -45,6 +49,22 @@ class AgentConsolePage(BasePage):
 
    def run(self):
       self.click(self.RUN)
+
+   @property
+   def open_browsers(self):
+      """How many agent browser sessions the console lists as open."""
+      return len(self.texts_of(self.BROWSERS))
+
+   @property
+   def browser_message(self):
+      return self.text_of(self.BROWSER_MESSAGE)
+
+   def open_browser(self):
+      self.click(self.OPEN_BROWSER)
+
+   def close_browser(self, number=1):
+      """Close the console's n-th open browser session (1 = the oldest)."""
+      self.click_nth(self.CLOSE_BROWSER, number)
 
    def run_task(self, goal, start_page):
       """Open the console, enter the task, and run it (the reusable multi-step helper)."""

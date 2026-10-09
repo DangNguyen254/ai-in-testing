@@ -203,7 +203,7 @@ def test_followup_stops_when_done_or_results_are_not_thin(index: IndexData, tmp_
 
 def test_followup_tools_are_limited_and_tagged(index: IndexData, tmp_path: Path) -> None:
     searches = [
-        {"tool": "grep", "query": "verify_targets"},
+        {"tool": "grep", "query": "delete_selected"},
         {"tool": "grep", "query": "made_up_helper_name"},  # not in the repo: no results
         {"tool": "symbol", "query": "DeleteConfirmPage"},
         {"tool": "bm25", "query": "extra search beyond the cap"},
@@ -212,7 +212,7 @@ def test_followup_tools_are_limited_and_tagged(index: IndexData, tmp_path: Path)
     settings = _settings(tmp_path, top_k=50, followup_min_tests=999, followup_max_searches=3)
     result = retrieve(_ticket("STND-104"), index, settings, fake)
     followup = [r.detail for h in result.hits for r in h.reasons if r.source == "followup"]
-    assert any("identifier=verify_targets" in d for d in followup)
+    assert any("identifier=delete_selected" in d for d in followup)
     assert any("definition of DeleteConfirmPage" in d for d in followup)
     assert not any("made_up_helper_name" in d for d in followup)
     assert not any("beyond the cap" in d for d in followup)  # only the first 3 searches run

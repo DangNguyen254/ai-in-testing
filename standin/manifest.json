@@ -156,6 +156,33 @@
     },
     "tests/agent/test_agent_api.py::TestAgentApi::test_agent_api_settings_forbidden": {
       "kind": "api"
+    },
+    "tests/agent/test_agent_browser_limit.py::TestAgentBrowserLimit::test_agent_browser_limit_refused": {
+      "kind": "api"
+    },
+    "tests/agent/test_agent_browser_limit.py::TestAgentBrowserLimit::test_agent_browser_limit_slot_freed": {
+      "kind": "api"
+    },
+    "tests/agent/test_agent_browser_limit.py::TestAgentBrowserLimit::test_agent_browser_limit_per_tenant": {
+      "kind": "api"
+    },
+    "tests/agent/test_agent_browser_limit.py::TestAgentBrowserLimit::test_agent_browser_limit_lowered_keeps_sessions": {
+      "kind": "api"
+    },
+    "tests/agent/test_agent_browser_limit.py::TestAgentBrowserLimit::test_agent_browser_limit_read_back": {
+      "kind": "api"
+    },
+    "tests/agent/test_agent_browser_limit.py::TestAgentBrowserLimit::test_agent_browser_limit_change_forbidden": {
+      "kind": "api"
+    },
+    "tests/agent/test_agent_browser_console.py::TestAgentBrowserConsole::test_agent_console_browser_limit_message": {
+      "kind": "ui"
+    },
+    "tests/agent/test_agent_browser_console.py::TestAgentBrowserConsole::test_agent_console_browser_close_frees_slot": {
+      "kind": "ui"
+    },
+    "tests/settings/test_settings.py::TestSettingsCapabilities::test_settings_capabilities_browser_limit": {
+      "kind": "ui"
     }
   },
   "tickets": {
@@ -289,6 +316,45 @@
       "status": "fixed",
       "tests": [
         "tests/agent/test_agent_api.py::TestAgentApi::test_agent_api_settings_forbidden"
+      ]
+    },
+    "STND-122": {
+      "status": "fixed",
+      "tests": [
+        "tests/agent/test_agent_browser_limit.py::TestAgentBrowserLimit::test_agent_browser_limit_refused"
+      ]
+    },
+    "STND-123": {
+      "status": "fixed",
+      "tests": [
+        "tests/agent/test_agent_browser_limit.py::TestAgentBrowserLimit::test_agent_browser_limit_slot_freed",
+        "tests/agent/test_agent_browser_console.py::TestAgentBrowserConsole::test_agent_console_browser_close_frees_slot"
+      ]
+    },
+    "STND-124": {
+      "status": "fixed",
+      "tests": [
+        "tests/agent/test_agent_browser_limit.py::TestAgentBrowserLimit::test_agent_browser_limit_lowered_keeps_sessions"
+      ]
+    },
+    "STND-125": {
+      "status": "fixed",
+      "tests": [
+        "tests/agent/test_agent_browser_limit.py::TestAgentBrowserLimit::test_agent_browser_limit_read_back",
+        "tests/agent/test_agent_browser_limit.py::TestAgentBrowserLimit::test_agent_browser_limit_per_tenant"
+      ]
+    },
+    "STND-126": {
+      "status": "fixed",
+      "tests": [
+        "tests/agent/test_agent_browser_console.py::TestAgentBrowserConsole::test_agent_console_browser_limit_message"
+      ]
+    },
+    "STND-127": {
+      "status": "fixed",
+      "tests": [
+        "tests/agent/test_agent_browser_limit.py::TestAgentBrowserLimit::test_agent_browser_limit_change_forbidden",
+        "tests/settings/test_settings.py::TestSettingsCapabilities::test_settings_capabilities_browser_limit"
       ]
     }
   }

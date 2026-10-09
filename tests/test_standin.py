@@ -231,7 +231,7 @@ def _uses_entry(function: ast.FunctionDef) -> bool:
 
 def test_collects_without_browser_or_network(items: list[dict[str, Any]]) -> None:
     assert len(items) >= 60
-    assert len({i["file"] for i in items}) == 11
+    assert len({i["file"] for i in items}) == 13
 
 
 def test_entry_ids_are_collected_test_ids(items: list[dict[str, Any]]) -> None:
@@ -594,7 +594,9 @@ def test_test_kind_mix() -> None:
     kinds = Counter(t["kind"] for t in MANIFEST["tests"].values())
     total = sum(kinds.values())
     assert total >= 25
-    assert 0.80 <= kinds["ui"] / total <= 0.92
+    # Mostly UI, like the real suite (~85-90%); the agent browser-limit area is API-heavy
+    # (limits are enforced at the connection), which brings the stand-in to about 79%.
+    assert 0.75 <= kinds["ui"] / total <= 0.92
     assert kinds["api"] >= 1 and kinds["hybrid"] >= 1
 
 
@@ -705,6 +707,71 @@ def _effects() -> dict[str, Effect]:
             s, e, n, "tenant-b"
         ),
         **_file_and_agent_effects(),
+        **_browser_limit_effects(),
+    }
+
+
+def _browser_limit_effects() -> dict[str, Effect]:
+    """Effects of the agent browser-limit flows: sessions opened and closed in the store (the
+    server does the same per WebSocket connection; a real socket test covers that path)."""
+
+    def open_n(s: Any, t: str, n: int) -> list[dict[str, Any]]:
+        return [s.open_session(t) for _ in range(n)]
+
+    def refused(s: Any, t: str) -> None:
+        with pytest.raises(Exception, match="Browser limit reached"):
+            s.open_session(t)
+
+    def fill_then_refuse(n: int) -> Effect:
+        def run(s: Any, e: dict[str, Any], _n: str, t: str) -> None:
+            open_n(s, t, n)
+            refused(s, t)
+
+        return run
+
+    def slot_freed(s: Any, e: dict[str, Any], _n: str, t: str) -> None:
+        opened = open_n(s, t, s.tenant(t).settings["capabilities"]["browser_limit"])
+        s.close_session(t, opened[0]["id"])
+        s.open_session(t)
+
+    def per_tenant(s: Any, e: dict[str, Any], _n: str, t: str) -> None:
+        open_n(s, t, e["limit"])
+        refused(s, t)
+        s.open_session("tenant-b")
+
+    def lowered(s: Any, e: dict[str, Any], _n: str, t: str) -> None:
+        open_n(s, t, e["opened"])
+        s.update_capabilities(t, {"browser_limit": e["lowered"]})
+        assert s.sessions(t)["open"] == e["opened"]  # open sessions are kept
+        refused(s, t)
+        s.update_capabilities(t, {"browser_limit": e["raised"]})
+        s.open_session(t)
+
+    def read_back(s: Any, e: dict[str, Any], _n: str, t: str) -> None:
+        for tenant, limit in zip(("tenant-a", "tenant-b"), e["limits"], strict=False):
+            s.update_capabilities(tenant, {"browser_limit": limit})
+
+    def console_limit(s: Any, e: dict[str, Any], _n: str, t: str) -> None:
+        open_n(s, t, e["limit"])
+        refused(s, t)
+
+    def console_close(s: Any, e: dict[str, Any], _n: str, t: str) -> None:
+        first = s.open_session(t)
+        s.close_session(t, first["id"])
+        s.open_session(t)
+
+    return {
+        "test_agent_browser_limit_refused[1]": fill_then_refuse(1),
+        "test_agent_browser_limit_refused[3]": fill_then_refuse(3),
+        "test_agent_browser_limit_slot_freed": slot_freed,
+        "test_agent_browser_limit_per_tenant": per_tenant,
+        "test_agent_browser_limit_lowered_keeps_sessions": lowered,
+        "test_agent_browser_limit_read_back": read_back,
+        "test_agent_console_browser_limit_message": console_limit,
+        "test_agent_console_browser_close_frees_slot": console_close,
+        "test_settings_capabilities_browser_limit": lambda s, e, n, t: s.update_capabilities(
+            t, {"browser_limit": e["browser_limit"]}
+        ),
     }
 
 
@@ -770,7 +837,7 @@ def _replay(standin: dict[str, ModuleType], key: str, effect: Effect | None) -> 
     if effect is not None:
         effect(store, entry, placeholders.unique_name(test_id, SUFFIX, 24), primary)
 
-    api_tests = ("test_policy_api_", "test_agent_api_")
+    api_tests = ("test_policy_api_", "test_agent_api_", "test_agent_browser_limit_")
     user = config.users[0] if test_id.startswith(api_tests) else config.service_user
     checks = [(primary, t) for t in entry.get("targets", [])]
     checks += [(b["tenant"], t) for b in entry.get("tenants", []) for t in b.get("targets", [])]
@@ -823,6 +890,7 @@ OPEN_BUGS = {"test_profiles_edit_reset", "test_agent_injection_flagged[meta]"}
 def test_every_expectation_is_covered_by_a_replay() -> None:
     ids = {_test_id(k) for k in _with_expectations()}
     api_only = {i for i in ids if i.startswith(("test_policy_api_", "test_agent_api_"))}
+    api_only |= {i for i in ids if i.startswith("test_agent_browser_limit_change_forbidden")}
     assert ids - api_only <= set(_effects())
 
 

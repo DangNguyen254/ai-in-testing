@@ -121,6 +121,21 @@ not only a count).
   on; it flags them as `injection:<location>` (`text`, `hidden_text`, `comment`, `alt`,
   `meta`). Injection tests run a reading task on a seeded page and check the flags, that the
   embedded action was not taken, and the task list.
+- **Agent browser limit:** each tenant may have `settings.capabilities.browser_limit` agent
+  browser sessions open at once (default 3; seed it in the entry when the test depends on it).
+  A session is a WebSocket connection: open them with `self.browsers.connect(tenant)` or
+  `self.browsers.open_many(tenant, n)` (101 = open); at the limit the attempt gets 429 with the
+  body `Browser limit reached` before the upgrade (keep the message in the entry, e.g.
+  `refusal`). Closing a session (`session.close()`, or closing it in the console) frees its
+  slot at once. A changed limit applies to the next attempt; open sessions are never cut.
+  Sessions a test leaves open are closed after it.
+- The limit is set per tenant through `PUT /api/settings/v1/capabilities/:tid` (admin only;
+  others get 403) or on the Settings page (`capabilities.browser_limit = n`, then the top-bar
+  settings save), and read back with `GET /api/settings/v1/capabilities/:tid`. Open sessions:
+  `GET /api/agent/v1/sessions/:tid` (`{"open": n}`). In the UI, `nav.agent.console` has
+  `open_browser()`, `close_browser(n)`, `open_browsers` and `browser_message`.
+- Assign a session before reading it (`refused = self.browsers.connect(...)`, then
+  `refused.status`): no chaining off a call.
 
 ## Style
 - 3-space indent, LF line endings, final newline, alphabetical imports, no type annotations

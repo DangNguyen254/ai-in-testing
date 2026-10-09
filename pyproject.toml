@@ -71,4 +71,5 @@ addopts = "-ra --strict-markers -m 'not live and not sandbox' --basetemp=.scratc
 markers = [
     "live: calls real external services (network / LLM); skipped by default, run with -m live",
     "sandbox: runs a real container (Docker / Podman); skipped by default, run with -m sandbox",
+    "loopback: may connect to 127.0.0.1 only (the stand-in app run in-process); no other network",
 ]

@@ -1,6 +1,6 @@
 {
   "_comment": "Hand-written FAKE tickets for the synthetic stand-in app (Jira API v2 export shape, wiki markup). Not real data.",
-  "total": 21,
+  "total": 27,
   "issues": [
     {
       "id": "30101",
@@ -460,6 +460,142 @@
           }
         ],
         "description": "A user with the viewer or editor role can switch off the injection guard with a PUT to the agent settings endpoint.\n\nh3. Steps to Reproduce\n# As a viewer, send PUT /api/settings/v1/agent/<tenant> with injection_guard false\n\nh3. Expected Behavior\nThe API answers 403 for viewers and editors, and the guard stays on.\n\nh3. Actual Behavior\nThe API answers 200 and the guard is off.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30122",
+      "key": "STND-122",
+      "self": "https://jira.example.com/rest/api/2/issue/30122",
+      "fields": {
+        "summary": "A tenant can open more agent browsers than its browser limit",
+        "labels": [
+          "agent",
+          "browser-limit"
+        ],
+        "components": [
+          {
+            "name": "agent"
+          }
+        ],
+        "description": "With the browser limit at 3, a fourth agent browser session connects.\n\nh3. Steps to Reproduce\n# Set the tenant's browser_limit to 3\n# Open three agent browser sessions (WebSocket /ws/browser/<tenant>)\n# Open a fourth\n\nh3. Expected Behavior\nThe fourth connection attempt gets HTTP 429 with the body \"Browser limit reached\" before the WebSocket upgrade.\n\nh3. Actual Behavior\nThe fourth session is upgraded (101) and stays open.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30123",
+      "key": "STND-123",
+      "self": "https://jira.example.com/rest/api/2/issue/30123",
+      "fields": {
+        "summary": "Closing an agent browser doesn't free its slot",
+        "labels": [
+          "agent",
+          "browser-limit"
+        ],
+        "components": [
+          {
+            "name": "agent"
+          }
+        ],
+        "description": "After a tenant reaches its browser limit and closes one session, new sessions are still refused.\n\nh3. Steps to Reproduce\n# Set the tenant's browser_limit to 2 and open two sessions\n# Close one session (WebSocket disconnect)\n# Open a new session\n\nh3. Expected Behavior\nThe closed session frees its slot: the new session connects (101), also from the agent console.\n\nh3. Actual Behavior\nThe new attempt gets 429 \"Browser limit reached\".",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30124",
+      "key": "STND-124",
+      "self": "https://jira.example.com/rest/api/2/issue/30124",
+      "fields": {
+        "summary": "Lowering the browser limit closes browsers that are already open",
+        "labels": [
+          "agent",
+          "browser-limit",
+          "settings"
+        ],
+        "components": [
+          {
+            "name": "agent"
+          }
+        ],
+        "description": "Changing a tenant's browser_limit to a lower value disconnects open sessions.\n\nh3. Steps to Reproduce\n# Set browser_limit to 3 and open three sessions\n# Change browser_limit to 1 through the capabilities API\n\nh3. Expected Behavior\nThe change takes effect on the next connection attempt: the three open sessions stay open, the next attempt gets 429, and after raising the limit to 4 the next attempt connects.\n\nh3. Actual Behavior\nTwo of the open sessions are disconnected right away.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30125",
+      "key": "STND-125",
+      "self": "https://jira.example.com/rest/api/2/issue/30125",
+      "fields": {
+        "summary": "Browser limit set for one tenant is applied to every tenant",
+        "labels": [
+          "agent",
+          "browser-limit",
+          "tenants"
+        ],
+        "components": [
+          {
+            "name": "agent"
+          }
+        ],
+        "description": "The browser limit is stored once for all tenants instead of per tenant.\n\nh3. Steps to Reproduce\n# Set browser_limit to 2 for the first tenant and 5 for the second through the capabilities API\n# Read both back with GET /api/settings/v1/capabilities/<tenant>\n# Fill the first tenant's limit and open a session for the second tenant\n\nh3. Expected Behavior\nEach tenant reads back its own limit, and one tenant reaching its limit doesn't refuse another tenant's sessions.\n\nh3. Actual Behavior\nBoth tenants read back 5, and the second tenant is refused too.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30126",
+      "key": "STND-126",
+      "self": "https://jira.example.com/rest/api/2/issue/30126",
+      "fields": {
+        "summary": "The agent console shows no message when the browser limit is reached",
+        "labels": [
+          "agent",
+          "browser-limit",
+          "ui"
+        ],
+        "components": [
+          {
+            "name": "agent"
+          }
+        ],
+        "description": "Opening one more browser from the agent console at the limit does nothing visible.\n\nh3. Steps to Reproduce\n# Set browser_limit to 2\n# In Agent, click Open browser three times\n\nh3. Expected Behavior\nThe third click shows \"Browser limit reached\" and the console still lists two browsers.\n\nh3. Actual Behavior\nNo message is shown.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30127",
+      "key": "STND-127",
+      "self": "https://jira.example.com/rest/api/2/issue/30127",
+      "fields": {
+        "summary": "Editors can change the browser limit",
+        "labels": [
+          "settings",
+          "browser-limit",
+          "permissions"
+        ],
+        "components": [
+          {
+            "name": "settings"
+          }
+        ],
+        "description": "The browser limit can be changed by users who are not admins.\n\nh3. Steps to Reproduce\n# As an editor, send PUT /api/settings/v1/capabilities/<tenant> with browser_limit 10\n\nh3. Expected Behavior\nThe API answers 403 for viewers and editors, and the limit stays 3. Admins can still set it on the Settings page.\n\nh3. Actual Behavior\nThe API answers 200 and the limit becomes 10.",
         "comment": {
           "total": 0,
           "comments": []

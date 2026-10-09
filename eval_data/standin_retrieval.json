@@ -28,6 +28,12 @@
     {"id": "standin-118", "ticket": "STND-118", "tests": ["tests/files/test_files_scanning.py::TestFilesScanning::test_files_dlp_rule_enforced"]},
     {"id": "standin-119", "ticket": "STND-119", "tests": ["tests/files/test_files_archives.py::TestFilesArchives::test_files_encrypted_wrong_password"]},
     {"id": "standin-120", "ticket": "STND-120", "tests": ["tests/files/test_files_viewer.py::TestFilesViewer::test_files_viewer_strips_active_content"]},
-    {"id": "standin-121", "ticket": "STND-121", "tests": ["tests/agent/test_agent_api.py::TestAgentApi::test_agent_api_settings_forbidden"]}
+    {"id": "standin-121", "ticket": "STND-121", "tests": ["tests/agent/test_agent_api.py::TestAgentApi::test_agent_api_settings_forbidden"]},
+    {"id": "standin-122", "ticket": "STND-122", "tests": ["tests/agent/test_agent_browser_limit.py::TestAgentBrowserLimit::test_agent_browser_limit_refused"]},
+    {"id": "standin-123", "ticket": "STND-123", "tests": ["tests/agent/test_agent_browser_limit.py::TestAgentBrowserLimit::test_agent_browser_limit_slot_freed", "tests/agent/test_agent_browser_console.py::TestAgentBrowserConsole::test_agent_console_browser_close_frees_slot"]},
+    {"id": "standin-124", "ticket": "STND-124", "tests": ["tests/agent/test_agent_browser_limit.py::TestAgentBrowserLimit::test_agent_browser_limit_lowered_keeps_sessions"]},
+    {"id": "standin-125", "ticket": "STND-125", "tests": ["tests/agent/test_agent_browser_limit.py::TestAgentBrowserLimit::test_agent_browser_limit_read_back", "tests/agent/test_agent_browser_limit.py::TestAgentBrowserLimit::test_agent_browser_limit_per_tenant"]},
+    {"id": "standin-126", "ticket": "STND-126", "tests": ["tests/agent/test_agent_browser_console.py::TestAgentBrowserConsole::test_agent_console_browser_limit_message"]},
+    {"id": "standin-127", "ticket": "STND-127", "tests": ["tests/agent/test_agent_browser_limit.py::TestAgentBrowserLimit::test_agent_browser_limit_change_forbidden", "tests/settings/test_settings.py::TestSettingsCapabilities::test_settings_capabilities_browser_limit"]}
   ]
 }

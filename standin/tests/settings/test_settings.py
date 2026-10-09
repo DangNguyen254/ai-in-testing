@@ -1,4 +1,5 @@
-"""Settings: capability gates, applied with the top bar's settings save option."""
+"""Settings: capability gates and the agent browser limit, applied with the top bar's settings
+save option."""
 
 import pytest
 
@@ -40,4 +41,19 @@ class TestSettingsCapabilities(BaseTest):
       self.nav.top_bar.save(settings=True)
 
       self.check.assertNotIn("Profiles", capabilities.nav_links)
+      self.verify_targets()
+
+   @pytest.mark.priority("p1")
+   @pytest.mark.suite("regression")
+   def test_settings_capabilities_browser_limit(self):
+      """
+      1. Set the agent browser limit on the capabilities page and apply the settings.
+      2. The page and the capabilities API show the new limit.
+      """
+      capabilities = self.nav.settings.capabilities
+      capabilities.open()
+      capabilities.browser_limit = self.params["browser_limit"]
+      self.nav.top_bar.save(settings=True)
+
+      self.check.assertEqual(self.params["browser_limit"], capabilities.browser_limit)
       self.verify_targets()

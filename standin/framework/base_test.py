@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from framework.api_client import ApiClient
+from framework.browser_sessions import BrowserSessions
 from framework.config import CONFIG
 from framework.data import entry_for, seed_blocks
 from framework.driver import create_driver
@@ -33,6 +34,7 @@ class BaseTest(ValidationMixin):
       self._suffix = unique_suffix()
       self._driver = None
       self._fresh_driver = True
+      self._browsers = None
       self.params = {}
       if self.data_driven or "params" in request.fixturenames:
          entry = entry_for(Path(request.node.path), self.test_id) or {}
@@ -40,6 +42,8 @@ class BaseTest(ValidationMixin):
       self.setup()
       yield
       self.teardown()
+      if self._browsers is not None:  # agent browser sessions a test left open
+         self._browsers.close_all()
       if self._driver is not None and self._fresh_driver:
          self._driver.quit()
       self._driver = None
@@ -70,6 +74,13 @@ class BaseTest(ValidationMixin):
       service = {"roles": {self.config.service_user: "admin"}}
       blocks = [{"tenant": tenant, "settings": service} for tenant in self.config.tenants]
       self.api.seed(blocks + seed_blocks(self.params, self.primary_tenant), self.params.get("site"))
+
+   @property
+   def browsers(self):
+      """Agent browser sessions (WebSocket), closed after the test."""
+      if self._browsers is None:
+         self._browsers = BrowserSessions(self.config.base_url, self.config.default_timeout)
+      return self._browsers
 
    # --- browser --------------------------------------------------------------------------
 

@@ -1,12 +1,13 @@
 """In-memory backend state: one policy per tenant, edited in the UI and published as revisions.
 
 Each tenant has:
-- ``settings``: capability gates, user roles, API-token state;
+- ``settings``: capabilities (on/off gates, and ``browser_limit``: how many agent browser
+  sessions the tenant may have open at once), user roles, API-token state;
 - a policy (rules, profiles, and file-policy sections) in three layers: the **working copy**
   (object editors write here; "unsaved changes"), the **saved draft** (top-bar save), and the
   **published revisions** (top-bar publish; ``rev_id`` is the latest revision number);
-- a download log and the browsing agent's tasks (enforcement uses the latest *published*
-  policy, never unsaved edits).
+- a download log, the browsing agent's tasks, and its open browser sessions (enforcement
+  uses the latest *published* policy, never unsaved edits).
 
 The store also holds the fake **external site** (``site``): files and pages the browser and
 the agent can reach, seeded per test.
@@ -21,7 +22,15 @@ from app import agent, files
 ACTIONS = ("allow", "deny", "log")
 LEVELS = ("low", "medium", "high")
 ROLES = ("viewer", "editor", "admin")
-DEFAULT_CAPABILITIES = {"rules": True, "profiles": True, "bulk_delete": False, "import": True}
+DEFAULT_CAPABILITIES = {
+   "rules": True,
+   "profiles": True,
+   "bulk_delete": False,
+   "import": True,
+   "browser_limit": 3,  # agent browser sessions open at once, per tenant
+}
+NUMERIC_CAPABILITIES = ("browser_limit",)
+BROWSER_LIMIT_MESSAGE = "Browser limit reached"
 EMPTY_POLICY = {"rules": [], "profiles": []}
 PAGE_SIZE = 5
 NAME_MAX_LENGTH = 32
@@ -35,6 +44,10 @@ class PermissionDenied(PermissionError):
    """The user's role does not allow the change."""
 
 
+class LimitReached(RuntimeError):
+   """The tenant already has ``browser_limit`` browser sessions open."""
+
+
 class Tenant:
    def __init__(self, tenant_id):
       self.id = tenant_id
@@ -46,6 +59,8 @@ class Tenant:
       }
       self.downloads = []  # the download log, newest last
       self.tasks = []  # the browsing agent's tasks, newest last
+      self.sessions = {}  # open browser sessions: id -> {id, user}
+      self.next_session = 1
       self.draft = copy.deepcopy(EMPTY_POLICY)
       self.working = None  # None: no unsaved changes
       self.revisions = [copy.deepcopy(EMPTY_POLICY)]  # revision 0
@@ -234,8 +249,36 @@ class Store:
       unknown = [k for k in capabilities if k not in caps]
       if unknown:
          raise ValidationError(f"Unknown capabilities: {unknown}")
-      caps.update({k: bool(v) for k, v in capabilities.items()})
+      for key, value in capabilities.items():
+         if key in NUMERIC_CAPABILITIES:
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+               raise ValidationError(f"{key} must be a whole number of at least 1")
+            caps[key] = value
+         else:
+            caps[key] = bool(value)
       return self.tenant(tenant_id).settings
+
+   # --- agent browser sessions ----------------------------------------------------------
+
+   def open_session(self, tenant_id, user=""):
+      """A new browser session, unless the tenant is at its ``browser_limit``. The limit is
+      read at every attempt, so a changed limit applies to the next attempt; sessions already
+      open are never closed by it."""
+      tenant = self.tenant(tenant_id)
+      if len(tenant.sessions) >= tenant.settings["capabilities"]["browser_limit"]:
+         raise LimitReached(BROWSER_LIMIT_MESSAGE)
+      session = {"id": tenant.next_session, "user": user}
+      tenant.sessions[session["id"]] = session
+      tenant.next_session += 1
+      return dict(session)
+
+   def close_session(self, tenant_id, session_id):
+      """The session's connection closed: its slot is free for the next attempt."""
+      self.tenant(tenant_id).sessions.pop(int(session_id), None)
+
+   def sessions(self, tenant_id):
+      open_now = sorted(self.tenant(tenant_id).sessions.values(), key=lambda s: s["id"])
+      return {"open": len(open_now), "sessions": [dict(s) for s in open_now]}
 
    def update_agent_settings(self, tenant_id, changes):
       agent_settings = self.tenant(tenant_id).settings["agent"]
