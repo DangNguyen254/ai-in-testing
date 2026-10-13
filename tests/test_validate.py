@@ -726,3 +726,16 @@ def test_keys_a_called_test_reads_must_exist(setup: Any) -> None:
     assert [f.test for f in missing_inherited.errors if f.check == "ids"] == [
         "test_files_download_verdict"
     ]
+
+
+def test_seed_data_has_the_shape_the_suite_uses(setup: Any) -> None:
+    """A real-case run: page data written as an object keyed by path loaded fine but broke
+    the seed at run time; the suite always writes a list of pages."""
+    as_object = {**GOOD_ENTRY, "site": {"pages": {"/pages/x": {"text": "hello"}}}}
+    messages = _messages(_validate(setup, entries=[as_object]), "data_shape")
+    assert messages == [
+        "site.pages is an object here, but a list in every data file of the suite: "
+        "write it the way the existing entries do"
+    ]
+    as_list = {**GOOD_ENTRY, "site": {"pages": [{"path": "/pages/x", "text": "hello"}]}}
+    assert _messages(_validate(setup, entries=[as_list]), "data_shape") == []

@@ -837,6 +837,9 @@ Read this first when resuming in a new session.
   - The real failed log now reads: 1 result, `error`, `requests.exceptions.ConnectionError`, no link, verdict environment; the real passed log still reads passed. Synthetic fixture `tests/fixtures/runs/connection_error.log` in the same shape (invented names).
   - **Still open:** a real failure that reaches the browser (with its remote-browser link), to place the link line.
 - 2026-10-09: **Decision (human): keep the stand-in's UI-share floor at 75%.**
+- 2026-10-13: **First real test cases (private run).** The human supplied two real QE test-case specifications (redacted further and generalized at their request; kept only in the git-ignored `.scratch/private/`, with the private model of the pieces they need, the outputs, and the cache). Both went through the full pipeline against a private copy of the stand-in extended with generic equivalents: both became methods in the right class, passed every validator on the first attempt, collected in the sandbox, and were judged faithful to their specifications (8 LLM calls). One test followed its specification step for step but seeded data in a different structure from the rest of the suite, which no static check caught: it would load, then fail at its first step on a real run (confirmed by replaying it against the model).
+  - **Fixed (general):** new validator `data_shape`: every value must have the shape (list, object, text, number, true/false) that the suite's data files use for the same key path; expectation sections are skipped (a response's shape depends on its endpoint). The stand-in and the private copy stay clean; re-run, the case failed the check on the first attempt, was fixed in one repair round, and then ran correctly against the model.
+  - **Verified:** ruff, mypy strict (92 files), pytest 655 passed, 14 deselected.
 
 ## Global open questions (for the human)
 - Which LLM provider/endpoint will the company environment require?

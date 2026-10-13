@@ -370,6 +370,74 @@ def check_data_keys(s: Subject) -> Iterator[Finding]:
             yield _f("data_keys", unused, test=test_id)
 
 
+def check_data_shape(s: Subject) -> Iterator[Finding]:
+    """Each value has the shape the suite uses for the same key path in its data files (a list
+    where the suite always has a list, an object where it has an object, ...).
+
+    Static checks pass an entry like ``"site": {"pages": {"/a": {...}}}`` when the suite always
+    writes ``"pages": [{"path": "/a", ...}]``; the test loads, then fails when the seed is
+    applied. Only paths the suite uses, with one consistent shape, are judged. Expectation
+    sections are skipped: a response's shape depends on its endpoint."""
+    if s.index is None:
+        return
+    skip = set(s.settings.data.expectation_sections)
+    known: dict[str, set[str]] = {}
+    own = {str(e.get(s.settings.data.id_field, "")) for e in s.entries}
+    for chunk in s.index.chunks:
+        for test_id, entry in chunk.data_entries.items():
+            if test_id in own and chunk.file_path == s.generated.file_name:
+                continue  # the entries being judged
+            for path, shape in _shapes(entry, skip=skip):
+                known.setdefault(path, set()).add(shape)
+    reported: set[tuple[str, str]] = set()
+    for entry in s.entries:
+        test_id = str(entry.get(s.settings.data.id_field, ""))
+        for path, shape in _shapes(entry, skip=skip):
+            expected = known.get(path)
+            if not expected or len(expected) != 1 or shape in expected:
+                continue
+            (want,) = expected
+            if (path, shape) in reported:
+                continue
+            reported.add((path, shape))
+            yield _f(
+                "data_shape",
+                f"{path} is {_A[shape]} here, but {_A[want]} in every data file of the suite: "
+                "write it the way the existing entries do",
+                test=test_id,
+            )
+
+
+_A = {"object": "an object", "list": "a list", "text": "text", "number": "a number",
+      "bool": "true/false", "null": "null"}  # fmt: skip
+
+
+def _shapes(
+    value: Any, path: str = "", skip: set[str] | frozenset[str] = frozenset()
+) -> Iterator[tuple[str, str]]:
+    """(key path, shape) for every value; list items share the path ``a.b[]``. Keys in
+    ``skip`` (the expectation sections) are left out wherever they appear."""
+    if isinstance(value, dict):
+        if path:
+            yield path, "object"
+        for key, item in value.items():
+            if (not path and key == "test_id") or key in skip:
+                continue
+            yield from _shapes(item, f"{path}.{key}" if path else str(key), skip)
+    elif isinstance(value, list):
+        yield path, "list"
+        for item in value:
+            yield from _shapes(item, f"{path}[]", skip)
+    elif isinstance(value, bool):
+        yield path, "bool"
+    elif isinstance(value, int | float):
+        yield path, "number"
+    elif isinstance(value, str):
+        yield path, "text"
+    else:
+        yield path, "null"
+
+
 def check_data_file(s: Subject) -> Iterator[Finding]:
     d = s.settings.data
     if not all(isinstance(e, dict) for e in s.entries):
@@ -671,6 +739,7 @@ CHECKS: list[tuple[str, Check]] = [
     ("ids", check_ids_and_entries),
     ("data_keys", check_data_keys),
     ("data_file", check_data_file),
+    ("data_shape", check_data_shape),
     ("seeded_names", check_seeded_names),
     ("capabilities", check_capability_gates),
     ("claims", check_claims),
