@@ -18,6 +18,8 @@ llm:
     # generate, variant_plan).
     # Empty: every step uses `model`. Haiku 4.5 for the retrieval steps was tried on 2026-10-06
     # and was worse, slower, and not cheaper (PROJECT_STATUS, Phase 6 log).
+    # Haiku 5.5 on every step (2026-10-22) matched Sonnet 5.5 on the stand-in generation eval
+    # (PROJECT_STATUS, 2026-10-22).
     step_models: {}
     workdir: .scratch/claude-cli   # git-ignored, inside the repo
   claude:                      # Anthropic API; key from ANTHROPIC_API_KEY
