@@ -9,12 +9,12 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ticket2test.config import Settings
+from ticket2test.config import LLMStep, Settings
 from ticket2test.eval.pairs import EvalCache, EvalPair, PairSet
 from ticket2test.index.indexer import update_index
 from ticket2test.llm.base import LLMClient
 from ticket2test.llm.factory import model_name
-from ticket2test.models.retrieval import RetrievalResult
+from ticket2test.models.retrieval import Investigation, RetrievalResult
 from ticket2test.normalize import normalize
 from ticket2test.retrieve.pipeline import retrieve
 
@@ -33,6 +33,7 @@ class PairResult(BaseModel):
     reciprocal_rank: float
     llm_calls: int = 0
     followup_rounds: int = 0
+    investigation: Investigation | None = None  # when the investigator ran
 
 
 class SkippedPair(BaseModel):
@@ -92,7 +93,7 @@ def evaluate_retrieval(
         repo_path=pair_set.repo_path,
         settings=settings.retrieval.model_dump(mode="json"),
         llm_models=(
-            {step: model_name(settings, step) for step in ("query_rewrite", "retrieval_followup")}
+            {step: model_name(settings, step) for step in _retrieval_steps(settings)}
             if use_llm
             else {}
         ),
@@ -114,7 +115,7 @@ def evaluate_retrieval(
             continue
         ticket = normalize(cache.raw_ticket(pair_set, pair, project_root), settings)
         result = retrieve(ticket, index, settings, client if use_llm else None)
-        report.pairs.append(_score(pair, unit, present, truth, result))
+        report.pairs.append(_score(pair, unit, present, truth, result, k))
 
     report.llm_calls = sum(p.llm_calls for p in report.pairs)
     report.elapsed_seconds = round(time.monotonic() - started, 1)
@@ -126,6 +127,13 @@ def evaluate_retrieval(
     return report
 
 
+def _retrieval_steps(settings: Settings) -> list[LLMStep]:
+    later: LLMStep = (
+        "investigate" if settings.retrieval.investigator.enabled else "retrieval_followup"
+    )
+    return ["query_rewrite", later]
+
+
 def _ground_truth(pair_set: PairSet, pair: EvalPair, cache: EvalCache) -> tuple[list[str], str]:
     if pair_set.ground_truth == "fix_pr_files":
         return [f for f in cache.fix_pr_files(pair) if f.endswith(".py")], "file"
@@ -133,13 +141,19 @@ def _ground_truth(pair_set: PairSet, pair: EvalPair, cache: EvalCache) -> tuple[
 
 
 def _score(
-    pair: EvalPair, unit: str, present: list[str], truth: list[str], result: RetrievalResult
+    pair: EvalPair,
+    unit: str,
+    present: list[str],
+    truth: list[str],
+    result: RetrievalResult,
+    k: int,
 ) -> PairResult:
     retrieved: list[str] = []
     for hit in result.hits:
         key = hit.file_path if unit == "file" else hit.chunk_id
         if key not in retrieved:
             retrieved.append(key)
+    retrieved = retrieved[:k]  # hits the investigator kept can run past the top_k
     found = [t for t in present if t in retrieved]
     first = next((rank for rank, key in enumerate(retrieved, 1) if key in present), None)
     return PairResult(
@@ -154,6 +168,7 @@ def _score(
         reciprocal_rank=round(1 / first, 4) if first else 0.0,
         llm_calls=result.llm_calls,
         followup_rounds=result.followup_rounds,
+        investigation=result.investigation,
     )
 
 
