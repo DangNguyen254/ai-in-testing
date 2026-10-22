@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ticket2test.models.chunk import ChunkKind
 
-ReasonSource = Literal["bm25", "grep", "expansion", "followup", "template"]
+ReasonSource = Literal["bm25", "grep", "expansion", "followup", "template", "investigator"]
 
 
 class Reason(BaseModel):
@@ -71,6 +71,51 @@ class FollowupRequest(BaseModel):
 # --- Result -------------------------------------------------------------------------------------
 
 
+InvestigatorTool = Literal["search", "grep", "open", "callers", "tests_using", "chain", "data"]
+
+
+class InvestigatorAction(BaseModel):
+    """One read-only tool call the investigator asks for."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    tool: InvestigatorTool
+    arg: str = Field(min_length=1, max_length=200)  # a query, identifier, chunk id or chain
+
+
+class KeptChunk(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    chunk_id: str
+    why: str = Field(max_length=300)
+
+
+class InvestigatorStep(BaseModel):
+    """What the investigator returns each turn (``prompts/investigator_v*.md``)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    thought: str = Field(max_length=600)  # what it is looking for next, in a sentence or two
+    actions: list[InvestigatorAction] = Field(max_length=6)
+    keep: list[KeptChunk] = Field(max_length=15)  # chunks the test needs (cumulative)
+    missing: list[str] = Field(max_length=10)  # pieces the test needs that don't seem to exist
+    done: bool
+
+
+class Investigation(BaseModel):
+    """The investigator's run, kept for traceability."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    steps: int
+    tool_calls: list[str]  # "search('...') -> 8 results"
+    kept: list[KeptChunk]
+    missing: list[str]
+    dropped_ids: list[str] = Field(default_factory=list)  # kept ids that don't exist
+    stopped: Literal["done", "budget", "no_actions"]
+    llm_calls: int
+
+
 class RetrievalResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -84,6 +129,7 @@ class RetrievalResult(BaseModel):
     hits: list[RetrievedChunk]
     templates: list[TemplateRef] = Field(default_factory=list)
     followup_rounds: int = 0
+    investigation: Investigation | None = None  # when the investigator ran
     llm_calls: int = 0
     prompt_versions: list[str] = Field(default_factory=list)
     # The ticket's own routing hints, kept for later steps (domain choice in `generate`).

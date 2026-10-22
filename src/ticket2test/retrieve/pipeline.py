@@ -2,7 +2,8 @@
 
 query (deterministic + optional LLM rewrite) -> BM25 + grep -> reciprocal-rank fusion
 -> AST-style expansion (callees, callers, related tests, page objects) -> capped LLM
-follow-up rounds (own search tools only) -> ranked hits with reasons + JSON-entry templates.
+follow-up rounds (own search tools only), or the investigator agent when enabled
+(retrieve/investigator.py) -> ranked hits with reasons + JSON-entry templates.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from ticket2test.models.chunk import Chunk
 from ticket2test.models.draft import TestCaseDraft
 from ticket2test.models.retrieval import (
     FollowupSearch,
+    Investigation,
     QueryRewrite,
     Reason,
     RetrievalResult,
@@ -26,6 +28,7 @@ from ticket2test.models.retrieval import (
 )
 from ticket2test.models.ticket import Ticket
 from ticket2test.prompts import load_prompt
+from ticket2test.retrieve.investigator import investigate
 from ticket2test.retrieve.llm_steps import request_followups, rewrite_query
 from ticket2test.retrieve.query import candidate_identifiers, ticket_text, verify_identifiers
 from ticket2test.retrieve.rerank import Ranked, rerank
@@ -95,6 +98,10 @@ class Retriever:
         return [
             (c, Reason(source="followup", detail=f"{label} definition of {name}")) for c in defs
         ]
+
+    def users_of(self, identifier: str) -> list[Chunk]:
+        """Chunks whose syntax tree references the identifier."""
+        return list(self._users.get(identifier, []))
 
     def _containing(self, identifier: str) -> list[Chunk]:
         """Chunks that define or reference the identifier (from the syntax tree)."""
@@ -255,7 +262,28 @@ def retrieve(
     rounds = 0
     searches_run = ["bm25: <ticket text>"] + (["bm25: <rewrite terms>"] if rewrite else [])
     searches_run += [f"grep: {name}" for name in identifiers]
-    if use_llm and cfg.max_followup_rounds > 0:
+    investigation: Investigation | None = None
+    if use_llm and cfg.investigator.enabled:
+        assert client is not None
+        prompt = load_prompt(cfg.investigator.prompt, settings.paths.prompts_dir)
+        investigation = investigate(
+            client,
+            prompt,
+            retriever,
+            text,
+            _describe(_final(pool, identifiers, text, settings)),
+            settings,
+        )
+        llm_calls += investigation.llm_calls
+        prompt_versions.append(prompt.version)
+        kept = [
+            (retriever.chunks[k.chunk_id], Reason(source="investigator", detail=k.why))
+            for k in investigation.kept
+        ]
+        if kept:
+            lists.append(kept)
+            pool = _build_pool(retriever, lists)
+    elif use_llm and cfg.max_followup_rounds > 0:
         assert client is not None
         prompt = load_prompt(cfg.followup_prompt, settings.paths.prompts_dir)
         for round_no in range(1, cfg.max_followup_rounds + 1):
@@ -286,6 +314,15 @@ def retrieve(
                 break
 
     templates = retriever.templates(pool, draft, ticket.components)
+    final = _final(pool, identifiers, text, settings)
+    if investigation is not None:  # what the investigator kept stays, even below the top_k
+        in_final = {r.chunk.id for r in final}
+        final += [
+            Ranked(chunk=pool[k.chunk_id].chunk, fused=pool[k.chunk_id].score, score=0.0,
+                   features={})
+            for k in investigation.kept
+            if k.chunk_id not in in_final
+        ]  # fmt: skip
     hits = [
         RetrievedChunk(
             chunk_id=r.chunk.id,
@@ -298,7 +335,7 @@ def retrieve(
             rank_features=r.features,
             reasons=pool[r.chunk.id].reasons,
         )
-        for r in _final(pool, identifiers, text, settings)
+        for r in final
     ]
     return RetrievalResult(
         ticket_id=ticket.id,
@@ -311,6 +348,7 @@ def retrieve(
         hits=hits,
         templates=templates,
         followup_rounds=rounds,
+        investigation=investigation,
         llm_calls=llm_calls,
         prompt_versions=prompt_versions,
         ticket_components=list(ticket.components),

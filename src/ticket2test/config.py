@@ -30,7 +30,9 @@ class _Section(BaseModel):
 
 
 # The pipeline's LLM steps; each provider may map some of them to another model.
-LLMStep = Literal["draft", "query_rewrite", "retrieval_followup", "generate", "variant_plan"]
+LLMStep = Literal[
+    "draft", "query_rewrite", "retrieval_followup", "investigate", "generate", "variant_plan"
+]
 
 
 class ClaudeCodeCLISettings(_Section):
@@ -200,6 +202,20 @@ class RerankSettings(_Section):
     path_weight: float = Field(default=0.15, ge=0.0)  # ticket words in the file path
 
 
+class InvestigatorSettings(_Section):
+    """The retrieval investigator (retrieve/investigator.py): a bounded agent that explores the
+    indexed suite with read-only tools. Replaces the follow-up rounds when enabled."""
+
+    enabled: bool = False
+    prompt: str = "investigator_v1"
+    max_steps: int = Field(default=6, ge=1, le=20)  # LLM turns
+    max_actions_per_step: int = Field(default=4, ge=1, le=6)
+    max_tool_output_chars: int = Field(default=3000, ge=200)  # per tool call
+    max_transcript_chars: int = Field(default=24000, ge=1000)  # older tool output is cut
+    max_kept: int = Field(default=12, ge=1)
+    results_per_search: int = Field(default=8, ge=1)
+
+
 class RetrievalSettings(_Section):
     top_k: int = Field(default=10, ge=1)
     max_followup_rounds: int = Field(default=2, ge=0)
@@ -227,6 +243,7 @@ class RetrievalSettings(_Section):
     )
     max_ticket_chars: int = Field(default=6000, ge=200)  # ticket text sent to the LLM
     rerank: RerankSettings = RerankSettings()
+    investigator: InvestigatorSettings = InvestigatorSettings()
 
 
 class ContextSettings(_Section):
