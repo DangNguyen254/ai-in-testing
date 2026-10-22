@@ -244,6 +244,25 @@ def test_generation_eval_measures_first_attempt_repair_and_collect(
     assert (tmp_path / "kept" / "standin-104" / "generated.json").is_file()
 
 
+def test_generation_eval_reports_the_provider_cost(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from .test_meter import PricedFake
+
+    monkeypatch.setattr(generation_module, "collect_generated", _fake_collect(True))
+    replies = [_draft_reply(_DRAFT), _rewrite(["delete"], []), _generation_reply()]
+    report = run_eval(
+        [_STND104], ROOT, _settings(tmp_path), PricedFake(replies), stage="generation",
+        leave_one_out=False,
+    )  # fmt: skip
+    gen = report.generation
+    assert gen is not None and gen.usage is not None and gen.usage.cost_usd == 0.75
+    assert gen.pairs[0].usage is not None and gen.pairs[0].usage.calls == 3
+    markdown = render_markdown(report)
+    assert "| Cost, provider-reported ($) | 0.75 |" in markdown
+    assert "| 3 | 0.75 |" in markdown  # per-ticket calls and cost
+
+
 def test_cached_drafts_are_reused_and_flagged(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

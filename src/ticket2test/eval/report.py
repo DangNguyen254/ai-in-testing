@@ -7,6 +7,7 @@ UNVALIDATED until they are compared with human labels on a sample.
 from __future__ import annotations
 
 import statistics
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
@@ -14,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ticket2test.eval.generation import GenerationPairResult, GenerationReport
 from ticket2test.eval.retrieval import RetrievalReport
+from ticket2test.llm.meter import Usage
 
 
 class PairSource(BaseModel):
@@ -59,8 +61,20 @@ def retrieval_summary(runs: list[RetrievalReport]) -> dict[str, Any]:
         "mrr_min": min(mrrs) if mrrs else None,
         "mrr_max": max(mrrs) if mrrs else None,
         "llm_calls": sum(r.llm_calls for r in runs),
+        "cost": _cost([r.usage for r in runs]),
         "seconds": round(sum(r.elapsed_seconds or 0 for r in runs), 1),
     }
+
+
+def _cost(usages: Sequence[Usage | None]) -> str:
+    """Provider-reported cost in USD; "n/a" when nothing was metered, "≥" when some calls had
+    no price (the total is then a lower bound)."""
+    metered = [u for u in usages if u is not None]
+    if not metered or all(u.calls == 0 for u in metered):
+        return "n/a" if not metered else "0"
+    total = sum(u.cost_usd for u in metered)
+    unpriced = sum(u.unpriced_calls for u in metered)
+    return f"{'≥' if unpriced else ''}{total:.2f}"
 
 
 def _mean(values: list[float]) -> float | None:
@@ -103,8 +117,8 @@ def render_markdown(report: EvalRunReport) -> str:
             "recall@k and MRR per set; with several runs, mean [min-max] (LLM steps are not "
             "deterministic; deterministic runs must be identical).",
             "",
-            "| Set | LLM | Runs | Pairs | recall@k | MRR | LLM calls | Time (s) |",
-            "|---|---|---|---|---|---|---|---|",
+            "| Set | LLM | Runs | Pairs | recall@k | MRR | LLM calls | Cost ($) | Time (s) |",
+            "|---|---|---|---|---|---|---|---|---|",
         ]
         for name, runs in report.retrieval.items():
             s = retrieval_summary(runs)
@@ -112,7 +126,7 @@ def render_markdown(report: EvalRunReport) -> str:
                 f"| {name} | {'on' if s['use_llm'] else 'off'} | {s['runs']} | {s['pairs']} | "
                 f"{_fmt(s['recall_mean'])} [{_fmt(s['recall_min'])}-{_fmt(s['recall_max'])}] | "
                 f"{_fmt(s['mrr_mean'])} [{_fmt(s['mrr_min'])}-{_fmt(s['mrr_max'])}] | "
-                f"{s['llm_calls']} | {s['seconds']} |"
+                f"{s['llm_calls']} | {s['cost']} | {s['seconds']} |"
             )
 
     gen = report.generation
@@ -147,17 +161,19 @@ def render_markdown(report: EvalRunReport) -> str:
             f"| Reviewer warnings per test | {_fmt(m['warnings_per_test'])} |",
             f"| Leave-one-out violations | {m['leave_one_out_violations']} |",
             f"| LLM calls / time | {gen.llm_calls} / {gen.elapsed_seconds} s |",
+            f"| Cost, provider-reported ($) | {_cost([gen.usage])} |",
             "",
             "| Ticket | Status | Kind | Reuse | First-attempt errors | Repairs | Final | Collect | "
-            "Warnings | Calls | s |",
-            "|---|---|---|---|---|---|---|---|---|---|---|",
+            "Warnings | Calls | $ | s |",
+            "|---|---|---|---|---|---|---|---|---|---|---|---|",
         ]
         for p in gen.pairs:
             lines.append(
                 f"| {p.ticket} | {p.status}{' (cached draft)' if p.draft_cached else ''} | "
                 f"{p.test_kind or '-'} | {_reuse(p)} | {len(p.first_errors)} | {p.repairs} | "
                 f"{'ok' if p.final_ok else '-' if p.status != 'generated' else 'FAIL'} | "
-                f"{_fmt(p.collect_ok)} | {len(p.warnings)} | {p.llm_calls} | {p.seconds} |"
+                f"{_fmt(p.collect_ok)} | {len(p.warnings)} | {p.llm_calls} | {_cost([p.usage])} | "
+                f"{p.seconds} |"
             )
         problems = [p for p in gen.pairs if p.error or p.final_errors or p.collect_note]
         if problems:

@@ -35,6 +35,7 @@ from ticket2test.generate.pipeline import generate_reusing
 from ticket2test.index.indexer import IndexData, update_index
 from ticket2test.llm.base import LLMClient, LLMError
 from ticket2test.llm.factory import model_name
+from ticket2test.llm.meter import Usage, usage_of
 from ticket2test.models.chunk import Chunk
 from ticket2test.models.draft import DraftResult
 from ticket2test.models.ticket import Ticket
@@ -74,6 +75,7 @@ class GenerationPairResult(BaseModel):
     collect_ok: bool | None = None  # None: not run
     collect_note: str = ""
     llm_calls: int = 0
+    usage: Usage | None = None  # metered clients only
     seconds: float = 0.0
     judge: JudgeVerdict | None = None
 
@@ -89,6 +91,7 @@ class GenerationReport(BaseModel):
     models: dict[str, str] = Field(default_factory=dict)
     pairs: list[GenerationPairResult] = Field(default_factory=list)
     llm_calls: int = 0
+    usage: Usage | None = None
     elapsed_seconds: float = 0.0
 
     def _rate(self, values: list[bool]) -> float | None:
@@ -237,14 +240,22 @@ def evaluate_generation(
         },
     )
     started = time.monotonic()
+    before = usage_of(client)
     for pair in pair_set.pairs:
+        pair_before = usage_of(client)
         report.pairs.append(
             _one(
                 pair, pair_set, project_root, repo, index, settings, client, cache,
                 conventions, leave_one_out, collect, judge, reuse_drafts, keep_dir,
             )
         )  # fmt: skip
+        pair_after = usage_of(client)
+        if pair_before is not None and pair_after is not None:
+            report.pairs[-1].usage = pair_after.minus(pair_before)
     report.llm_calls = sum(p.llm_calls for p in report.pairs)
+    after = usage_of(client)
+    if before is not None and after is not None:
+        report.usage = after.minus(before)
     report.elapsed_seconds = round(time.monotonic() - started, 1)
     return report
 

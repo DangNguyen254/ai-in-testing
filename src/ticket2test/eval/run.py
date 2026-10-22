@@ -13,6 +13,7 @@ from ticket2test.eval.report import EvalRunReport, MinedCheck, PairSource
 from ticket2test.eval.retrieval import evaluate_retrieval
 from ticket2test.llm.base import LLMClient
 from ticket2test.llm.factory import model_name
+from ticket2test.llm.meter import UsageMeter
 
 _KIND = {"fix_pr_files": "fix PR files", "tests": "linked tests"}
 
@@ -40,6 +41,7 @@ def run_eval(
     if stage not in ("retrieval", "generation", "all"):
         raise ValueError(f"unknown stage {stage!r} (retrieval, generation, all)")
     runs = max(1, runs)
+    client = UsageMeter(client) if client is not None else None  # cost per pair and run
     cache = EvalCache(settings)
     report = EvalRunReport(created_at=datetime.now(UTC), config=_snapshot(settings, client))
     for pair_set in pair_sets:

@@ -14,6 +14,7 @@ from ticket2test.eval.pairs import EvalCache, EvalPair, PairSet
 from ticket2test.index.indexer import update_index
 from ticket2test.llm.base import LLMClient
 from ticket2test.llm.factory import model_name
+from ticket2test.llm.meter import Usage, usage_of
 from ticket2test.models.retrieval import Investigation, RetrievalResult
 from ticket2test.normalize import normalize
 from ticket2test.retrieve.pipeline import retrieve
@@ -58,6 +59,7 @@ class RetrievalReport(BaseModel):
     settings: dict[str, Any] = Field(default_factory=dict)  # retrieval config snapshot
     llm_models: dict[str, str] = Field(default_factory=dict)  # step -> model, when LLM is on
     llm_calls: int = 0
+    usage: Usage | None = None  # calls, tokens, provider-reported cost (metered clients)
     elapsed_seconds: float | None = None
 
 
@@ -99,6 +101,7 @@ def evaluate_retrieval(
         ),
     )
     started = time.monotonic()
+    before = usage_of(client)
     indexed_files = {path for path, record in index.files.items() if record.info is not None}
     chunk_ids = {c.id for c in index.chunks}
 
@@ -118,6 +121,9 @@ def evaluate_retrieval(
         report.pairs.append(_score(pair, unit, present, truth, result, k))
 
     report.llm_calls = sum(p.llm_calls for p in report.pairs)
+    after = usage_of(client)
+    if before is not None and after is not None:
+        report.usage = after.minus(before)
     report.elapsed_seconds = round(time.monotonic() - started, 1)
     if report.pairs:
         report.mean_recall = round(sum(p.recall for p in report.pairs) / len(report.pairs), 4)
