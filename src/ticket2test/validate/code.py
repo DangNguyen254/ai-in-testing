@@ -275,7 +275,11 @@ class CheckCall:
         return self.node.lineno
 
 
-def check_calls(fn: ast.FunctionDef, assertion_object: str, helpers: set[str]) -> list[CheckCall]:
+def check_calls(
+    fn: ast.FunctionDef, assertion_object: str, helpers: set[str], self_asserts: bool = False
+) -> list[CheckCall]:
+    """Assertions on the assertion object, validation-helper calls, and (in a class that
+    inherits ``unittest.TestCase``) ``self.assert*`` / ``self.fail*``."""
     found: list[CheckCall] = []
     for node in _walk_in_order(fn):
         if not isinstance(node, ast.Call):
@@ -283,12 +287,24 @@ def check_calls(fn: ast.FunctionDef, assertion_object: str, helpers: set[str]) -
         name = dotted(node.func)
         if name in helpers:
             found.append(CheckCall(name, True, node))
-        elif (
-            name.startswith(assertion_object + ".")
-            and name.count(".") == assertion_object.count(".") + 1
-        ):
+        elif is_assertion(name, assertion_object, self_asserts):
             found.append(CheckCall(name.rsplit(".", 1)[1], False, node))
     return found
+
+
+def is_assertion(name: str, assertion_object: str, self_asserts: bool) -> bool:
+    if (
+        name.startswith(assertion_object + ".")
+        and name.count(".") == assertion_object.count(".") + 1
+    ):
+        return True
+    method = name.removeprefix("self.")
+    return (
+        self_asserts
+        and name.startswith("self.")
+        and "." not in method
+        and (method.startswith(("assert", "fail")))
+    )
 
 
 def _walk_in_order(node: ast.AST) -> Iterator[ast.AST]:

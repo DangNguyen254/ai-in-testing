@@ -861,6 +861,13 @@ def chain_analysis(
     return dict(subject.chains)
 
 
+def _is_testcase(cls: ast.ClassDef, bases: list[ClassEntry], testcase: list[str]) -> bool:
+    """The class inherits unittest.TestCase: itself, or a repo base up its lineage."""
+    names = set(testcase) | {t.rsplit(".", 1)[-1] for t in testcase}
+    written = [dotted(b) for b in cls.bases] + [w for b in bases for w in b.bases]
+    return any(w in names or w.rsplit(".", 1)[-1] in names for w in written)
+
+
 def _prepare(s: Subject) -> None:
     assert s.tree is not None
     v, d = s.settings.validation, s.settings.data
@@ -886,10 +893,13 @@ def _prepare(s: Subject) -> None:
         bases = reuse.repo_bases(cls) if cls else []
         start = bases[0] if bases else s.base  # the class's own base, else the suite's
         s.chains[fn.name] = function_chains(fn, ChainResolver(s.catalog, start, local))
-        s.checks[fn.name] = check_calls(fn, v.assertion_object, helpers)
+        self_asserts = cls is not None and _is_testcase(cls, bases, v.testcase_bases)
+        s.checks[fn.name] = check_calls(fn, v.assertion_object, helpers, self_asserts)
         if cls is not None:
             s.uses[fn.name] = reuse.data_use(cls, fn)
-            s.deep_checks[fn.name] = reuse.checks_through_calls(cls, fn, v.assertion_object)
+            s.deep_checks[fn.name] = reuse.checks_through_calls(
+                cls, fn, v.assertion_object, self_asserts
+            )
     for cls in reuse.classes():
         if not cls.name.startswith(s.settings.index.test_class_prefix):
             continue

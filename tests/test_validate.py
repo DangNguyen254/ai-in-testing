@@ -760,3 +760,30 @@ def test_seed_data_has_the_shape_the_suite_uses(setup: Any) -> None:
     ]
     as_list = {**GOOD_ENTRY, "site": {"pages": [{"path": "/pages/x", "text": "hello"}]}}
     assert _messages(_validate(setup, entries=[as_list]), "data_shape") == []
+
+
+def test_testcase_classes_may_assert_on_self(setup: Any) -> None:
+    """Real suites mix a separate assertion object with self.assert* in classes that inherit
+    unittest.TestCase."""
+    code = _replace("import pytest\n", "import unittest\n\nimport pytest\n")
+    code = _replace(
+        "class TestRulesListFilter(BaseTest):",
+        "class TestRulesListFilter(BaseTest, unittest.TestCase):",
+        code,
+    )
+    code = code.replace("self.check.assertEqual(", "self.assertEqual(")
+    report = _validate(setup, code=code)
+    assert _messages(report, "assertions") == []
+    # Without TestCase in the lineage, self.assertEqual isn't the suite's assertion style.
+    plain = GOOD_CODE.replace("self.check.assertEqual(", "self.assertEqual(")
+    assert any("checks nothing" in m for m in _messages(_validate(setup, code=plain), "assertions"))
+
+
+def test_only_assert_methods_on_self_count() -> None:
+    from ticket2test.validate.code import is_assertion
+
+    assert is_assertion("self.assertIn", "self.check", True)
+    assert is_assertion("self.fail", "self.check", True)
+    assert not is_assertion("self.unique_name", "self.check", True)  # a helper, not a check
+    assert not is_assertion("self.assertIn", "self.check", False)
+    assert is_assertion("self.check.whatever", "self.check", False)  # judged by the method list

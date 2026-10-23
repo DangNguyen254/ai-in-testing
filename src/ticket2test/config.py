@@ -333,6 +333,9 @@ class ValidateSettings(_Section):
     base_classes: list[str] = Field(default_factory=list)
     discover_base_classes: bool = True
     assertion_object: str = "self.check"
+    # Classes that inherit one of these (anywhere up the lineage) may also assert on ``self``
+    # (``self.assertEqual``): real suites mix both styles. Only assert*/fail* methods count.
+    testcase_bases: list[str] = Field(default_factory=lambda: ["unittest.TestCase", "TestCase"])
     assertion_methods: list[str] = Field(
         default_factory=lambda: [
             "assertEqual", "assertNotEqual", "assertTrue", "assertFalse", "assertIn",

@@ -172,6 +172,7 @@ validation:                     # deterministic checks of generated tests (Phase
                                   # the classes existing test classes inherit
   discover_base_classes: true
   assertion_object: self.check    # a unittest.TestCase instance
+  testcase_bases: [unittest.TestCase, TestCase]   # classes inheriting these may also use self.assert*
   assertion_methods: [assertEqual, assertNotEqual, assertTrue, assertFalse, assertIn,
                       assertNotIn, assertIsNone, assertIsNotNone, assertGreater, assertLess,
                       assertRaises]
