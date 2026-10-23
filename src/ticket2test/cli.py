@@ -197,7 +197,9 @@ def index(
         f"Indexed {repo_path}: {stats.files} files ({stats.parsed} parsed, {stats.reused} reused, "
         f"{len(stats.skipped)} skipped) in {stats.seconds:.1f}s\n"
         f"Chunks: {kinds or 'none'}\n"
-        f"Symbols: {stats.symbols}, page-object chains: {stats.chains}\n"
+        f"Symbols: {stats.symbols}, page-object chains: {stats.chains}"
+        + (" (cut at index.max_chain_entries)" if stats.chains_truncated else "")
+        + "\n"
         f"Saved {path}"
     )
     for skipped in stats.skipped[:10]:

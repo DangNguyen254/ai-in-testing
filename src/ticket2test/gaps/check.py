@@ -162,17 +162,14 @@ def _reachable(owner: ClassEntry, catalog: SymbolCatalog, scope: _Scope) -> bool
 
 
 def _siblings(owner: ClassEntry, catalog: SymbolCatalog) -> list[ClassEntry]:
-    """Pages reached from the same parent chain as the owner (``nav.files.*``)."""
-    parents = {e.chain.rsplit(".", 1)[0] for e in catalog.chains if e.type == owner.qualname}
+    """Pages next to the owner: the other page types of the classes that hold the owner
+    (``nav.files.*``). From the type graph, so a cut chain list can't hide any."""
+    page_objects = set(catalog.page_objects)
     found: dict[str, ClassEntry] = {}
-    for entry in catalog.chains:
-        if (
-            entry.type
-            and entry.type != owner.qualname
-            and entry.chain.rsplit(".", 1)[0] in parents
-            and entry.type in catalog.classes
-        ):
-            found[entry.type] = catalog.classes[entry.type]
+    for parent in catalog.referrers(owner.qualname):
+        for target in catalog.member_types(parent).values():
+            if target.qualname != owner.qualname and target.qualname in page_objects:
+                found[target.qualname] = target
     return [found[q] for q in sorted(found)]
 
 

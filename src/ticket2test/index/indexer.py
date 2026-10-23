@@ -29,8 +29,9 @@ from ticket2test.models.chunk import Chunk
 
 log = logging.getLogger(__name__)
 
-INDEX_VERSION = 6  # 2: syntax-tree refs; 3: array data files, returned calls; 4: imports;
-# 5: inherited tests and class variants; 6: defaults rows, per-function data files
+INDEX_VERSION = 7  # 2: syntax-tree refs; 3: array data files, returned calls; 4: imports;
+# 5: inherited tests and class variants; 6: defaults rows, per-function data files;
+# 7: page objects by type traversal, chains_truncated
 INDEX_FILE = "index.json"
 
 
@@ -75,6 +76,7 @@ class BuildStats(BaseModel):
     chunks_by_kind: dict[str, int] = Field(default_factory=dict)
     symbols: int = 0
     chains: int = 0
+    chains_truncated: bool = False  # the chain list hit index.max_chain_entries
     seconds: float = 0.0
 
 
@@ -204,6 +206,9 @@ def build_index(
     )
     stats.symbols = len(catalog.symbols)
     stats.chains = len(catalog.chains)
+    stats.chains_truncated = catalog.chains_truncated
+    if catalog.chains_truncated:
+        log.warning("Chain list cut at %d entries (index.max_chain_entries)", len(catalog.chains))
     for chunk in chunks:
         stats.chunks_by_kind[chunk.kind] = stats.chunks_by_kind.get(chunk.kind, 0) + 1
     stats.seconds = round(time.perf_counter() - started, 3)

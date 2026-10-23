@@ -72,7 +72,7 @@ index:
   data_file_suffix: .json        # test_x.py -> test_x.json
   chain_roots: [nav]             # page-object chains start here: nav.<area>.<page>
   max_chain_depth: 4
-  max_chain_entries: 5000
+  max_chain_entries: 50000        # the chain list only; page objects don't depend on it
   name_boost: 3
   save_attempts: 5               # index file rename retries (a scanner can lock it briefly)
 
@@ -244,11 +244,13 @@ map:                             # suite map: area summaries from the index (no 
   max_items: 15                  # per list in an area summary
   max_examples: 6                # typical tests per area, one per shape
   max_coverage_listed: 200       # in coverage.md; map.json has every gap
+  max_tests_per_area: 300        # larger areas split into one sub-area per module
 
 guides:                          # area guides: one strong-model call per area (no exploring)
   prompt: guide_v1
   max_budget_usd: 50.0           # hard ceiling; --budget can go lower, never higher
   max_input_tokens: 20000        # per area: the area summary + code picked by the tool
+  max_piece_tokens: 3000         # a page object larger than this goes in as an outline
   max_output_tokens: 4000         # asked for; the Claude CLI doesn't enforce it
   # Worst case per call, raised by what real calls use (calibration.json next to the guides).
   # Defaults from the first run through the Claude CLI (2026-10-23): up to ~23k input tokens

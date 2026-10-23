@@ -7,7 +7,9 @@ skipped whole (never cut mid-function).
 1. the area summary (always)
 2. the typical tests, each with one of its data entries
 3. the test classes' scaffold (class header, setup/teardown and the class's own helper methods)
-4. the page objects the area's chains reach, most used first
+4. the page objects the area's chains reach, most used first; a page object larger than
+   ``guides.max_piece_tokens`` (real page modules run to tens of thousands of lines) goes in as
+   an outline: its members with types and signatures, the ones this area uses first
 5. the base-class helper methods the tests call
 """
 
@@ -86,8 +88,16 @@ def pick_material(area: AreaSummary, index: IndexData, settings: Settings) -> Ma
                 continue
             seen.add(qualname)
             chunk_id = f"{entry_class.file_path}::{entry_class.name}"
-            if chunk_id in chunks:
-                add(f"Page object {chunk_id}", _code(chunks[chunk_id].code))
+            if chunk_id not in chunks:
+                continue
+            code = _code(chunks[chunk_id].code)
+            if estimate_tokens(code, cpt) <= settings.guides.max_piece_tokens:
+                add(f"Page object {chunk_id}", code)
+            else:
+                area_names = {a.name for a in area.page_actions} | {
+                    step for c in area.chains for step in c.name.split(".")
+                }
+                add(f"Page object {chunk_id} (outline)", _outline(qualname, index, area_names))
 
     for helper in area.base_helpers:
         for chunk in index.chunks:
@@ -96,6 +106,33 @@ def pick_material(area: AreaSummary, index: IndexData, settings: Settings) -> Ma
                 break
 
     return Material(text="\n".join(blocks), pieces=pieces, skipped=skipped, tokens=used)
+
+
+def _outline(qualname: str, index: IndexData, used: set[str], limit: int = 80) -> str:
+    """A large class as its member list: properties/attributes with their types, method
+    signatures (first line of each def); members the area uses first."""
+    catalog = index.catalog
+    entry = catalog.classes[qualname]
+    info = index.files[entry.file_path].info
+    found = next((c for c in info.classes if c.name == entry.name), None) if info else None
+    signatures = {m.name: m.code.strip().splitlines()[0] for m in found.methods} if found else {}
+    rows: list[tuple[bool, str]] = []
+    for name, (defined_in, member) in sorted(catalog.members_of(qualname).items()):
+        if name.startswith("_") or (member.kind == "attribute" and name.isupper()):
+            continue
+        if member.kind == "method":
+            line = signatures.get(name, f"def {name}(...)")
+        else:
+            kind = "property" if member.kind == "property" else "attribute"
+            line = f"{name}: {kind}{f' -> {member.type_text}' if member.type_text else ''}"
+        if defined_in.qualname != qualname:
+            line += f"  (from {defined_in.name})"
+        rows.append((name in used, line))
+    ordered = [line for flag, line in rows if flag] + [line for flag, line in rows if not flag]
+    head = f"class {entry.name}({', '.join(entry.bases)})  # {len(rows)} public members"
+    shown = ordered[:limit]
+    more = [f"... and {len(ordered) - limit} more"] if len(ordered) > limit else []
+    return "\n".join([head, *(f"    {line}" for line in shown), *more])
 
 
 def _code(code: str) -> str:

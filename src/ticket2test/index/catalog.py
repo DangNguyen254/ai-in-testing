@@ -97,6 +97,7 @@ class SymbolCatalog(BaseModel):
     markers: dict[str, list[str]] = Field(default_factory=dict)  # marker -> values seen
     chain_roots: list[str] = Field(default_factory=list)
     chains: list[ChainEntry] = Field(default_factory=list)
+    chains_truncated: bool = False  # the chain list hit index.max_chain_entries
     page_objects: list[str] = Field(default_factory=list)  # class qualnames
 
     # --- lookups -------------------------------------------------------------------------
@@ -161,6 +162,27 @@ class SymbolCatalog(BaseModel):
             for name, member in entry.members.items():
                 found.setdefault(name, (entry, member))
         return found
+
+    def member_types(self, qualname: str) -> dict[str, ClassEntry]:
+        """Property/attribute members of the class (and its bases) whose type is a repo class."""
+        owner = self.classes.get(qualname)
+        if owner is None:
+            return {}
+        found: dict[str, ClassEntry] = {}
+        for name, (defined_in, member) in self.members_of(qualname).items():
+            if member.kind in ("property", "attribute"):
+                target = self._member_type(defined_in, member, owner)
+                if target is not None:
+                    found[name] = target
+        return found
+
+    def referrers(self, qualname: str) -> list[str]:
+        """Classes with a property/attribute whose type is this class (its parent pages)."""
+        return sorted(
+            c.qualname
+            for c in self.classes.values()
+            if any(t.qualname == qualname for t in self.member_types(c.qualname).values())
+        )
 
     def resolve_chain(self, start: str, steps: list[str]) -> ChainResolution:
         """Resolve ``steps`` (e.g. ["nav", "inventory", "items", "search"]) from class ``start``.
@@ -268,7 +290,9 @@ def build_catalog(
     for info in files:
         _add_file(catalog, info)
     catalog.markers = {k: sorted(v) for k, v in sorted((markers or {}).items())}
-    catalog.chains = _enumerate_chains(catalog, max_chain_depth, max_chain_entries)
+    catalog.chains, catalog.chains_truncated = _enumerate_chains(
+        catalog, max_chain_depth, max_chain_entries
+    )
     catalog.page_objects = _page_objects(catalog)
     return catalog
 
@@ -362,8 +386,12 @@ def _add_file(catalog: SymbolCatalog, info: FileInfo) -> None:
         )
 
 
-def _enumerate_chains(catalog: SymbolCatalog, max_depth: int, max_entries: int) -> list[ChainEntry]:
-    """Breadth-first over property/attribute steps from each root, bounded by depth and size."""
+def _enumerate_chains(
+    catalog: SymbolCatalog, max_depth: int, max_entries: int
+) -> tuple[list[ChainEntry], bool]:
+    """Breadth-first over property/attribute steps from each root, bounded by depth and size.
+    Also says whether the size bound cut the list (nothing else depends on it being whole:
+    page objects and validation follow the class types directly)."""
     entries: dict[str, ChainEntry] = {}
     queue: deque[tuple[str, str, int, frozenset[str]]] = deque()
     for root in catalog.chain_roots:
@@ -408,12 +436,39 @@ def _enumerate_chains(catalog: SymbolCatalog, max_depth: int, max_entries: int) 
                 queue.append((target.qualname, chain, depth + 1, path_types | {target.qualname}))
             if len(entries) >= max_entries:
                 break
-    return list(entries.values())
+    return list(entries.values()), bool(queue) or len(entries) >= max_entries
+
+
+def reachable_types(catalog: SymbolCatalog) -> set[str]:
+    """Classes reached from the chain roots through property/attribute types, however deep or
+    many (bounded by the number of classes, each visited once)."""
+    reached: set[str] = set()
+    queue: deque[str] = deque()
+    for root in catalog.chain_roots:
+        for owner in (c for c in catalog.classes.values() if root in c.members):
+            found = catalog.member(owner.qualname, root)
+            if found is None:
+                continue
+            target = catalog._member_type(found[0], found[1], owner)
+            if target is not None and target.qualname not in reached:
+                reached.add(target.qualname)
+                queue.append(target.qualname)
+    while queue:
+        owner_q = queue.popleft()
+        owner = catalog.classes[owner_q]
+        for _, (defined_in, member) in catalog.members_of(owner_q).items():
+            if member.kind not in ("property", "attribute"):
+                continue
+            target = catalog._member_type(defined_in, member, owner)
+            if target is not None and target.qualname not in reached:
+                reached.add(target.qualname)
+                queue.append(target.qualname)
+    return reached
 
 
 def _page_objects(catalog: SymbolCatalog) -> list[str]:
-    """Classes reachable through chains below a root, plus their in-repo base classes."""
-    reached = {c.type for c in catalog.chains if c.type is not None}
+    """Classes reachable from a root through property types, plus their in-repo base classes."""
+    reached = reachable_types(catalog)
     found: set[str] = set()
     for qualname in reached:
         found.update(entry.qualname for entry in catalog.mro(qualname))

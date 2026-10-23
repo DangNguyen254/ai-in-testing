@@ -73,7 +73,10 @@ def _generate_reusing(
     kind: ReuseKind = decision.kind if mode == "auto" else mode
     outcome = ReuseOutcome(kind=kind, decision=decision)
     if choice.domain is not None and settings.guides.use_in_generation:
-        text, outcome.guide = area_guide_text(choice.domain.name, repo_root, index, settings)
+        files = [f for f in (decision.target_file, (decision.target or "").split("::")[0]) if f]
+        text, outcome.guide = area_guide_text(
+            choice.domain.name, repo_root, index, settings, files=files
+        )
         if text:
             conventions = f"{conventions}\n\n{text}" if conventions else text
     if mode != "auto" and mode != decision.kind:

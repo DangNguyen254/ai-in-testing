@@ -134,7 +134,9 @@ class IndexSettings(_Section):
     function_data_files: bool = True
     chain_roots: list[str] = Field(default_factory=lambda: ["nav"])
     max_chain_depth: int = Field(default=4, ge=1)
-    max_chain_entries: int = Field(default=5000, ge=1)
+    # The chain list (for search, guides and context); page objects and validation don't
+    # depend on it being complete. A truncated list is reported by `index`.
+    max_chain_entries: int = Field(default=50000, ge=1)
     name_boost: int = Field(default=3, ge=1)  # symbol name repeats in the search text
     save_attempts: int = Field(default=5, ge=1)  # index file rename retries (Windows locks)
     # Class decorators that generate test-class variants (stand-in: ``variants(attr, *values)``).
@@ -508,6 +510,9 @@ class MapSettings(_Section):
     max_items: int = Field(default=15, ge=1)  # per list in an area summary
     max_examples: int = Field(default=6, ge=1)  # typical tests per area, one per shape
     max_coverage_listed: int = Field(default=200, ge=0)  # in coverage.md; map.json has all
+    # An area with more tests is split into one sub-area per module (<area>/<module>): real
+    # suites have areas holding half of all tests, too much for one guide.
+    max_tests_per_area: int = Field(default=300, ge=1)
 
 
 class Price(_Section):
@@ -522,6 +527,7 @@ class GuideSettings(_Section):
     prompt: str = "guide_v1"
     max_budget_usd: float = Field(default=50.0, ge=0)  # hard ceiling; --budget can't exceed it
     max_input_tokens: int = Field(default=20000, ge=1000)  # per area: summary + picked code
+    max_piece_tokens: int = Field(default=3000, ge=200)  # a larger page object: outline only
     max_output_tokens: int = Field(default=4000, ge=500)  # asked for; not every provider obeys
     # Worst-case planning per call, raised by what real calls use (calibration.json next to the
     # guides). Defaults from the first run through the Claude CLI (2026-10-23): it adds up to

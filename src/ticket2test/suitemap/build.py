@@ -84,7 +84,20 @@ def _owners(index: IndexData, settings: Settings, tests: list[Chunk]) -> dict[st
             folder = str(PurePosixPath(test.file_path).parent)
             domain = Domain(folder if folder != "." else "root", (folder,))
         owners[test.id] = domain
+    sizes: dict[str, int] = {}
+    for domain in owners.values():
+        sizes[domain.name] = sizes.get(domain.name, 0) + 1
+    limit = settings.map.max_tests_per_area
+    for test in tests:  # a very large area: one sub-area per module, so a guide stays specific
+        domain = owners[test.id]
+        if sizes[domain.name] > limit:
+            owners[test.id] = Domain(sub_area(domain.name, test.file_path), (test.file_path,))
     return owners
+
+
+def sub_area(area: str, file_path: str) -> str:
+    """The sub-area name of a module inside a split area: ``<area>/<module stem>``."""
+    return f"{area}/{PurePosixPath(file_path).stem}"
 
 
 def _area(area: Domain, tests: list[Chunk], index: IndexData, settings: Settings) -> AreaSummary:
@@ -472,13 +485,9 @@ def _decorator_names(decorators: list[str]) -> set[str]:
 
 
 def _reached_by_chain(qualname: str, catalog: SymbolCatalog) -> bool:
-    """A chain step resolves to this class or to a subclass of it."""
-    for entry in catalog.chains:
-        if entry.type == qualname or (
-            entry.type and qualname in {b.qualname for b in catalog.mro(entry.type)}
-        ):
-            return True
-    return False
+    """The class is reached from a root through property types, or is a base of one that is
+    (page objects are exactly those; see index/catalog.py)."""
+    return qualname in set(catalog.page_objects)
 
 
 def imported_files(tests: list[Chunk], catalog: SymbolCatalog, index: IndexData) -> set[str]:

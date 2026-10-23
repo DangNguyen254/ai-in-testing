@@ -124,16 +124,23 @@ class IndexTools:
         return self._list(found) or f"no test references {short!r}"
 
     def _chain(self, prefix: str) -> str:
-        prefix = prefix.rstrip(".")
-        depth = prefix.count(".") + 1 if prefix else 0
-        rows = [
-            e
-            for e in self.retriever.catalog.chains
-            if e.chain.count(".") == depth and (not prefix or e.chain.startswith(prefix + "."))
-        ]
-        if not rows:
+        """Members one level below the chain, resolved from the catalog (not the chain list,
+        which a large suite can cut)."""
+        catalog = self.retriever.catalog
+        prefix = prefix.strip().rstrip(".")
+        resolution = catalog.resolve_chain_from_roots(prefix) if prefix else None
+        last = resolution.types[-1] if resolution and resolution.ok and resolution.types else None
+        if last is None or last not in catalog.classes:
             return f"no page-object members under {prefix!r}"
-        return "\n".join(f"{e.chain} ({e.kind}{' -> ' + e.type if e.type else ''})" for e in rows)
+        owner = catalog.classes[last]
+        rows = []
+        for name, (defined_in, member) in sorted(catalog.members_of(last).items()):
+            if name.startswith("_"):
+                continue
+            target = catalog._member_type(defined_in, member, owner)
+            arrow = f" -> {target.qualname}" if target else ""
+            rows.append(f"{prefix}.{name} ({member.kind}{arrow})")
+        return "\n".join(rows) or f"no page-object members under {prefix!r}"
 
     def _data(self, chunk_id: str) -> str:
         chunk = self._chunk(chunk_id)
