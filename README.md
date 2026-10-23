@@ -100,6 +100,19 @@ files whose content changed are parsed again (`--force` rebuilds everything). Te
 carry their decorators, markers, statically computed pytest ids, and matching JSON data entries;
 the symbol catalog includes page-object property chains such as `nav.inventory.items.search`.
 
+### Map a suite
+
+```bash
+uv run ticket2test map standin                       # code only, no LLM
+```
+
+Writes `output/map/<repo>/`: `overview.md` (areas, base classes, page areas, shared helpers,
+marker values), one `areas/<area>.md` per area (test classes with their decorators and setup
+options, test shapes, markers, page-object chains and actions, helpers, assertions, data keys
+with their role, expectations, placeholders, typical tests), `coverage.md` (test-side code that
+nothing references), and `map.json` with everything. Each area records the files it was built
+from with their hashes; a rerun reports which areas changed.
+
 For the public stand-in used in tests: `git clone --depth 1 --branch 0.28.1
 https://github.com/encode/httpx .scratch/repos/httpx` (tests that need it skip without it).
 

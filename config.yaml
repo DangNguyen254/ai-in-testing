@@ -234,6 +234,11 @@ security:
     min_chars: 1
     legend_prompt: masking_legend_v1
 
+map:                             # suite map: area summaries from the index (no LLM)
+  max_items: 15                  # per list in an area summary
+  max_examples: 6                # typical tests per area, one per shape
+  max_coverage_listed: 200       # in coverage.md; map.json has every gap
+
 paths:
   output_dir: output
   cache_dir: .t2t_cache

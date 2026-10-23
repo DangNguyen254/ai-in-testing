@@ -474,6 +474,14 @@ class SecuritySettings(_Section):
     private_terms: list[str] = Field(default_factory=list)
 
 
+class MapSettings(_Section):
+    """The suite map (suitemap/): area summaries built from the index by code."""
+
+    max_items: int = Field(default=15, ge=1)  # per list in an area summary
+    max_examples: int = Field(default=6, ge=1)  # typical tests per area, one per shape
+    max_coverage_listed: int = Field(default=200, ge=0)  # in coverage.md; map.json has all
+
+
 class PathSettings(_Section):
     output_dir: Path = Path("output")
     cache_dir: Path = Path(".t2t_cache")
@@ -508,6 +516,7 @@ class Settings(BaseSettings):
     repair: RepairSettings = RepairSettings()
     sandbox: SandboxSettings = SandboxSettings()
     security: SecuritySettings = SecuritySettings()
+    map: MapSettings = MapSettings()
     paths: PathSettings = PathSettings()
 
     @classmethod

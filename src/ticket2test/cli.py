@@ -206,6 +206,38 @@ def index(
         typer.echo(f"  ... and {len(stats.skipped) - 10} more")
 
 
+@app.command(name="map")
+def map_(
+    ctx: typer.Context,
+    repo_path: Annotated[Path, typer.Argument(help="Target repo to map (read-only).")],
+    out: Annotated[
+        Path | None,
+        typer.Option(help="Output directory (default: <output_dir>/map/<repo folder name>)."),
+    ] = None,
+) -> None:
+    """Build the suite map: per-area summaries from the index (code only, no LLM)."""
+    from ticket2test.index.indexer import update_index
+    from ticket2test.suitemap import build_map, load_map, write_map
+
+    state: AppState = ctx.obj
+    settings = state.settings
+    if not repo_path.is_dir():
+        typer.echo(f"Error: not a directory: {repo_path}", err=True)
+        raise typer.Exit(code=2)
+    index, _, _ = update_index(repo_path, settings)
+    folder = out or settings.paths.output_dir / "map" / _safe_name(repo_path.resolve().name)
+    suite_map = build_map(index, settings, previous=load_map(folder))
+    written = write_map(suite_map, folder, settings.map.max_coverage_listed)
+    o = suite_map.overview
+    changed = suite_map.changed_areas
+    typer.echo(
+        f"Mapped {repo_path}: {len(suite_map.areas)} area(s), {o.tests} tests, "
+        f"{o.data_entries} data entries, {len(suite_map.coverage)} unreferenced test-side item(s)"
+        + ("" if changed is None else f"; changed areas: {', '.join(changed) or 'none'}")
+        + f"\nWrote {len(written)} file(s) to {folder}"
+    )
+
+
 @app.command()
 def search(
     ctx: typer.Context,
