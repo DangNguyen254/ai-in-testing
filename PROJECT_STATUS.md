@@ -908,7 +908,7 @@ Read this first when resuming in a new session.
   4. **Dotted page paths in strings:** helpers that split a string on "." and call getattr (discovered, or `validation.path_string_helpers`) have their string argument resolved like a chain; a missing member is an invented name.
   5. **Scale:** page objects come from a type traversal from the roots, not the chain list, which is now capped at 50k and reported when cut (before: on a large suite, page objects past the cap would silently stop being page objects); gap siblings, suite-map reach and the investigator's chain tool use the type graph (`member_types`, `referrers`). Page objects over `guides.max_piece_tokens` go into guide material as an outline (members with types/signatures, the area's first). Areas over `map.max_tests_per_area` (300) split into per-module sub-areas; generation prefers the sub-area guide.
   6. **Legacy:** files Python 3 can't parse are left out of the index with a reason (tree-sitter had accepted them, so their tests could become templates) and listed in the suite map; marker values joined by `markers.value_separator` are checked part by part.
-  - **Open for the human:** does the real data loader merge the defaults row shallow (top-level keys) or deep (nested objects)? Default is shallow.
+  - **Resolved (human):** the real loader merges the defaults row shallowly, one top-level key at a time; nested objects are not merged. `data.defaults_merge: shallow` (the default) matches.
   - **Verified:** ruff, mypy strict (111 files), pytest 732 passed, 14 deselected.
 
 ## Global open questions (for the human)
