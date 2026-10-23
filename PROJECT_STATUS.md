@@ -877,6 +877,22 @@ Read this first when resuming in a new session.
   - **Budget bug:** the worst case missed the Claude CLI's own input per call (6k-23k tokens), the output cap isn't enforced by the CLI (Opus ~5.3k tokens against 4k; its thinking counts as output), and the budget was checked once per area while JSON retries made up to three calls. Now `BudgetGuard` (`guides/budget.py`) checks the worst case before every call, retries included; per-call overhead (`call_overhead_tokens` 25000) and output (`output_allowance_tokens` 8000) are raised by what real calls use and saved in `calibration.json` next to the guides (never lowered below the configured values).
   - **Corrected estimates:** Sonnet $0.97, Opus $1.94 worst case for the 7 areas.
   - **Verified:** ruff, mypy strict (106 files), pytest 697 passed, 14 deselected.
+- 2026-10-23: **Part C, measured: guides by Sonnet and Opus, used by Haiku.** Guides built from the stand-in copy without the 21 eval tests (no leakage); reports in `output/reports/partc/`, guides in `.scratch/guides-noeval-{sonnet,opus}/`.
+  - **Guides (second attempt, after the fixes):** 7/7 areas each, all first try. Sonnet $0.31 (worst case $0.97), $0.03-0.07 and 15-32 s per area; Opus $0.70 (worst case $1.94), $0.06-0.15 and 20-37 s per area. Real calls used 6k-11k input tokens (a few thousand of CLI overhead, not the 25k planned) and 1.6k-3.6k output tokens. Part C spend in total: $3.73 (failed first attempt) + $1.01 (guides) + $0.47 (three eval runs) = $5.21 (the Claude CLI's API-price estimates).
+  - **Check, calibrated on this run:** it first flagged nested data keys, request methods, decorator values and `unittest` assertions (none invented) and removed `self.check.assertEqual` three times; it now accepts names the repo's code uses, data keys at any depth and literal values from data and decorators. Across the 14 guides one mention stays flagged, correctly: `delete_test`, a vague name Sonnet made up. A guide noted a class helper missing from its material: the scaffold now carries the class's own non-test methods (for guides built from now on). The raw model output is stored so the check can be re-run.
+  - **Haiku 5.5 generation on the 21 run-3 tickets** (leave-one-out, the same cached Haiku drafts in all three runs, so only the guide differs; one run each):
+
+  | | No guides | Sonnet guides | Opus guides |
+  |---|---|---|---|
+  | Validators pass, first attempt / after repair | 0.952 / 1.000 | **1.000** / 1.000 | **1.000** / 1.000 |
+  | Invented names, first attempt | 2 | **0** | **0** |
+  | Repair rounds | 1 | 0 | 0 |
+  | Collect in the sandbox | 21/21 | 21/21 | 21/21 |
+  | Reviewer warnings (docstring-claim heuristic only) | 4 | 12 | 7 |
+  | Placement method / module | 17 / 4 | 17 / 4 | 17 / 4 |
+  | LLM calls / cost | 44 / $0.16 | 42 / $0.15 | 42 / $0.16 |
+
+  - **Reading:** the gain is one ticket (STND-112, which needed a repair without a guide), on a baseline that was already high, from one run each: a direction, not proof. Invented names went to 0 with either guide. Per-ticket cost didn't change (the guide adds ~1.5k context tokens; Haiku is cheap), so a guide costs its one-time build only. The extra warnings come from longer numbered docstrings in guided tests (the guide's steps are restated and the claims heuristic can't match all of them), not from wrong checks. Opus guides did not beat Sonnet guides here, at twice the price; Sonnet stays the default.
 
 ## Global open questions (for the human)
 - Which LLM provider/endpoint will the company environment require?
