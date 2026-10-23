@@ -29,7 +29,19 @@ from ticket2test.normalize import normalize
 
 STANDIN = REPO_ROOT / "standin"
 MANIFEST = json.loads((STANDIN / "manifest.json").read_text(encoding="utf-8"))
-TEST_FILES = sorted((STANDIN / "tests").rglob("test_*.py"))
+
+
+def _parses(path: Path) -> bool:
+    try:
+        ast.parse(path.read_text(encoding="utf-8"))
+    except SyntaxError:
+        return False
+    return True
+
+
+# Python 2 leftovers (v6) are kept out of collection by their conftest.py; checks skip them too.
+LEGACY_FILES = sorted(p for p in STANDIN.rglob("*.py") if not _parses(p))
+TEST_FILES = sorted(p for p in (STANDIN / "tests").rglob("test_*.py") if p not in LEGACY_FILES)
 ID = "test_id"
 SEED = {"settings", "policy", "tenants", "site"}
 EXPECTATIONS = {"targets": "self.verify_targets", "interactions": "self.verify_interactions"}
@@ -88,9 +100,27 @@ def on_prem_items() -> list[dict[str, Any]]:
     return _collect("on_prem")
 
 
+def _rows(path: Path) -> list[dict[str, Any]]:
+    """A data file's entries as the stand-in's loader sees them: a first row without an id is
+    the defaults row, merged shallowly (one top-level key at a time) into every entry."""
+    if not path.is_file():
+        return []
+    rows: list[dict[str, Any]] = json.loads(path.read_text(encoding="utf-8"))
+    defaults = rows[0] if rows and ID not in rows[0] else {}
+    return [{**defaults, **row} for row in (rows[1:] if defaults else rows)]
+
+
 def _entries(test_file: str | Path) -> list[dict[str, Any]]:
-    path = STANDIN / Path(test_file).with_suffix(".json")
-    entries: list[dict[str, Any]] = json.loads(path.read_text(encoding="utf-8"))
+    """The module's entries, plus those of its tests that keep a data file of their own."""
+    module = STANDIN / Path(test_file)
+    entries = _rows(module.with_suffix(".json"))
+    functions = {
+        n.name
+        for n in ast.walk(ast.parse(module.read_text(encoding="utf-8")))
+        if isinstance(n, ast.FunctionDef) and n.name.startswith("test_")
+    }
+    for name in sorted(functions):
+        entries += _rows(module.with_name(f"{name}.json"))
     return entries
 
 
@@ -137,7 +167,7 @@ def _base_classes() -> Iterator[tuple[Path, ast.ClassDef]]:
     """Shared bases in the test folders (not collected themselves): they define tests and
     helpers that test classes inherit."""
     for path in sorted((STANDIN / "tests").rglob("*.py")):
-        if path in TEST_FILES or path.name == "conftest.py":
+        if path in TEST_FILES or path in LEGACY_FILES or path.name == "conftest.py":
             continue
         for node in ast.parse(path.read_text(encoding="utf-8")).body:
             if isinstance(node, ast.ClassDef):
@@ -230,8 +260,8 @@ def _uses_entry(function: ast.FunctionDef) -> bool:
 
 
 def test_collects_without_browser_or_network(items: list[dict[str, Any]]) -> None:
-    assert len(items) >= 60
-    assert len({i["file"] for i in items}) == 13
+    assert len(items) >= 100
+    assert len({i["file"] for i in items}) == 17
 
 
 def test_entry_ids_are_collected_test_ids(items: list[dict[str, Any]]) -> None:
@@ -255,7 +285,14 @@ def test_tests_that_use_their_entry_have_one_per_variant(items: list[dict[str, A
             assert variants[name] <= entries, (name, variants[name] - entries)
         elif not variants[name] & entries:
             without_entry.add(name)
-    assert without_entry == {"test_rules_list_empty", "test_profiles_list_empty"}
+    widgets = {n for n in without_entry if n.startswith("test_exceptions_widget_")}
+    assert len(widgets) == 12  # v6: one-element checks, no data
+    assert without_entry - widgets == {
+        "test_rules_list_empty",
+        "test_profiles_list_empty",
+        "test_exceptions_list_empty",
+        "test_exceptions_add_missing_target",
+    }
 
 
 def test_every_entry_key_is_read_or_consumed() -> None:
@@ -308,7 +345,9 @@ def test_seed_holds_only_settings_policy_tenants_and_site() -> None:
     for entry_id, entry in _all_entries().items():
         settings = entry.get("settings", {})
         assert set(settings) <= {"capabilities", "roles", "api_tokens", "agent"}, entry_id
-        assert set(entry.get("policy", {})) <= {"rules", "profiles", *FILE_POLICY}, entry_id
+        assert set(entry.get("policy", {})) <= {"rules", "profiles", "exceptions", *FILE_POLICY}, (
+            entry_id
+        )
         assert set(entry.get("site", {})) <= {"files", "pages"}, entry_id
 
 
@@ -340,15 +379,17 @@ def test_all_tests_carry_the_four_markers_with_known_values(items: list[dict[str
 def test_classes_use_the_base_class_scaffold_and_setup() -> None:
     styles = Counter()
     shared = {cls.name for _path, cls in _base_classes()}
-    for _path, cls in _base_classes():
-        assert [_dotted(b) for b in cls.bases] == ["BaseTest"], cls.name
+    for _path, cls in _base_classes():  # v6: area bases stack (2-4 levels below the root)
+        assert len(cls.bases) == 1 and _dotted(cls.bases[0]) in {"BaseTest", *shared}, cls.name
     for _path, cls in _test_classes():
         bases = [_dotted(b) for b in cls.bases]
-        assert len(bases) == 1 and bases[0] in {"BaseTest", *shared}, cls.name
-        styles["shared base" if bases[0] in shared else "BaseTest"] += 1
+        assert len(bases) == 1 and bases[0] in {"BaseTest", "LegacyBrowserBase", *shared}
+        styles["legacy" if bases[0] == "LegacyBrowserBase" else
+               "shared base" if bases[0] in shared else "BaseTest"] += 1  # fmt: skip
         decorators = [_dotted(d) for d in cls.decorator_list]
         assert decorators[-2:] == ["pytest.mark.project", "pytest.mark.component"], cls.name
-        assert "environments" in decorators, cls.name
+        # Deployment gating: the environments decorator, or (legacy) a skipif condition.
+        assert "environments" in decorators or "pytest.mark.skipif" in decorators, cls.name
         methods = {n.name: n for n in cls.body if isinstance(n, ast.FunctionDef)}
         if "setup" in methods:
             assert "self.base_setup" in _calls(methods["setup"]), cls.name
@@ -360,6 +401,7 @@ def test_classes_use_the_base_class_scaffold_and_setup() -> None:
     assert styles["setup"] >= 3 and styles["setup_method"] >= 2 and styles["teardown"] >= 1
     assert styles["data_driven"] >= 3 and styles["params argument"] >= 1
     assert styles["shared base"] >= 4  # file-policy classes reuse DownloadChecks
+    assert styles["legacy"] >= 2  # v6: unittest-style classes (setUp in LegacyBrowserBase)
 
 
 def test_base_setup_options_vary_by_class() -> None:
@@ -403,10 +445,14 @@ def test_save_flows_use_the_shared_top_bar() -> None:
 
 
 def test_checks_use_the_unittest_assertion_object() -> None:
-    for path, _cls, function in _test_functions():
+    for path, cls, function in _test_functions():
         assert not any(isinstance(n, ast.Assert) for n in ast.walk(function)), function.name
         calls = _calls(function)
-        checks = {c for c in calls if c.startswith("self.check.assert")}
+        prefix = (  # v6: unittest-style classes assert on self
+            "self.assert" if [_dotted(b) for b in cls.bases] == ["LegacyBrowserBase"]
+            else "self.check.assert"
+        )  # fmt: skip
+        checks = {c for c in calls if c.startswith(prefix)}
         assert checks or calls & set(EXPECTATIONS.values()), (path.name, function.name)
     tc_methods = {
         c.removeprefix("self.check.")
@@ -533,6 +579,8 @@ def test_python_style_is_clean_per_the_standin_ruff_config() -> None:
 
 def test_python_has_no_type_annotations_and_uses_lf() -> None:
     for path in STANDIN.rglob("*.py"):
+        if path in LEGACY_FILES:
+            continue
         raw = path.read_bytes()
         assert b"\r\n" not in raw and raw.endswith(b"\n"), path
         for node in ast.walk(ast.parse(raw)):
@@ -573,6 +621,10 @@ def test_deployment_type_skips(
     assert skipped(on_prem_items) == {
         "test_tenants_secondary_rules_add",
         "test_tenants_secondary_rules_list",
+        # v6: cloud-only through a skipif condition on the class
+        "test_exceptions_legacy_list_names",
+        "test_exceptions_legacy_list_targets",
+        "test_exceptions_legacy_editor_scope",
     }
 
 
@@ -696,6 +748,38 @@ def _effects() -> dict[str, Effect]:
         "test_profiles_edit_reset": lambda s, e, n, t: (
             s.update_profile(t, n, {"level": "high"}),
             s.discard(t),
+        ),
+        # v6: exceptions
+        "test_exceptions_add_basic[all]": then_publish(
+            lambda s, e, n, t: s.add_exception(t, {"name": n, "target": e["target"]})
+        ),
+        "test_exceptions_add_basic[group]": then_publish(
+            lambda s, e, n, t: s.add_exception(
+                t, {"name": n, "target": e["target"], "scope": "group"}
+            )
+        ),
+        "test_exceptions_add_with_expiry": then_publish(
+            lambda s, e, n, t: s.add_exception(
+                t, {"name": n, "target": e["target"], "expires": e["expires"]}
+            )
+        ),
+        "test_exceptions_edit_target": then_publish(
+            lambda s, e, n, t: s.update_exception(t, n, {"target": e["new_target"]})
+        ),
+        "test_exceptions_edit_disable": then_publish(
+            lambda s, e, n, t: s.update_exception(t, n, {"enabled": False})
+        ),
+        "test_exceptions_delete_several": then_publish(
+            lambda s, e, n, t: s.delete_exceptions(t, e["delete_names"])
+        ),
+        "test_exceptions_rules_same_name_published": then_publish(
+            lambda s, e, n, t: (
+                s.add_rule(t, {"name": n}),
+                s.add_exception(t, {"name": n, "target": e["target"]}),
+            )
+        ),
+        "test_exceptions_expiry_edit": then_publish(
+            lambda s, e, n, t: s.update_exception(t, n, {"expires": e["new_expires"]})
         ),
         "test_settings_capabilities_enable_bulk": lambda s, e, n, t: s.update_capabilities(
             t, {"bulk_delete": True}

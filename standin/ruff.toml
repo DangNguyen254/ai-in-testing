@@ -3,6 +3,8 @@
 line-length = 100
 indent-width = 3
 target-version = "py311"
+# Python 2 leftovers can't be parsed; they are not collected either (see their conftest.py).
+extend-exclude = ["tests/exceptions/legacy/test_exceptions_old.py"]
 
 [format]
 line-ending = "lf"

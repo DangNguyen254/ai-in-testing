@@ -1,0 +1,13 @@
+[
+   {
+      "test_id":"test_exceptions_expiry_never",
+      "policy":{
+         "exceptions":[
+            {
+               "name":"{test_id:24}",
+               "target":"docs.example.com"
+            }
+         ]
+      }
+   }
+]

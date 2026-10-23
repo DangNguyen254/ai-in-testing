@@ -262,33 +262,44 @@ def check_path_strings(s: Subject) -> Iterator[Finding]:
                 )
 
 
-_HOOK_ROLES = {
-    "setup": ("setup", "setup_method", "setUp", "setup_class", "setUpClass"),
-    "teardown": ("teardown", "teardown_method", "tearDown", "teardown_class", "tearDownClass"),
-}
+_UNITTEST_HOOKS = {"setUp": "setup", "tearDown": "teardown", "setUpClass": "setup",
+                   "tearDownClass": "teardown"}  # fmt: skip
+_FRAMEWORK_HOOKS = ("setup", "teardown")
 
 
 def check_hooks(s: Subject) -> Iterator[Finding]:
-    """A setup/teardown hook whose name the class's bases don't use, while they use another
-    name for the same role: overriding the wrong name does nothing, or skips the base's
-    setup (real suites mix setup, setup_method and setUp)."""
+    """A setup/teardown hook nothing will call, so the class's setup silently doesn't run
+    (real suites mix setup, setup_method and setUp). pytest always calls setup_method /
+    setup_class; unittest's setUp runs only in a ``unittest.TestCase`` class; a plain
+    ``setup`` runs only when something up the lineage calls it (a base defines it)."""
     if s.resolver is None or s.tree is None:
         return
+    v = s.settings.validation
     for cls in test_classes(s.tree, s.settings.index.test_class_prefix):
-        own = {n.name for n in cls.body if isinstance(n, ast.FunctionDef)}
         bases = s.resolver.repo_bases(cls)
-        for role, names in _HOOK_ROLES.items():
-            used = sorted({n for b in bases for n in b.members if n in names})
-            for name in sorted(own & set(names)):
-                if used and name not in used:
-                    yield _f(
-                        "hooks",
-                        f"{cls.name}.{name}: the base classes use {', '.join(used)} for "
-                        f"{role}, not {name}; define {used[0]} instead so the base's {role} runs",
-                        "warning",
-                        line=next(n.lineno for n in cls.body
-                                  if isinstance(n, ast.FunctionDef) and n.name == name),
-                    )  # fmt: skip
+        defined = {n for b in bases for n in b.members}
+        testcase = _is_testcase(cls, bases, v.testcase_bases)
+        for node in cls.body:
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            name, role = node.name, _UNITTEST_HOOKS.get(node.name)
+            if role and not testcase:
+                instead = role if role in defined else f"{role}_method"
+                yield _f(
+                    "hooks",
+                    f"{cls.name}.{name} runs only in a unittest.TestCase class, and this class "
+                    f"isn't one: define {instead} instead",
+                    "warning",
+                    line=node.lineno,
+                )
+            elif name in _FRAMEWORK_HOOKS and name not in defined:
+                yield _f(
+                    "hooks",
+                    f"{cls.name}.{name}: nothing up the class's lineage calls {name}; "
+                    f"define {name}_method instead (pytest calls it)",
+                    "warning",
+                    line=node.lineno,
+                )
 
 
 def _mro_by_name(catalog: SymbolCatalog, name: str) -> list[ClassEntry]:

@@ -3,9 +3,10 @@
 Each tenant has:
 - ``settings``: capabilities (on/off gates, and ``browser_limit``: how many agent browser
   sessions the tenant may have open at once), user roles, API-token state;
-- a policy (rules, profiles, and file-policy sections) in three layers: the **working copy**
-  (object editors write here; "unsaved changes"), the **saved draft** (top-bar save), and the
-  **published revisions** (top-bar publish; ``rev_id`` is the latest revision number);
+- a policy (rules, profiles, exceptions, and file-policy sections) in three layers: the
+  **working copy** (object editors write here; "unsaved changes"), the **saved draft** (top-bar
+  save), and the **published revisions** (top-bar publish; ``rev_id`` is the latest revision
+  number);
 - a download log, the browsing agent's tasks, and its open browser sessions (enforcement
   uses the latest *published* policy, never unsaved edits).
 
@@ -25,13 +26,15 @@ ROLES = ("viewer", "editor", "admin")
 DEFAULT_CAPABILITIES = {
    "rules": True,
    "profiles": True,
+   "exceptions": True,
    "bulk_delete": False,
    "import": True,
    "browser_limit": 3,  # agent browser sessions open at once, per tenant
 }
 NUMERIC_CAPABILITIES = ("browser_limit",)
 BROWSER_LIMIT_MESSAGE = "Browser limit reached"
-EMPTY_POLICY = {"rules": [], "profiles": []}
+EMPTY_POLICY = {"rules": [], "profiles": [], "exceptions": []}
+SCOPES = ("all", "group")
 PAGE_SIZE = 5
 NAME_MAX_LENGTH = 32
 
@@ -124,6 +127,7 @@ class Store:
             policy.update(copy.deepcopy(block["policy"]))
             policy["rules"] = [_rule(r) for r in policy["rules"]]
             policy["profiles"] = [_profile(p) for p in policy["profiles"]]
+            policy["exceptions"] = [_exception(e) for e in policy["exceptions"]]
             tenant.draft = policy
             tenant.working = None
             tenant.revisions.append(copy.deepcopy(policy))
@@ -211,6 +215,55 @@ class Store:
    def search_profiles(self, tenant_id, text=""):
       needle = text.strip().lower()
       return [p for p in self.tenant(tenant_id).view()["profiles"] if needle in p["name"].lower()]
+
+   # --- exceptions (hosts a rule doesn't apply to) ---------------------------------------
+
+   def add_exception(self, tenant_id, exception):
+      tenant = self._editable(tenant_id, "exceptions")
+      exception = _exception(exception)
+      if not exception["name"].strip():
+         raise ValidationError("Name is required")
+      if not exception["target"].strip():
+         raise ValidationError("Target is required")
+      if any(e["name"] == exception["name"] for e in tenant.view()["exceptions"]):
+         raise ValidationError(f"An exception named '{exception['name']}' already exists")
+      tenant.edit()["exceptions"].append(exception)
+      return exception
+
+   def update_exception(self, tenant_id, name, changes):
+      tenant = self._editable(tenant_id, "exceptions")
+      if "scope" in changes and changes["scope"] not in SCOPES:
+         raise ValidationError(f"Unknown scope '{changes['scope']}'")
+      exception = _find(tenant.edit()["exceptions"], name, "exception")
+      for key in ("target", "scope", "enabled", "expires"):
+         if key in changes:
+            exception[key] = changes[key]
+      if not str(exception["target"]).strip():
+         raise ValidationError("Target is required")
+      return exception
+
+   def delete_exceptions(self, tenant_id, names):
+      tenant = self._editable(tenant_id, "exceptions")
+      if len(names) > 1 and not tenant.settings["capabilities"]["bulk_delete"]:
+         raise ValidationError("Deleting several exceptions at once is not enabled")
+      exceptions = tenant.edit()["exceptions"]
+      for name in names:
+         exceptions.remove(_find(exceptions, name, "exception"))
+
+   def list_exceptions(self, tenant_id, text="", scope=""):
+      """Exceptions matching the search text (name or target) and scope, by name, plus the
+      total."""
+      needle = text.strip().lower()
+      matching = sorted(
+         (
+            e
+            for e in self.tenant(tenant_id).view()["exceptions"]
+            if (needle in e["name"].lower() or needle in e["target"].lower())
+            and scope in ("", e["scope"])
+         ),
+         key=lambda e: (e["name"].lower(), e["name"]),
+      )
+      return matching, len(matching)
 
    # --- top bar --------------------------------------------------------------------------
 
@@ -389,6 +442,19 @@ def _profile(profile):
       "name": _name(profile),
       "level": level,
       "description": str(profile.get("description", "")),
+   }
+
+
+def _exception(exception):
+   scope = exception.get("scope", "all")
+   if scope not in SCOPES:
+      raise ValidationError(f"Unknown scope '{scope}'")
+   return {
+      "name": _name(exception),
+      "target": str(exception.get("target", "")),
+      "scope": scope,
+      "enabled": bool(exception.get("enabled", True)),
+      "expires": str(exception.get("expires", "")),
    }
 
 

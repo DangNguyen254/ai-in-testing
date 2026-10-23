@@ -183,6 +183,90 @@
     },
     "tests/settings/test_settings.py::TestSettingsCapabilities::test_settings_capabilities_browser_limit": {
       "kind": "ui"
+    },
+    "tests/exceptions/test_exceptions.py::TestExceptions::test_exceptions_add_basic": {
+      "kind": "ui"
+    },
+    "tests/exceptions/test_exceptions.py::TestExceptions::test_exceptions_add_with_expiry": {
+      "kind": "ui"
+    },
+    "tests/exceptions/test_exceptions.py::TestExceptions::test_exceptions_add_missing_target": {
+      "kind": "ui"
+    },
+    "tests/exceptions/test_exceptions.py::TestExceptions::test_exceptions_edit_target": {
+      "kind": "ui"
+    },
+    "tests/exceptions/test_exceptions.py::TestExceptions::test_exceptions_edit_disable": {
+      "kind": "ui"
+    },
+    "tests/exceptions/test_exceptions.py::TestExceptions::test_exceptions_delete_several": {
+      "kind": "ui"
+    },
+    "tests/exceptions/test_exceptions.py::TestExceptions::test_exceptions_list_search": {
+      "kind": "ui"
+    },
+    "tests/exceptions/test_exceptions.py::TestExceptions::test_exceptions_list_scope_filter": {
+      "kind": "ui"
+    },
+    "tests/exceptions/test_exceptions.py::TestExceptions::test_exceptions_list_empty": {
+      "kind": "ui"
+    },
+    "tests/exceptions/test_exceptions.py::TestExceptionsRules::test_exceptions_rules_same_name_published": {
+      "kind": "ui"
+    },
+    "tests/exceptions/test_exceptions_expiry.py::TestExceptionsExpiry::test_exceptions_expiry_shown": {
+      "kind": "ui"
+    },
+    "tests/exceptions/test_exceptions_expiry.py::TestExceptionsExpiry::test_exceptions_expiry_never": {
+      "kind": "ui"
+    },
+    "tests/exceptions/test_exceptions_expiry.py::TestExceptionsExpiry::test_exceptions_expiry_edit": {
+      "kind": "ui"
+    },
+    "tests/exceptions/test_exceptions_legacy.py::TestExceptionsLegacyList::test_exceptions_legacy_list_names": {
+      "kind": "ui"
+    },
+    "tests/exceptions/test_exceptions_legacy.py::TestExceptionsLegacyList::test_exceptions_legacy_list_targets": {
+      "kind": "ui"
+    },
+    "tests/exceptions/test_exceptions_legacy.py::TestExceptionsLegacyEditor::test_exceptions_legacy_editor_scope": {
+      "kind": "ui"
+    },
+    "tests/exceptions/test_exceptions_widgets.py::TestExceptionsWidgets::test_exceptions_widget_help_text": {
+      "kind": "ui"
+    },
+    "tests/exceptions/test_exceptions_widgets.py::TestExceptionsWidgets::test_exceptions_widget_page_title": {
+      "kind": "ui"
+    },
+    "tests/exceptions/test_exceptions_widgets.py::TestExceptionsWidgets::test_exceptions_widget_add_link": {
+      "kind": "ui"
+    },
+    "tests/exceptions/test_exceptions_widgets.py::TestExceptionsWidgets::test_exceptions_widget_export_link": {
+      "kind": "ui"
+    },
+    "tests/exceptions/test_exceptions_widgets.py::TestExceptionsWidgets::test_exceptions_widget_delete_button": {
+      "kind": "ui"
+    },
+    "tests/exceptions/test_exceptions_widgets.py::TestExceptionsWidgets::test_exceptions_widget_name_header": {
+      "kind": "ui"
+    },
+    "tests/exceptions/test_exceptions_widgets.py::TestExceptionsWidgets::test_exceptions_widget_target_header": {
+      "kind": "ui"
+    },
+    "tests/exceptions/test_exceptions_widgets.py::TestExceptionsWidgets::test_exceptions_widget_scope_header": {
+      "kind": "ui"
+    },
+    "tests/exceptions/test_exceptions_widgets.py::TestExceptionsWidgets::test_exceptions_widget_enabled_header": {
+      "kind": "ui"
+    },
+    "tests/exceptions/test_exceptions_widgets.py::TestExceptionsWidgets::test_exceptions_widget_expires_header": {
+      "kind": "ui"
+    },
+    "tests/exceptions/test_exceptions_widgets.py::TestExceptionsWidgets::test_exceptions_widget_count_empty": {
+      "kind": "ui"
+    },
+    "tests/exceptions/test_exceptions_widgets.py::TestExceptionsWidgets::test_exceptions_widget_empty_message": {
+      "kind": "ui"
     }
   },
   "tickets": {

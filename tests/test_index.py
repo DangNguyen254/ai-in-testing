@@ -35,7 +35,9 @@ def _settings(tmp_path: Path) -> Settings:
 def standin_index(tmp_path_factory: pytest.TempPathFactory) -> IndexData:
     settings = _settings(tmp_path_factory.mktemp("standin"))
     data, stats, _ = update_index(STANDIN, settings)
-    assert stats.skipped == []
+    assert [s.path for s in stats.skipped] == [
+        "tests/exceptions/legacy/test_exceptions_old.py"
+    ]  # v6: a Python 2 leftover
     return data
 
 
@@ -279,7 +281,11 @@ def test_parse_errors_are_logged_and_skipped(
     with caplog.at_level(logging.WARNING):
         data, stats, _ = update_index(repo, settings)
     reasons = {s.path: s.reason for s in stats.skipped}
-    assert set(reasons) == {"framework/broken.py", "framework/latin1.py"}
+    assert set(reasons) == {
+        "framework/broken.py",
+        "framework/latin1.py",
+        "tests/exceptions/legacy/test_exceptions_old.py",
+    }
     assert "does not parse as Python 3" in reasons["framework/broken.py"]
     assert "UTF-8" in reasons["framework/latin1.py"]
     assert "broken.py" in caplog.text
@@ -352,7 +358,8 @@ def test_cli_index_and_search(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     runner = CliRunner()
     result = runner.invoke(app, ["index", str(STANDIN)])
     assert result.exit_code == 0, result.output
-    assert "42 files" in result.output and "page-object chains: 505" in result.output
+    assert "56 files" in result.output and "page-object chains: 613" in result.output
+    assert "1 skipped" in result.output  # v6: a Python 2 leftover
 
     result = runner.invoke(
         app, ["search", "delete rule", "--repo", str(STANDIN), "--kind", "test", "--top-k", "3"]

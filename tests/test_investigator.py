@@ -88,7 +88,8 @@ def test_tools_read_the_index(index: IndexData, tmp_path: Path) -> None:
     assert "nav.agent.console" in run("chain", "nav.agent")
     assert '"test_id": "test_rules_add_basic' in run("data", ADD_BASIC)
     assert ADD_BASIC in run("tests_using", "rules")
-    assert ADD_BASIC in run("callers", "publish") and "[function]" in run("callers", "publish")
+    callers = run("callers", "publish")
+    assert "[test]" in callers and "[function]" in callers and "more" in callers  # capped list
     assert run("open", "no/such.py::X").startswith("no chunk with id")
     assert "not a known identifier" in run("grep", "NoSuchThingAnywhere")
 

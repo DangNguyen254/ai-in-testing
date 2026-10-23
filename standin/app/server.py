@@ -5,7 +5,8 @@ page has the shared top bar (save / publish / reset). The session cookie holds t
 user, set by ``/login?tenant=...&user=...``.
 
 JSON API under ``/api`` (tests seed state and check backend results through it):
-- ``GET /api/policy/v1/{policy,rules,profiles}/<tenant>/<rev_id>``: a published revision
+- ``GET /api/policy/v1/{policy,rules,profiles,exceptions}/<tenant>/<rev_id>``: a published
+  revision
 - ``GET /api/policy/v1/revision/<tenant>``: the latest revision number
 - ``PUT /api/policy/v1/rules/<tenant>``: replace the rules and publish (admin role only)
 - ``GET /api/settings/v1/settings/<tenant>``; ``PUT /api/settings/v1/agent/<tenant>`` (admin)
@@ -44,6 +45,7 @@ from app.state import (
    LEVELS,
    NUMERIC_CAPABILITIES,
    PAGE_SIZE,
+   SCOPES,
    LimitReached,
    PermissionDenied,
    Store,
@@ -69,6 +71,8 @@ def page(tenant_id, title, body, here, toast="", error=""):
    links = [("rules", "/rules", "Rules")]
    if caps["profiles"]:
       links.append(("profiles", "/profiles", "Profiles"))
+   if caps["exceptions"]:
+      links.append(("exceptions", "/exceptions", "Exceptions"))
    links.append(("settings", "/settings/capabilities", "Settings"))
    links.append(("files", "/files", "Files"))
    links.append(("agent", "/agent", "Agent"))
@@ -232,6 +236,70 @@ def profile_editor(tenant_id, name=None, error=""):
    return page(tenant_id, f"Profile {name}" if name else "Add profile", body, action, error=error)
 
 
+def exceptions_page(tenant_id, query, toast):
+   text, scope = query.get("q", ""), query.get("scope", "")
+   shown, total = STORE.list_exceptions(tenant_id, text, scope)
+   rows = "".join(
+      f'<tr class="exception-row"><td><input type="checkbox" class="exception-select" '
+      f'name="selected" value="{escape(e["name"])}" form="exceptions-delete"></td>'
+      f'<td class="exception-name"><a href="/exceptions/{quote(e["name"])}/edit">'
+      f"{escape(e['name'])}</a></td>"
+      f'<td class="exception-target">{escape(e["target"])}</td>'
+      f'<td class="exception-scope">{e["scope"]}</td>'
+      f'<td class="exception-enabled">{"yes" if e["enabled"] else "no"}</td>'
+      f'<td class="exception-expires">{escape(e["expires"]) or "never"}</td></tr>'
+      for e in shown
+   )
+   empty = "" if shown else '<p id="exceptions-empty">No exceptions match.</p>'
+   body = (
+      '<p id="exceptions-help">Exceptions list hosts the rules do not apply to.</p>'
+      f'<form method="get"><input id="exception-search" name="q" value="{escape(text)}">'
+      f'<select id="exception-scope-filter" name="scope">'
+      f"{options(('', *SCOPES), scope)}</select>"
+      '<button id="exception-search-button">Search</button></form>'
+      f'<span id="exceptions-count">{total} exceptions</span>'
+      '<a id="add-exception" href="/exceptions/new">Add exception</a>'
+      '<a id="export-exceptions" href="/exceptions/export">Export</a>'
+      '<table id="exceptions-table"><tr id="exceptions-header"><th></th>'
+      '<th id="col-name">Name</th><th id="col-target">Target</th><th id="col-scope">Scope</th>'
+      '<th id="col-enabled">Enabled</th><th id="col-expires">Expires</th></tr>'
+      f"{rows}</table>{empty}"
+      '<form id="exceptions-delete" method="post" action="/exceptions/delete">'
+      '<button id="delete-exceptions">Delete selected</button></form>'
+   )
+   return page(tenant_id, "Exceptions", body, "/exceptions", toast)
+
+
+def exception_editor(tenant_id, name=None, error=""):
+   exception = (
+      next(e for e in STORE.tenant(tenant_id).view()["exceptions"] if e["name"] == name)
+      if name
+      else {"name": "", "target": "", "scope": "all", "enabled": True, "expires": ""}
+   )
+   action = f"/exceptions/{quote(name)}/edit" if name else "/exceptions/new"
+   readonly = " readonly" if name else ""
+   checked = " checked" if exception["enabled"] else ""
+   body = (
+      f'<form method="post" action="{action}">'
+      f'<input id="exception-name" name="name" value="{escape(exception["name"])}"{readonly}>'
+      f'<input id="exception-target" name="target" value="{escape(exception["target"])}">'
+      f'<select id="exception-scope" name="scope">{options(SCOPES, exception["scope"])}</select>'
+      f'<input type="checkbox" id="exception-enabled" name="enabled"{checked}>'
+      f'<input id="exception-expires" name="expires" value="{escape(exception["expires"])}">'
+      '<button id="exception-clear-expiry" name="clear_expiry" value="1">Clear expiry</button>'
+      '<button id="exception-save">Save exception</button></form>'
+   )
+   title = f"Exception {name}" if name else "Add exception"
+   return page(tenant_id, title, body, action, error=error)
+
+
+def exceptions_csv(tenant_id):
+   shown, _ = STORE.list_exceptions(tenant_id)
+   lines = ["name,target,scope,enabled,expires"]
+   lines += [f"{e['name']},{e['target']},{e['scope']},{e['enabled']},{e['expires']}" for e in shown]
+   return "\n".join(lines) + "\n"
+
+
 def capabilities_page(tenant_id, toast):
    caps = STORE.tenant(tenant_id).settings["capabilities"]
    boxes = "".join(
@@ -357,6 +425,14 @@ class Handler(BaseHTTPRequestHandler):
          self._html(profile_editor(tenant))
       elif len(parts) == 3 and parts[0] == "profiles" and parts[2] == "edit":
          self._html(profile_editor(tenant, parts[1]))
+      elif parts == ["exceptions"]:
+         self._html(exceptions_page(tenant, query, toast))
+      elif parts == ["exceptions", "new"]:
+         self._html(exception_editor(tenant))
+      elif parts == ["exceptions", "export"]:
+         self._send(HTTPStatus.OK, exceptions_csv(tenant), "text/csv")
+      elif len(parts) == 3 and parts[0] == "exceptions" and parts[2] == "edit":
+         self._html(exception_editor(tenant, parts[1]))
       elif parts == ["settings", "capabilities"]:
          self._html(capabilities_page(tenant, toast))
       elif parts == ["files"]:
@@ -497,6 +573,22 @@ class Handler(BaseHTTPRequestHandler):
       elif len(parts) == 3 and parts[0] == "profiles" and parts[2] == "delete":
          STORE.delete_profile(tenant, parts[1])
          self._redirect("/profiles", "Profile deleted")
+      elif parts == ["exceptions", "new"]:
+         fields = {k: form.get(k, "") for k in ("name", "target", "scope", "expires")}
+         STORE.add_exception(tenant, {**fields, "enabled": "enabled" in form})
+         self._redirect("/exceptions", "Exception added")
+      elif len(parts) == 3 and parts[0] == "exceptions" and parts[2] == "edit":
+         changes = {k: form.get(k, "") for k in ("target", "scope", "expires")}
+         changes["enabled"] = "enabled" in form
+         if form.get("clear_expiry"):
+            changes["expires"] = ""
+         STORE.update_exception(tenant, parts[1], changes)
+         self._redirect("/exceptions", "Exception saved")
+      elif parts == ["exceptions", "delete"]:
+         if not selected:
+            raise ValidationError("Select at least one exception")
+         STORE.delete_exceptions(tenant, selected)
+         self._redirect("/exceptions", "Exceptions deleted")
       elif parts == ["settings", "save"]:
          caps = STORE.tenant(tenant).settings["capabilities"]
          changes = {key: key in form for key in caps if key not in NUMERIC_CAPABILITIES}
@@ -553,6 +645,10 @@ class Handler(BaseHTTPRequestHandler):
          self._html(profile_editor(tenant, None, error), status)
       elif len(parts) == 3 and parts[0] == "profiles":
          self._html(profile_editor(tenant, parts[1], error), status)
+      elif parts == ["exceptions", "new"]:
+         self._html(exception_editor(tenant, None, error), status)
+      elif len(parts) == 3 and parts[0] == "exceptions" and parts[2] == "edit":
+         self._html(exception_editor(tenant, parts[1], error), status)
       else:
          self._html(page(tenant, "Error", "", form.get("next", "/rules"), error=error), status)
 
@@ -606,7 +702,13 @@ def route_api(method, parts, payload, user=""):
          return {"rev_id": STORE.tenant(tenant).rev_id}
       case "GET", ["policy", "v1", "policy", tenant, rev_id]:
          return STORE.published(tenant, int(rev_id))
-      case "GET", ["policy", "v1", ("rules" | "profiles") as section, tenant, rev_id]:
+      case "GET", [
+         "policy",
+         "v1",
+         ("rules" | "profiles" | "exceptions") as section,
+         tenant,
+         rev_id,
+      ]:
          return STORE.published(tenant, int(rev_id))[section]
       case "PUT", ["policy", "v1", "rules", tenant]:
          return {"rev_id": STORE.api_replace_rules(tenant, user, payload.get("rules", []))}

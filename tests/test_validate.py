@@ -153,9 +153,13 @@ def test_a_good_pair_has_no_findings(setup: Any) -> None:
 
 
 def test_the_hand_written_standin_suite_has_no_errors(setup: Any) -> None:
-    _, index, _ = setup
+    from ticket2test.validate.suite import _function_file_entries
+
+    settings, index, _ = setup
     for path in sorted((STANDIN / "tests").rglob("test_*.py")):
         relative = path.relative_to(STANDIN).as_posix()
+        if index.files[relative].info is None:
+            continue  # v6: a Python 2 leftover, left out of the index (and of collection)
         ids = [  # from the index: includes inherited tests
             t
             for c in index.chunks
@@ -165,10 +169,14 @@ def test_the_hand_written_standin_suite_has_no_errors(setup: Any) -> None:
         code = path.read_text(encoding="utf-8")
         data_path = path.with_suffix(".json")
         data_text = data_path.read_text(encoding="utf-8") if data_path.exists() else None
+        entries = json.loads(data_text) if data_text else []
+        extra = _function_file_entries(STANDIN, relative, index, settings)
+        if extra:  # tests with a data file of their own (v6)
+            entries, data_text = [*entries, *extra], None
         report = _validate(
             setup,
             code=code,
-            entries=json.loads(data_text) if data_text else [],
+            entries=entries,
             file_name=relative,
             ticket_id="NONE-0",
             data_text=data_text,
@@ -247,14 +255,19 @@ def test_base_class_is_required(setup: Any) -> None:
     )  # unused import gone too
     messages = _messages(_validate(setup, code=code), "base_class")
     # Discovered from the suite: the classes existing test classes directly inherit.
-    assert messages == ["class TestRulesListFilter must inherit one of BaseTest, DownloadChecks"]
+    expected = (
+        "one of BaseTest, DownloadChecks, ExceptionsCommon, LegacyBrowserBase, ExceptionsTests"
+    )
+    assert messages == [f"class TestRulesListFilter must inherit {expected}"]
 
 
 def test_base_classes_are_discovered_or_configured(setup: Any) -> None:
     from ticket2test.validate.validator import suite_base_classes
 
     settings, index, _ = setup
-    assert suite_base_classes(index.catalog, settings) == ["BaseTest", "DownloadChecks"]
+    assert suite_base_classes(index.catalog, settings) == [
+        "BaseTest", "DownloadChecks", "ExceptionsCommon", "LegacyBrowserBase", "ExceptionsTests",
+    ]  # fmt: skip
     listed = settings.model_copy(
         update={"validation": settings.validation.model_copy(update={"base_classes": ["X"]})}
     )
@@ -266,7 +279,8 @@ def test_a_setup_hook_the_base_doesnt_use_is_flagged(setup: Any) -> None:
     don't use does nothing (or skips the base's setup)."""
     code = _replace("   def setup(self):", "   def setUp(self):")
     warnings = _messages(_validate(setup, code=code), "hooks", "warning")
-    assert len(warnings) == 1 and "use setup for setup, not setUp" in warnings[0]
+    assert len(warnings) == 1 and "runs only in a unittest.TestCase class" in warnings[0]
+    assert "define setup instead" in warnings[0]  # what BaseTest calls
     assert _messages(_validate(setup), "hooks", "warning") == []  # setup is what BaseTest uses
 
 

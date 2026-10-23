@@ -1,6 +1,7 @@
 """Root of the page-object hierarchy: ``nav.<area>.<page>``, plus the shared ``nav.top_bar``."""
 
 from framework.pages.agent import AgentArea
+from framework.pages.exceptions import ExceptionsArea
 from framework.pages.files import FilesArea
 from framework.pages.profiles import ProfilesArea
 from framework.pages.rules import RulesArea
@@ -23,6 +24,10 @@ class Navigator:
    @property
    def profiles(self):
       return ProfilesArea(*self._args)
+
+   @property
+   def exceptions(self):
+      return ExceptionsArea(*self._args)
 
    @property
    def settings(self):

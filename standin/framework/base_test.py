@@ -116,6 +116,14 @@ class BaseTest(ValidationMixin):
 
    # --- helpers --------------------------------------------------------------------------
 
+   def go_to(self, path):
+      """The page at a dotted path under the navigator (``"exceptions.list"``), opened."""
+      target = self.nav
+      for step in path.split("."):
+         target = getattr(target, step)
+      target.open()
+      return target
+
    def unique_name(self, limit):
       """The same name the data placeholder ``{test_id:<limit>}`` resolves to."""
       return unique_name(self.test_id, self._suffix, limit)

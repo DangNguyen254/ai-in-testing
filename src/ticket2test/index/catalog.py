@@ -156,6 +156,20 @@ class SymbolCatalog(BaseModel):
                 return entry, entry.members[name]
         return None
 
+    def external_bases(self, qualname: str) -> list[str]:
+        """Bases (as written) up the class's lineage that aren't repo classes, such as
+        ``unittest.TestCase``: members may come from them, so a name not found isn't proof
+        that it doesn't exist."""
+        found: list[str] = []
+        for entry in self.mro(qualname):
+            for written in entry.bases:
+                bare = written.split("[")[0].strip()
+                if bare in ("object", "") or self.resolve_type(bare, entry.module) is not None:
+                    continue
+                if bare not in found:
+                    found.append(bare)
+        return found
+
     def members_of(self, qualname: str) -> dict[str, tuple[ClassEntry, Member]]:
         found: dict[str, tuple[ClassEntry, Member]] = {}
         for entry in self.mro(qualname):
@@ -197,6 +211,14 @@ class SymbolCatalog(BaseModel):
             name = raw.removesuffix("()")
             found = self.member(owner.qualname, name)
             if found is None:
+                outside = self.external_bases(owner.qualname)
+                if outside:  # may be inherited from a class outside the repo
+                    return ChainResolution(
+                        status="unknown_type",
+                        types=types,
+                        failed_step=index,
+                        message=f"{owner.name}.{name} may come from {', '.join(outside)}",
+                    )
                 return ChainResolution(
                     status="missing",
                     types=types,

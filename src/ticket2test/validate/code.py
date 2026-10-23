@@ -159,6 +159,9 @@ class ChainResolver:
                 steps += [Step(n, c) for n, c in raw[index:]]
                 return "unknown_type", steps, "", None
             found = self.catalog.member(owner.qualname, name)
+            if found is None and self.catalog.external_bases(owner.qualname):
+                steps += [Step(n, c) for n, c in raw[index:]]  # may come from outside the repo
+                return "unknown_type", steps, "", None
             if found is None:
                 steps += [Step(n, c) for n, c in raw[index:]]
                 prefix = ".".join([root, *(n for n, _ in raw[:index])])

@@ -70,7 +70,17 @@ def test_format_python_raises_on_broken_code() -> None:
         format_python("def broken(:\n", PythonStyle(strip_annotations=False), [])
 
 
-@pytest.mark.parametrize("path", sorted((STANDIN / "tests").rglob("test_*.py")))
+def _python3(path: Path) -> bool:
+    try:
+        compile(path.read_text(encoding="utf-8"), str(path), "exec")
+    except SyntaxError:
+        return False  # v6: a Python 2 leftover, not collected
+    return True
+
+
+@pytest.mark.parametrize(
+    "path", [p for p in sorted((STANDIN / "tests").rglob("test_*.py")) if _python3(p)]
+)
 def test_standin_tests_are_a_fixed_point(path: Path) -> None:
     """The stand-in's own style equals the configured defaults."""
     code = path.read_text(encoding="utf-8")

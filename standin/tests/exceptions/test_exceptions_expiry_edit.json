@@ -1,0 +1,27 @@
+[
+   {
+      "test_id":"test_exceptions_expiry_edit",
+      "policy":{
+         "exceptions":[
+            {
+               "name":"{test_id:24}",
+               "target":"docs.example.com",
+               "expires":"2027-01-15"
+            }
+         ]
+      },
+      "new_expires":"2027-12-31",
+      "targets":[
+         {
+            "method":"GET",
+            "path":"/api/policy/v1/exceptions/:tid/:rev_id",
+            "response":[
+               {
+                  "name":"{test_id:24}",
+                  "expires":"2027-12-31"
+               }
+            ]
+         }
+      ]
+   }
+]
