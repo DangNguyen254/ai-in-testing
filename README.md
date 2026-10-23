@@ -113,6 +113,24 @@ with their role, expectations, placeholders, typical tests), `coverage.md` (test
 nothing references), and `map.json` with everything. Each area records the files it was built
 from with their hashes; a rerun reports which areas changed.
 
+### Area guides (one strong-model call per area)
+
+```bash
+uv run ticket2test guides standin --estimate          # tokens and worst-case cost; no calls
+uv run ticket2test guides standin --budget 5          # write guides, largest areas first
+```
+
+Each area gets one call with material the tool picks (the area summary, typical tests with a
+data entry, the class scaffold, the page objects and helpers it uses) up to
+`guides.max_input_tokens`; the model never explores. Names in the guide are checked against the
+index and removed if they don't exist. The model is the `guide` step's (default: the provider's
+model, Sonnet 5.5; set `step_models: {guide: claude-opus-5-5}` for Opus). `--budget` can't
+exceed `guides.max_budget_usd` (50 by default); before each call the worst case (estimated
+input + the full output cap, at `guides.prices`) must fit in what is left. Up-to-date guides
+(same area digest, prompt and model) are skipped; `--force` rebuilds. Guides and run reports
+go to `output/guides/<repo>/`; the generator puts the ticket's area guide into its context
+(`guides.use_in_generation`).
+
 For the public stand-in used in tests: `git clone --depth 1 --branch 0.28.1
 https://github.com/encode/httpx .scratch/repos/httpx` (tests that need it skip without it).
 

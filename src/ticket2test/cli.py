@@ -239,6 +239,69 @@ def map_(
 
 
 @app.command()
+def guides(
+    ctx: typer.Context,
+    repo_path: Annotated[Path, typer.Argument(help="Target repo (read-only).")],
+    estimate: Annotated[
+        bool, typer.Option("--estimate", help="Show tokens and worst-case cost; no LLM calls.")
+    ] = False,
+    budget: Annotated[
+        float | None,
+        typer.Option(help="USD for this run (default and maximum: guides.max_budget_usd)."),
+    ] = None,
+    force: Annotated[
+        bool, typer.Option("--force", help="Rebuild guides that are up to date.")
+    ] = False,
+    area: Annotated[
+        list[str] | None, typer.Option("--area", help="Only these areas (repeatable).")
+    ] = None,
+    out: Annotated[
+        Path | None,
+        typer.Option(help="Guides directory (default: <output_dir>/guides/<repo folder name>)."),
+    ] = None,
+) -> None:
+    """Write area guides with the `guide` step's model, one call per area, within a budget."""
+    from datetime import UTC, datetime
+
+    from ticket2test.guides import BudgetError, guides_dir, run_guides
+    from ticket2test.guides.render import render_run
+    from ticket2test.index.indexer import update_index
+    from ticket2test.llm.base import LLMError
+    from ticket2test.llm.factory import create_llm_client
+    from ticket2test.prompts import PromptError
+    from ticket2test.suitemap import build_map
+
+    state: AppState = ctx.obj
+    settings = state.settings
+    if not repo_path.is_dir():
+        typer.echo(f"Error: not a directory: {repo_path}", err=True)
+        raise typer.Exit(code=2)
+    index, _, _ = update_index(repo_path, settings)
+    suite_map = build_map(index, settings)
+    folder = out or guides_dir(repo_path, settings)
+    try:
+        client = None if estimate else create_llm_client(settings, debug_log=state.debug_log)
+        run = run_guides(
+            suite_map, index, settings, client, folder,
+            budget_usd=budget, estimate_only=estimate, force=force, areas=area,
+        )  # fmt: skip
+    except (BudgetError, PromptError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    except LLMError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    runs = folder / "runs"
+    runs.mkdir(parents=True, exist_ok=True)
+    stem = f"{'estimate' if estimate else 'run'}-{datetime.now(UTC):%Y%m%dT%H%M%S}"
+    markdown = render_run(run)
+    (runs / f"{stem}.json").write_text(run.model_dump_json(indent=2), encoding="utf-8")
+    (runs / f"{stem}.md").write_text(markdown, encoding="utf-8")
+    typer.echo(markdown)
+    typer.echo(f"Wrote {runs / stem}.json and .md")
+
+
+@app.command()
 def search(
     ctx: typer.Context,
     query: Annotated[str, typer.Argument(help="Words or identifiers to search for.")],

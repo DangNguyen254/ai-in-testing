@@ -117,6 +117,7 @@ src/ticket2test/
                  # (incl. page-object property chains), pytest-id computation, BM25 index
   retrieve/      # query rewrite, BM25, grep, AST expansion, follow-up rounds
   suitemap/      # suite map: per-area summaries of the target suite from the index (no LLM)
+  guides/        # area guides: one strong-model call per area, budgeted; read by the generator
   generate/      # few-shot code generation + JSON entry assembly (base entry, per-variant changes)
   style/         # deterministic formatting of generated code and JSON to the suite's style rules
   validate/      # deterministic validators + repair loop

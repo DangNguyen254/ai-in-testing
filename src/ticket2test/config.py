@@ -31,7 +31,13 @@ class _Section(BaseModel):
 
 # The pipeline's LLM steps; each provider may map some of them to another model.
 LLMStep = Literal[
-    "draft", "query_rewrite", "retrieval_followup", "investigate", "generate", "variant_plan"
+    "draft",
+    "query_rewrite",
+    "retrieval_followup",
+    "investigate",
+    "generate",
+    "variant_plan",
+    "guide",
 ]
 
 
@@ -482,6 +488,35 @@ class MapSettings(_Section):
     max_coverage_listed: int = Field(default=200, ge=0)  # in coverage.md; map.json has all
 
 
+class Price(_Section):
+    input_per_mtok: float = Field(ge=0)  # USD per million input tokens
+    output_per_mtok: float = Field(ge=0)
+
+
+class GuideSettings(_Section):
+    """Area guides (guides/): one LLM call per area, written once by a strong model (the
+    ``guide`` step's model) and read by the generator on every ticket in that area."""
+
+    prompt: str = "guide_v1"
+    max_budget_usd: float = Field(default=50.0, ge=0)  # hard ceiling; --budget can't exceed it
+    max_input_tokens: int = Field(default=20000, ge=1000)  # per area: summary + picked code
+    max_output_tokens: int = Field(default=4000, ge=500)
+    max_areas_per_run: int = Field(default=50, ge=1)
+    dir: Path | None = None  # default: <output_dir>/guides/<repo folder name>
+    use_in_generation: bool = True  # put the ticket's area guide into the generation context
+    max_context_tokens: int = Field(default=1500, ge=200)  # of the guide, in that context
+    # USD per million tokens, used for estimates and when the provider reports no cost.
+    # Anthropic first-party API prices, as cached in the claude-api reference on 2026-10-06
+    # (Haiku 5.5: prompts up to 100K tokens). Check your provider's price list.
+    prices: dict[str, Price] = Field(
+        default_factory=lambda: {
+            "claude-opus-5-5": Price(input_per_mtok=4.0, output_per_mtok=20.0),
+            "claude-sonnet-5-5": Price(input_per_mtok=2.0, output_per_mtok=10.0),
+            "claude-haiku-5-5": Price(input_per_mtok=0.10, output_per_mtok=0.50),
+        }
+    )
+
+
 class PathSettings(_Section):
     output_dir: Path = Path("output")
     cache_dir: Path = Path(".t2t_cache")
@@ -517,6 +552,7 @@ class Settings(BaseSettings):
     sandbox: SandboxSettings = SandboxSettings()
     security: SecuritySettings = SecuritySettings()
     map: MapSettings = MapSettings()
+    guides: GuideSettings = GuideSettings()
     paths: PathSettings = PathSettings()
 
     @classmethod

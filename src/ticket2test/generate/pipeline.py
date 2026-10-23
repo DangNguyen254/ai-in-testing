@@ -31,6 +31,7 @@ from ticket2test.generate.patch import (
     variant_patch,
 )
 from ticket2test.generate.reuse import ReuseDecision, decide
+from ticket2test.guides.context import area_guide_text
 from ticket2test.index.indexer import IndexData
 from ticket2test.llm.base import LLMClient
 from ticket2test.models.draft import TestCaseDraft
@@ -49,6 +50,7 @@ class ReuseOutcome:
     generated: GeneratedTest | None = None  # None when covered
     report: ValidationReport | None = None
     notes: list[str] = field(default_factory=list)  # fallbacks taken
+    guide: str = ""  # the area guide put into the context ("" when none), "(stale)" if so
 
 
 def generate_reusing(
@@ -67,6 +69,10 @@ def generate_reusing(
     decision = decide(draft, retrieval, index, settings, choice)
     kind: ReuseKind = decision.kind if mode == "auto" else mode
     outcome = ReuseOutcome(kind=kind, decision=decision)
+    if choice.domain is not None and settings.guides.use_in_generation:
+        text, outcome.guide = area_guide_text(choice.domain.name, repo_root, index, settings)
+        if text:
+            conventions = f"{conventions}\n\n{text}" if conventions else text
     if mode != "auto" and mode != decision.kind:
         outcome.notes.append(f"--as {mode} (decided: {decision.kind})")
     if kind == "covered":

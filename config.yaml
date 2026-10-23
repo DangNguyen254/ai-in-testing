@@ -15,7 +15,7 @@ llm:
     executable: claude         # or set T2T_LLM__CLAUDE_CODE_CLI__EXECUTABLE to a full path
     model: claude-sonnet-5-5
     # Per-step override of `model` (steps: draft, query_rewrite, retrieval_followup, investigate,
-    # generate, variant_plan).
+    # generate, variant_plan, guide). E.g. guide: claude-opus-5-5 to write guides with Opus.
     # Empty: every step uses `model`. Haiku 4.5 for the retrieval steps was tried on 2026-10-06
     # and was worse, slower, and not cheaper (PROJECT_STATUS, Phase 6 log).
     # Haiku 5.5 on every step (2026-10-22) matched Sonnet 5.5 on the stand-in generation eval
@@ -238,6 +238,23 @@ map:                             # suite map: area summaries from the index (no 
   max_items: 15                  # per list in an area summary
   max_examples: 6                # typical tests per area, one per shape
   max_coverage_listed: 200       # in coverage.md; map.json has every gap
+
+guides:                          # area guides: one strong-model call per area (no exploring)
+  prompt: guide_v1
+  max_budget_usd: 50.0           # hard ceiling; --budget can go lower, never higher
+  max_input_tokens: 20000        # per area: the area summary + code picked by the tool
+  max_output_tokens: 4000
+  max_areas_per_run: 50
+  dir: null                      # default: output/guides/<repo folder name>
+  use_in_generation: true        # the ticket's area guide goes into the generation context
+  max_context_tokens: 1500       # how much of the guide may go there
+  # USD per million tokens: for estimates, and when the provider reports no cost. Anthropic
+  # first-party API prices as cached in the claude-api reference on 2026-10-06 (Haiku 5.5: up
+  # to 100K-token prompts). Check your provider's price list.
+  prices:
+    claude-opus-5-5: {input_per_mtok: 4.0, output_per_mtok: 20.0}
+    claude-sonnet-5-5: {input_per_mtok: 2.0, output_per_mtok: 10.0}
+    claude-haiku-5-5: {input_per_mtok: 0.10, output_per_mtok: 0.50}
 
 paths:
   output_dir: output
