@@ -446,6 +446,158 @@
       "tests": [
         "tests/agent/test_agent_browser_limit.py::TestAgentBrowserLimit::test_agent_browser_limit_refused"
       ]
+    },
+    "STND-129": {
+      "status": "fixed",
+      "set": "dev",
+      "kind": "normal",
+      "tests": [
+        "tests/exceptions/test_exceptions.py::TestExceptions::test_exceptions_add_basic"
+      ],
+      "gaps": []
+    },
+    "STND-130": {
+      "status": "fixed",
+      "set": "dev",
+      "kind": "normal",
+      "tests": [
+        "tests/exceptions/test_exceptions.py::TestExceptions::test_exceptions_list_search"
+      ],
+      "gaps": []
+    },
+    "STND-131": {
+      "status": "fixed",
+      "set": "dev",
+      "kind": "normal",
+      "tests": [
+        "tests/exceptions/test_exceptions_expiry.py::TestExceptionsExpiry::test_exceptions_expiry_edit"
+      ],
+      "gaps": []
+    },
+    "STND-132": {
+      "status": "open",
+      "set": "dev",
+      "kind": "gap",
+      "tests": [],
+      "gaps": [
+        {
+          "owner": "nav.exceptions.editor",
+          "words": [
+            "clear",
+            "expiry"
+          ]
+        }
+      ]
+    },
+    "STND-133": {
+      "status": "open",
+      "set": "dev",
+      "kind": "vague",
+      "tests": [],
+      "gaps": []
+    },
+    "STND-134": {
+      "status": "fixed",
+      "set": "dev",
+      "kind": "cross_area",
+      "tests": [
+        "tests/exceptions/test_exceptions.py::TestExceptionsRules::test_exceptions_rules_same_name_published"
+      ],
+      "gaps": []
+    },
+    "STND-135": {
+      "status": "fixed",
+      "set": "dev",
+      "kind": "normal",
+      "tests": [
+        "tests/exceptions/test_exceptions_legacy.py::TestExceptionsLegacyEditor::test_exceptions_legacy_editor_scope"
+      ],
+      "gaps": []
+    },
+    "STND-136": {
+      "status": "fixed",
+      "set": "dev",
+      "kind": "misleading",
+      "tests": [
+        "tests/exceptions/test_exceptions.py::TestExceptions::test_exceptions_edit_disable"
+      ],
+      "gaps": []
+    },
+    "STND-137": {
+      "status": "fixed",
+      "set": "test",
+      "kind": "normal",
+      "tests": [
+        "tests/exceptions/test_exceptions.py::TestExceptions::test_exceptions_add_with_expiry"
+      ],
+      "gaps": []
+    },
+    "STND-138": {
+      "status": "fixed",
+      "set": "test",
+      "kind": "normal",
+      "tests": [
+        "tests/exceptions/test_exceptions.py::TestExceptions::test_exceptions_edit_target"
+      ],
+      "gaps": []
+    },
+    "STND-139": {
+      "status": "fixed",
+      "set": "test",
+      "kind": "normal",
+      "tests": [
+        "tests/exceptions/test_exceptions.py::TestExceptions::test_exceptions_delete_several"
+      ],
+      "gaps": []
+    },
+    "STND-140": {
+      "status": "fixed",
+      "set": "test",
+      "kind": "normal",
+      "tests": [
+        "tests/exceptions/test_exceptions.py::TestExceptions::test_exceptions_list_scope_filter"
+      ],
+      "gaps": []
+    },
+    "STND-141": {
+      "status": "open",
+      "set": "test",
+      "kind": "gap",
+      "tests": [],
+      "gaps": [
+        {
+          "owner": "nav.exceptions.list",
+          "words": [
+            "export"
+          ]
+        }
+      ]
+    },
+    "STND-142": {
+      "status": "fixed",
+      "set": "test",
+      "kind": "normal",
+      "tests": [
+        "tests/exceptions/test_exceptions_widgets.py::TestExceptionsWidgets::test_exceptions_widget_empty_message",
+        "tests/exceptions/test_exceptions.py::TestExceptions::test_exceptions_list_empty"
+      ],
+      "gaps": []
+    },
+    "STND-143": {
+      "status": "fixed",
+      "set": "test",
+      "kind": "normal",
+      "tests": [
+        "tests/exceptions/test_exceptions.py::TestExceptions::test_exceptions_add_missing_target"
+      ],
+      "gaps": []
+    },
+    "STND-144": {
+      "status": "open",
+      "set": "test",
+      "kind": "vague",
+      "tests": [],
+      "gaps": []
     }
   }
 }

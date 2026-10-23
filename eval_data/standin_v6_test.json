@@ -1,0 +1,65 @@
+{
+  "name": "standin-v6-test",
+  "description": "Stand-in v6 tickets, test set (written before the tool ran on them; held out: never used for tuning). Ground truth: the linked tests; gap tickets expect a missing piece (manifest), vague ones insufficient info.",
+  "repo_path": "standin",
+  "ticket_source": "jira_export",
+  "jira_export": "standin/tickets/export.json",
+  "conventions_doc": "standin/CONVENTIONS.md",
+  "ground_truth": "tests",
+  "generation": true,
+  "pairs": [
+    {
+      "id": "standin-137",
+      "ticket": "STND-137",
+      "tests": [
+        "tests/exceptions/test_exceptions.py::TestExceptions::test_exceptions_add_with_expiry"
+      ]
+    },
+    {
+      "id": "standin-138",
+      "ticket": "STND-138",
+      "tests": [
+        "tests/exceptions/test_exceptions.py::TestExceptions::test_exceptions_edit_target"
+      ]
+    },
+    {
+      "id": "standin-139",
+      "ticket": "STND-139",
+      "tests": [
+        "tests/exceptions/test_exceptions.py::TestExceptions::test_exceptions_delete_several"
+      ]
+    },
+    {
+      "id": "standin-140",
+      "ticket": "STND-140",
+      "tests": [
+        "tests/exceptions/test_exceptions.py::TestExceptions::test_exceptions_list_scope_filter"
+      ]
+    },
+    {
+      "id": "standin-141",
+      "ticket": "STND-141",
+      "tests": []
+    },
+    {
+      "id": "standin-142",
+      "ticket": "STND-142",
+      "tests": [
+        "tests/exceptions/test_exceptions_widgets.py::TestExceptionsWidgets::test_exceptions_widget_empty_message",
+        "tests/exceptions/test_exceptions.py::TestExceptions::test_exceptions_list_empty"
+      ]
+    },
+    {
+      "id": "standin-143",
+      "ticket": "STND-143",
+      "tests": [
+        "tests/exceptions/test_exceptions.py::TestExceptions::test_exceptions_add_missing_target"
+      ]
+    },
+    {
+      "id": "standin-144",
+      "ticket": "STND-144",
+      "tests": []
+    }
+  ]
+}

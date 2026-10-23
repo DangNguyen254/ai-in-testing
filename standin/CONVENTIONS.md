@@ -137,6 +137,24 @@ not only a count).
 - Assign a session before reading it (`refused = self.browsers.connect(...)`, then
   `refused.status`): no chaining off a call.
 
+## Exceptions area and older code
+- **Area bases.** Exceptions classes inherit `ExceptionsTests` (its `setup`) or, with their own
+  setup, `ExceptionsCommon` (`tests/exceptions/exceptions_common.py`). Use its helpers
+  (`open_exception(name)`) rather than the similar shared one in `framework/helpers`.
+- **Defaults row.** `tests/exceptions/test_exceptions.json` starts with an entry without
+  `test_id`: its keys apply to every entry. The loader merges it shallowly, one top-level key at
+  a time: an entry that has its own `settings` replaces the default `settings` whole, so list
+  every gate it needs there. Don't repeat keys the defaults row already gives.
+- **Data file per test.** In `test_exceptions_expiry.py` each test keeps its entry in a file
+  named after the test (`test_exceptions_expiry_edit.json`). A new test there gets its own file.
+- **Dotted page paths.** `self.go_to("exceptions.list")` opens the page at that path under
+  `self.nav` and returns it; the path names the same steps as the property chain.
+- **Older code.** `LegacyBrowserBase` classes are unittest style (`setUp` / `tearDown`, checks
+  on `self`); keep them as they are and write new tests in the current style. Python 2 files
+  under `legacy/` are not collected.
+- **Waiting.** Use the `@retry` decorator or `framework.waits.retry_until`; don't add another
+  retry loop around them.
+
 ## Style
 - 3-space indent, LF line endings, final newline, alphabetical imports, no type annotations
   (`ruff format` / `ruff check` with `standin/ruff.toml`).

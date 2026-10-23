@@ -1,0 +1,64 @@
+{
+  "name": "standin-v6-dev",
+  "description": "Stand-in v6 tickets, dev set (written before the tool ran on them). Ground truth: the linked tests; gap tickets expect a missing piece (manifest), vague ones insufficient info.",
+  "repo_path": "standin",
+  "ticket_source": "jira_export",
+  "jira_export": "standin/tickets/export.json",
+  "conventions_doc": "standin/CONVENTIONS.md",
+  "ground_truth": "tests",
+  "generation": true,
+  "pairs": [
+    {
+      "id": "standin-129",
+      "ticket": "STND-129",
+      "tests": [
+        "tests/exceptions/test_exceptions.py::TestExceptions::test_exceptions_add_basic"
+      ]
+    },
+    {
+      "id": "standin-130",
+      "ticket": "STND-130",
+      "tests": [
+        "tests/exceptions/test_exceptions.py::TestExceptions::test_exceptions_list_search"
+      ]
+    },
+    {
+      "id": "standin-131",
+      "ticket": "STND-131",
+      "tests": [
+        "tests/exceptions/test_exceptions_expiry.py::TestExceptionsExpiry::test_exceptions_expiry_edit"
+      ]
+    },
+    {
+      "id": "standin-132",
+      "ticket": "STND-132",
+      "tests": []
+    },
+    {
+      "id": "standin-133",
+      "ticket": "STND-133",
+      "tests": []
+    },
+    {
+      "id": "standin-134",
+      "ticket": "STND-134",
+      "tests": [
+        "tests/exceptions/test_exceptions.py::TestExceptionsRules::test_exceptions_rules_same_name_published"
+      ]
+    },
+    {
+      "id": "standin-135",
+      "ticket": "STND-135",
+      "tests": [
+        "tests/exceptions/test_exceptions_legacy.py::TestExceptionsLegacyEditor::test_exceptions_legacy_editor_scope"
+      ]
+    },
+    {
+      "id": "standin-136",
+      "ticket": "STND-136",
+      "tests": [
+        "tests/exceptions/test_exceptions.py::TestExceptions::test_exceptions_edit_disable"
+      ]
+    }
+  ]
+}

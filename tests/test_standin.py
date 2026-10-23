@@ -1047,7 +1047,10 @@ def test_fake_tickets_normalize_and_map_to_tests() -> None:
     assert len(MANIFEST["tickets"]) >= 5
     for key, info in MANIFEST["tickets"].items():
         ticket = normalize(source.fetch(key))
-        assert ticket.steps_to_reproduce and ticket.expected, key
+        if info.get("kind") != "vague":  # v6: vague tickets lack these on purpose
+            assert ticket.steps_to_reproduce and ticket.expected, key
+        for gap in info.get("gaps", []):  # v6: missing pieces a gap ticket needs
+            assert gap["owner"] and gap["words"], key
         for function in info["tests"]:
             assert function in MANIFEST["tests"], (key, function)
 

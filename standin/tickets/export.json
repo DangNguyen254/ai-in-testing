@@ -1,6 +1,6 @@
 {
   "_comment": "Hand-written FAKE tickets for the synthetic stand-in app (Jira API v2 export shape, wiki markup). Not real data.",
-  "total": 28,
+  "total": 44,
   "issues": [
     {
       "id": "30101",
@@ -618,6 +618,351 @@
           }
         ],
         "description": "With the tenant's browser limit at 2, a third agent browser session still connects. Limits of 1 and 3 work.\n\nh3. Steps to Reproduce\n# Set the tenant's browser_limit to 2\n# Open two agent browser sessions (WebSocket /ws/browser/<tenant>)\n# Open a third\n\nh3. Expected Behavior\nThe third connection attempt gets HTTP 429 with the body \"Browser limit reached\" before the WebSocket upgrade, and two sessions stay open.\n\nh3. Actual Behavior\nThe third session is upgraded (101).",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30129",
+      "key": "STND-129",
+      "self": "https://jira.example.com/rest/api/2/issue/30129",
+      "fields": {
+        "summary": "A new exception saved with scope group is published with scope all",
+        "labels": [
+          "exceptions"
+        ],
+        "components": [
+          {
+            "name": "exceptions"
+          }
+        ],
+        "description": "The scope chosen in the exception editor is lost on publish.\n\nh3. Steps to Reproduce\n# Open Exceptions and click Add exception\n# Enter a name and the target files.example.com\n# Choose scope group and save the exception\n# Click Save, then Publish in the top bar\n\nh3. Expected Behavior\nThe published policy has the exception with scope group.\n\nh3. Actual Behavior\nThe published exception has scope all.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30130",
+      "key": "STND-130",
+      "self": "https://jira.example.com/rest/api/2/issue/30130",
+      "fields": {
+        "summary": "Searching exceptions by target finds nothing",
+        "labels": [
+          "exceptions",
+          "search"
+        ],
+        "components": [
+          {
+            "name": "exceptions"
+          }
+        ],
+        "description": "The exception list search only matches names, not targets.\n\nh3. Steps to Reproduce\n# Have exceptions for alpha, beta, gamma and mail hosts\n# Open Exceptions\n# Search for mail\n\nh3. Expected Behavior\nOnly the exception whose target contains mail is listed.\n\nh3. Actual Behavior\nNo exceptions are listed.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30131",
+      "key": "STND-131",
+      "self": "https://jira.example.com/rest/api/2/issue/30131",
+      "fields": {
+        "summary": "A changed expiry date is not published",
+        "labels": [
+          "exceptions",
+          "expiry"
+        ],
+        "components": [
+          {
+            "name": "exceptions"
+          }
+        ],
+        "description": "Editing the expiry date of an exception looks saved, but the published policy keeps the old date.\n\nh3. Steps to Reproduce\n# Have an exception that expires on 2027-01-15\n# Open it and set the expiry to 2027-12-31\n# Save the exception, then Save and Publish in the top bar\n\nh3. Expected Behavior\nThe published exception expires on 2027-12-31.\n\nh3. Actual Behavior\nThe published exception still expires on 2027-01-15.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30132",
+      "key": "STND-132",
+      "self": "https://jira.example.com/rest/api/2/issue/30132",
+      "fields": {
+        "summary": "Clear expiry leaves the old date on the exception",
+        "labels": [
+          "exceptions",
+          "expiry"
+        ],
+        "components": [
+          {
+            "name": "exceptions"
+          }
+        ],
+        "description": "The Clear expiry button in the exception editor does not remove the date.\n\nh3. Steps to Reproduce\n# Have an exception that expires on 2027-01-15\n# Open it in the exception editor\n# Click Clear expiry, then Save exception\n# Save and Publish in the top bar\n\nh3. Expected Behavior\nThe published exception has no expiry date.\n\nh3. Actual Behavior\nThe published exception still expires on 2027-01-15.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30133",
+      "key": "STND-133",
+      "self": "https://jira.example.com/rest/api/2/issue/30133",
+      "fields": {
+        "summary": "Exceptions page acting weird",
+        "labels": [
+          "exceptions"
+        ],
+        "components": [],
+        "description": "Sometimes the exceptions page does not look right after I change things. Not sure when.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30134",
+      "key": "STND-134",
+      "self": "https://jira.example.com/rest/api/2/issue/30134",
+      "fields": {
+        "summary": "A rule and an exception with the same name: only the rule is published",
+        "labels": [
+          "exceptions",
+          "rules"
+        ],
+        "components": [
+          {
+            "name": "exceptions"
+          },
+          {
+            "name": "rules"
+          }
+        ],
+        "description": "Names should be unique per list, but an exception named like a rule is dropped.\n\nh3. Steps to Reproduce\n# Add a rule named shared-name in the rule wizard and save it\n# Add an exception named shared-name with target shared.example.com and save it\n# Click Save, then Publish in the top bar\n\nh3. Expected Behavior\nThe published policy has the rule and the exception, both named shared-name.\n\nh3. Actual Behavior\nOnly the rule is published.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30135",
+      "key": "STND-135",
+      "self": "https://jira.example.com/rest/api/2/issue/30135",
+      "fields": {
+        "summary": "The exception editor shows scope all for a group exception",
+        "labels": [
+          "exceptions"
+        ],
+        "components": [
+          {
+            "name": "exceptions"
+          }
+        ],
+        "description": "On cloud, opening a group-scoped exception shows the wrong scope.\n\nh3. Steps to Reproduce\n# Have an exception with scope group\n# Open Exceptions and open that exception\n\nh3. Expected Behavior\nThe editor shows scope group.\n\nh3. Actual Behavior\nThe editor shows scope all.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30136",
+      "key": "STND-136",
+      "self": "https://jira.example.com/rest/api/2/issue/30136",
+      "fields": {
+        "summary": "A disabled exception is still published as enabled",
+        "labels": [
+          "exceptions"
+        ],
+        "components": [
+          {
+            "name": "exceptions"
+          }
+        ],
+        "description": "Unticking Enabled on an exception has no effect on the published policy (rules work).\n\nh3. Steps to Reproduce\n# Have an enabled exception for cdn.example.com\n# Open it and untick Enabled\n# Save the exception, then Save and Publish in the top bar\n\nh3. Expected Behavior\nThe published exception has enabled false.\n\nh3. Actual Behavior\nThe published exception is still enabled.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30137",
+      "key": "STND-137",
+      "self": "https://jira.example.com/rest/api/2/issue/30137",
+      "fields": {
+        "summary": "An exception with an expiry date is published without the date",
+        "labels": [
+          "exceptions",
+          "expiry"
+        ],
+        "components": [
+          {
+            "name": "exceptions"
+          }
+        ],
+        "description": "The expiry date entered when adding an exception is lost.\n\nh3. Steps to Reproduce\n# Click Add exception, enter a name and the target mail.example.com\n# Set the expiry to 2027-06-30 and save the exception\n# Save and Publish in the top bar\n\nh3. Expected Behavior\nThe published exception expires on 2027-06-30.\n\nh3. Actual Behavior\nThe published exception never expires.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30138",
+      "key": "STND-138",
+      "self": "https://jira.example.com/rest/api/2/issue/30138",
+      "fields": {
+        "summary": "Changing the target of an exception keeps the old target",
+        "labels": [
+          "exceptions"
+        ],
+        "components": [
+          {
+            "name": "exceptions"
+          }
+        ],
+        "description": "Edits to the target field are not published.\n\nh3. Steps to Reproduce\n# Have an exception for old.example.com\n# Open it and change the target to new.example.com\n# Save the exception, then Save and Publish in the top bar\n\nh3. Expected Behavior\nThe published exception has the target new.example.com.\n\nh3. Actual Behavior\nThe published exception has the target old.example.com.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30139",
+      "key": "STND-139",
+      "self": "https://jira.example.com/rest/api/2/issue/30139",
+      "fields": {
+        "summary": "Deleting two selected exceptions removes only one",
+        "labels": [
+          "exceptions",
+          "delete"
+        ],
+        "components": [
+          {
+            "name": "exceptions"
+          }
+        ],
+        "description": "With bulk delete on, selecting several exceptions and deleting them removes one.\n\nh3. Steps to Reproduce\n# Turn on bulk delete\n# Have four exceptions a, b, c and d\n# Select b and c and click Delete selected\n# Save and Publish in the top bar\n\nh3. Expected Behavior\nThe published policy has exceptions a and d.\n\nh3. Actual Behavior\nThe published policy has a, c and d.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30140",
+      "key": "STND-140",
+      "self": "https://jira.example.com/rest/api/2/issue/30140",
+      "fields": {
+        "summary": "The scope filter group also lists exceptions with scope all",
+        "labels": [
+          "exceptions",
+          "filter"
+        ],
+        "components": [
+          {
+            "name": "exceptions"
+          }
+        ],
+        "description": "Filtering the exception list by scope does not filter.\n\nh3. Steps to Reproduce\n# Have two exceptions with scope all and two with scope group\n# Open Exceptions\n# Choose group in the scope filter and search\n\nh3. Expected Behavior\nTwo exceptions are listed, both with scope group.\n\nh3. Actual Behavior\nAll four exceptions are listed.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30141",
+      "key": "STND-141",
+      "self": "https://jira.example.com/rest/api/2/issue/30141",
+      "fields": {
+        "summary": "Exporting exceptions downloads an empty file",
+        "labels": [
+          "exceptions",
+          "export"
+        ],
+        "components": [
+          {
+            "name": "exceptions"
+          }
+        ],
+        "description": "The Export link on the exceptions list gives a CSV with only the header line.\n\nh3. Steps to Reproduce\n# Have two exceptions\n# Open Exceptions and click Export\n\nh3. Expected Behavior\nThe CSV has a header line and one line per exception.\n\nh3. Actual Behavior\nThe CSV has only the header line.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30142",
+      "key": "STND-142",
+      "self": "https://jira.example.com/rest/api/2/issue/30142",
+      "fields": {
+        "summary": "The empty exception list shows the wrong message",
+        "labels": [
+          "exceptions"
+        ],
+        "components": [
+          {
+            "name": "exceptions"
+          }
+        ],
+        "description": "With no exceptions, the list shows a leftover message from the rules page.\n\nh3. Steps to Reproduce\n# Have no exceptions\n# Open Exceptions\n\nh3. Expected Behavior\nThe list shows: No exceptions match.\n\nh3. Actual Behavior\nThe list shows: No rules match.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30143",
+      "key": "STND-143",
+      "self": "https://jira.example.com/rest/api/2/issue/30143",
+      "fields": {
+        "summary": "Saving an exception without a target gives no error",
+        "labels": [
+          "exceptions",
+          "validation"
+        ],
+        "components": [
+          {
+            "name": "exceptions"
+          }
+        ],
+        "description": "An exception with no target can be saved.\n\nh3. Steps to Reproduce\n# Click Add exception and enter only a name\n# Click Save exception\n\nh3. Expected Behavior\nThe editor shows the error: Target is required.\n\nh3. Actual Behavior\nThe exception is saved without a target.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30144",
+      "key": "STND-144",
+      "self": "https://jira.example.com/rest/api/2/issue/30144",
+      "fields": {
+        "summary": "Exception expiry shown wrong",
+        "labels": [
+          "exceptions",
+          "expiry"
+        ],
+        "components": [
+          {
+            "name": "exceptions"
+          }
+        ],
+        "description": "The expiry column looks off for some exceptions.\n\nh3. Steps to Reproduce\n# Open Exceptions\n# Look at the Expires column",
         "comment": {
           "total": 0,
           "comments": []

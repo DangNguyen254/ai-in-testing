@@ -62,6 +62,15 @@ ruff.toml            the suite's style: 3-space indent, LF, sorted imports
 - **Skips:** platform (`STANDIN_BROWSER`), deployment (`STANDIN_DEPLOYMENT`, default `cloud`),
   per-browser (`@skip_browser`), and by ticket id in a data entry.
 
+- **v6 (real-suite shapes, exceptions area):** a large page-object module with a component
+  base; area bases three to four levels deep; a unittest-style base (`setUp`, `self.assert*`);
+  a defaults row (merged shallowly) and per-function data files; navigation by dotted page
+  path (`go_to`); twelve one-element widget tests; a cloud-only class gated by `skipif`; a
+  joined component marker (`exceptions,rules`); two classes in one module; near-duplicate
+  helpers, a `_v1` module pair and three retry styles; a Python 2 leftover kept out of
+  collection. Tickets STND-129..136 (dev) and STND-137..144 (held-out test set), including
+  missing-piece and vague tickets.
+
 ## Usage
 
 ```bash
