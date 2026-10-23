@@ -90,6 +90,18 @@ class KeptChunk(BaseModel):
     why: str = Field(max_length=300)
 
 
+class MissingHint(BaseModel):
+    """A piece the new test needs that the investigator couldn't find: a page-object member,
+    a helper or a fixture. Hints only; code checks each one (gaps/) before it is used."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["page_object_member", "helper", "fixture"]
+    owner: str = Field(max_length=200)  # class or page-object chain; "" for a module function
+    name: str = Field(min_length=1, max_length=120)  # the name it would have
+    needed_for: str = Field(max_length=300)  # the draft step that needs it
+
+
 class InvestigatorStep(BaseModel):
     """What the investigator returns each turn (``prompts/investigator_v*.md``)."""
 
@@ -98,7 +110,7 @@ class InvestigatorStep(BaseModel):
     thought: str = Field(max_length=600)  # what it is looking for next, in a sentence or two
     actions: list[InvestigatorAction] = Field(max_length=6)
     keep: list[KeptChunk] = Field(max_length=15)  # chunks the test needs (cumulative)
-    missing: list[str] = Field(max_length=10)  # pieces the test needs that don't seem to exist
+    missing: list[MissingHint] = Field(max_length=10)  # needed pieces it couldn't find
     done: bool
 
 
@@ -110,7 +122,7 @@ class Investigation(BaseModel):
     steps: int
     tool_calls: list[str]  # "search('...') -> 8 results"
     kept: list[KeptChunk]
-    missing: list[str]
+    missing: list[MissingHint]
     dropped_ids: list[str] = Field(default_factory=list)  # kept ids that don't exist
     stopped: Literal["done", "budget", "no_actions"]
     llm_calls: int

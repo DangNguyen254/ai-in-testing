@@ -424,7 +424,7 @@ def _coverage(
                         kind="base_helper", name=f"{base.name}.{name}", file_path=base.file_path
                     )
                 )
-    for path in sorted(_imported_files(tests, catalog, index)):
+    for path in sorted(imported_files(tests, catalog, index)):
         info = index.files[path].info
         if info is None:
             continue
@@ -481,7 +481,7 @@ def _reached_by_chain(qualname: str, catalog: SymbolCatalog) -> bool:
     return False
 
 
-def _imported_files(tests: list[Chunk], catalog: SymbolCatalog, index: IndexData) -> set[str]:
+def imported_files(tests: list[Chunk], catalog: SymbolCatalog, index: IndexData) -> set[str]:
     """Repo files that test files import (one level)."""
     modules = {info.module: path for path, record in index.files.items() if (info := record.info)}
     found: set[str] = set()

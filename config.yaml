@@ -132,7 +132,7 @@ retrieval:
     path_weight: 0.15
   investigator:                  # bounded agent; replaces the follow-up rounds when enabled
     enabled: false
-    prompt: investigator_v1
+    prompt: investigator_v2
     max_steps: 6                 # LLM turns
     max_actions_per_step: 4
     max_tool_output_chars: 3000

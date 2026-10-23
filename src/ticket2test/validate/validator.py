@@ -780,6 +780,19 @@ def validate_generated(
     return report
 
 
+def chain_analysis(
+    generated: GeneratedTest, index: IndexData, settings: Settings
+) -> dict[str, FunctionChains]:
+    """The validator's chain analysis of a generated test (test name -> chains), for code that
+    needs the missing members themselves rather than error messages (gaps/)."""
+    subject = Subject(generated, settings, index.catalog, [], None, None, {})
+    subject.index = index
+    if next(iter(check_syntax(subject)), None) is not None or subject.tree is None:
+        return {}
+    _prepare(subject)
+    return dict(subject.chains)
+
+
 def _prepare(s: Subject) -> None:
     assert s.tree is not None
     v, d = s.settings.validation, s.settings.data

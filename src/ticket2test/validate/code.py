@@ -108,6 +108,7 @@ class ChainUse:
     store: bool  # the last step is assigned to: ``wizard.name = ...``
     status: ChainStatus = "ok"
     message: str = ""
+    missing_owner: str | None = None  # status "missing": the class that lacks the member
 
     @property
     def text(self) -> str:
@@ -161,7 +162,8 @@ class ChainResolver:
             if found is None:
                 steps += [Step(n, c) for n, c in raw[index:]]
                 prefix = ".".join([root, *(n for n, _ in raw[:index])])
-                return "missing", steps, f"{prefix} ({owner.name}) has no member {name!r}", None
+                message = f"{prefix} ({owner.name}) has no member {name!r}"
+                return "missing", steps, message, owner.qualname  # the owner, not a type
             defined_in, member = found
             steps.append(Step(name, called, member.kind, owner.qualname))
             if member.returns_self:
@@ -227,6 +229,8 @@ def function_chains(
         raw = [*raw[:-1], (raw[-1][0], raw[-1][1] or called_last)]
         status, steps, message, last_type = resolver.resolve(root, raw, start)
         use = ChainUse(root, steps, node.lineno, store, status, message)
+        if status == "missing":
+            use.missing_owner, last_type = last_type, None
         if collect:
             result.uses.append(use)
         return use, last_type

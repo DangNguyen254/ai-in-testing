@@ -99,6 +99,13 @@ class Retriever:
             (c, Reason(source="followup", detail=f"{label} definition of {name}")) for c in defs
         ]
 
+    def count_containing(self, identifier: str) -> int:
+        """How many chunks define or reference the identifier (no cap)."""
+        return len(self._containing(identifier))
+
+    def definitions_of(self, identifier: str) -> list[Chunk]:
+        return list(self._definitions.get(identifier, []))
+
     def users_of(self, identifier: str) -> list[Chunk]:
         """Chunks whose syntax tree references the identifier."""
         return list(self._users.get(identifier, []))

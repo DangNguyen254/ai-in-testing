@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Literal
 
 from ticket2test.config import Settings
+from ticket2test.gaps import check_pieces, from_generated, from_hints
 from ticket2test.generate.domain import choose_domain
 from ticket2test.generate.patch import (
     PatchError,
@@ -35,6 +36,7 @@ from ticket2test.guides.context import area_guide_text
 from ticket2test.index.indexer import IndexData
 from ticket2test.llm.base import LLMClient
 from ticket2test.models.draft import TestCaseDraft
+from ticket2test.models.gaps import GapVerdict
 from ticket2test.models.generated import GeneratedTest, ReuseKind
 from ticket2test.models.retrieval import RetrievalResult
 from ticket2test.validate.repair import generate_with_repair
@@ -51,9 +53,10 @@ class ReuseOutcome:
     report: ValidationReport | None = None
     notes: list[str] = field(default_factory=list)  # fallbacks taken
     guide: str = ""  # the area guide put into the context ("" when none), "(stale)" if so
+    missing: list[GapVerdict] = field(default_factory=list)  # checked missing-piece candidates
 
 
-def generate_reusing(
+def _generate_reusing(
     draft: TestCaseDraft,
     retrieval: RetrievalResult,
     index: IndexData,
@@ -138,6 +141,30 @@ def generate_reusing(
         draft, steered, index, settings, client, provider, model, conventions
     )
     return _module(outcome, repaired.generated, repaired.report)
+
+
+def generate_reusing(
+    draft: TestCaseDraft,
+    retrieval: RetrievalResult,
+    index: IndexData,
+    settings: Settings,
+    client: LLMClient,
+    provider: str,
+    model: str,
+    repo_root: Path,
+    conventions: str | None = None,
+    mode: Mode = "auto",
+) -> ReuseOutcome:
+    """Generate (or patch) the test, then check what it needed and the suite lacks: names the
+    final test uses that don't exist, and the investigator's hints, each checked by code."""
+    outcome = _generate_reusing(
+        draft, retrieval, index, settings, client, provider, model, repo_root, conventions, mode
+    )
+    pieces = from_generated(outcome.generated, index, settings) if outcome.generated else []
+    if retrieval.investigation is not None:
+        pieces += from_hints(retrieval.investigation.missing)
+    outcome.missing = check_pieces(pieces, index, settings)
+    return outcome
 
 
 def _variant_target(decision: ReuseDecision) -> str | None:

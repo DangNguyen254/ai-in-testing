@@ -544,6 +544,13 @@ def generate(
     data_path.write_text(data_text, encoding="utf-8", newline="\n")
     (folder / "generated.json").write_text(generated.model_dump_json(indent=2), encoding="utf-8")
     written += [code_path, data_path, folder / "generated.json"]
+    if outcome.missing:
+        gaps_path = folder / "missing_pieces.json"
+        gaps_path.write_text(
+            json.dumps([v.model_dump(mode="json") for v in outcome.missing], indent=2),
+            encoding="utf-8",
+        )
+        written.append(gaps_path)
     typer.echo(
         f"{len(generated.test_ids)} test id(s) in {generated.file_name}, template "
         f"{generated.template_entry_ref.entry_key if generated.template_entry_ref else '-'}, "
@@ -557,6 +564,12 @@ def generate(
     )
     for finding in report.findings:
         typer.echo(f"  {finding.severity}: {finding.render()}")
+    for verdict in outcome.missing:
+        piece = verdict.piece
+        where = f"{piece.owner}." if piece.owner else ""
+        extra = f" (close: {', '.join(verdict.close)})" if verdict.close else ""
+        found = f" -> {verdict.found}" if verdict.found else ""
+        typer.echo(f"  missing piece {where}{piece.name}: {verdict.status}{found}{extra}")
     if generated.review_checklist:
         typer.echo("Review checklist (needs a real run):")
         for item in generated.review_checklist:

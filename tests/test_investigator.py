@@ -54,7 +54,7 @@ def _step(
     actions: list[tuple[str, str]] = (),  # type: ignore[assignment]
     keep: list[tuple[str, str]] = (),  # type: ignore[assignment]
     done: bool = False,
-    missing: list[str] = (),  # type: ignore[assignment]
+    missing: list[dict[str, str]] = (),  # type: ignore[assignment]
 ) -> str:
     return json.dumps(
         {
@@ -127,7 +127,7 @@ def test_done_stops_and_kept_chunks_reach_the_hits(index: IndexData, tmp_path: P
     assert inv.dropped_ids == ["made/up.py::Nope"]  # an id that doesn't exist is dropped
     assert inv.tool_calls[0].startswith("search('rules add')")
     assert result.followup_rounds == 0  # the investigator replaces the follow-up rounds
-    assert result.llm_calls == 3 and result.prompt_versions[-1] == "investigator_v1"
+    assert result.llm_calls == 3 and result.prompt_versions[-1] == "investigator_v2"
     hit = next(h for h in result.hits if h.chunk_id == ADD_BASIC)
     assert any(r.source == "investigator" and r.detail == "closest add test" for r in hit.reasons)
     # Turn 2 saw turn 1's tool output, inside the untrusted-data tags.
@@ -164,10 +164,11 @@ def test_actions_per_turn_are_capped_and_repeats_not_rerun(
 
 
 def test_a_turn_without_actions_stops(index: IndexData, tmp_path: Path) -> None:
-    fake = FakeLLMClient([_rewrite(), _step(missing=["a delete helper for profiles"])])
+    hint = {"kind": "helper", "owner": "", "name": "delete_profile", "needed_for": "step 3"}
+    fake = FakeLLMClient([_rewrite(), _step(missing=[hint])])
     inv = retrieve(_ticket("STND-102"), index, _settings(tmp_path), fake).investigation
     assert inv is not None and inv.stopped == "no_actions"
-    assert inv.missing == ["a delete helper for profiles"]
+    assert [(m.kind, m.name) for m in inv.missing] == [("helper", "delete_profile")]
 
 
 def test_bad_json_is_retried_within_the_limit(index: IndexData, tmp_path: Path) -> None:
@@ -181,3 +182,14 @@ def test_disabled_by_default_keeps_the_follow_up_rounds(index: IndexData, tmp_pa
     assert settings.retrieval.investigator.enabled is False
     fake = FakeLLMClient([_rewrite()])
     assert retrieve(_ticket("STND-101"), index, settings, fake).investigation is None
+
+
+def test_grep_says_when_a_name_exists_but_is_used_too_often(
+    index: IndexData, tmp_path: Path
+) -> None:
+    """Haiku read "matches nothing, or too many chunks" as "doesn't exist" (verify_targets)."""
+    tools = _tools(index, tmp_path)
+    tools.retriever.cfg = tools.retriever.cfg.model_copy(update={"grep_max_matches": 2})
+    out = tools.run(InvestigatorAction(tool="grep", arg="verify_targets"))
+    assert out.startswith("'verify_targets' exists: it is used in")
+    assert "framework/validations.py::ValidationMixin.verify_targets" in out

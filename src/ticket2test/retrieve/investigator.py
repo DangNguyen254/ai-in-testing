@@ -85,10 +85,19 @@ class IndexTools:
         names, _ = verify_identifiers([identifier], self.retriever.catalog)
         if not names:
             return f"{identifier!r} is not a known identifier"
-        found = self.retriever.grep(names[0], "investigator")
-        if not found:
-            return f"{names[0]!r} matches nothing, or too many chunks (use search instead)"
-        return self._list([c for c, _ in found])
+        name = names[0]
+        found = self.retriever.grep(name, "investigator")
+        if found:
+            return self._list([c for c, _ in found])
+        uses = self.retriever.count_containing(name)
+        if uses:  # a refusal is not absence: a weak model read it as "doesn't exist"
+            defined = [c.id for c in self.retriever.definitions_of(name)][:3]
+            where = f"; defined in {', '.join(defined)}" if defined else ""
+            return (
+                f"{name!r} exists: it is used in {uses} chunks, too many to list{where}. "
+                "Use search with more words, or tests_using / callers, to narrow it down"
+            )
+        return f"{name!r} matches nothing"
 
     def _open(self, chunk_id: str) -> str:
         chunk = self._chunk(chunk_id)
