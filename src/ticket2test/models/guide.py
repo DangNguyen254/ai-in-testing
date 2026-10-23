@@ -48,7 +48,8 @@ class AreaGuide(BaseModel):
     built_at: datetime
     input_pieces: list[str]  # what the model was shown (summary, chunk ids)
     input_tokens_estimate: int
-    guide: GuideOutput
+    guide: GuideOutput  # after the check
+    raw: GuideOutput | None = None  # as the model wrote it, so the check can be re-run
     removed: list[str] = Field(default_factory=list)  # refs dropped by the check, with reason
     unverified: list[str] = Field(default_factory=list)  # `names` in the prose not in the index
     usage: Usage | None = None

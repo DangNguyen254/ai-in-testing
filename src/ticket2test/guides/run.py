@@ -165,6 +165,7 @@ def run_guides(
                     input_pieces=material.pieces,
                     input_tokens_estimate=tokens_in,
                     guide=checked,
+                    raw=guide,
                     removed=removed,
                     unverified=unverified,
                     usage=usage,

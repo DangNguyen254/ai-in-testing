@@ -388,7 +388,7 @@ def _coverage(
     """Test-side code that nothing in the repo references: page objects and their members,
     helpers of the test classes' bases, and functions in modules that test files import.
     Product code is not listed. A definition doesn't count as a reference to itself."""
-    referenced = _referenced_names(index)
+    referenced = referenced_names(index)
     gaps: list[CoverageGap] = []
     for qualname in sorted(catalog.page_objects):
         entry = catalog.classes.get(qualname)
@@ -443,7 +443,7 @@ _HOOKS = (
 )  # fmt: skip
 
 
-def _referenced_names(index: IndexData) -> set[str]:
+def referenced_names(index: IndexData) -> set[str]:
     """Every identifier referenced anywhere in the repo, decorators included."""
     names: set[str] = set()
     for record in index.files.values():

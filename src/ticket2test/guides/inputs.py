@@ -6,7 +6,7 @@ skipped whole (never cut mid-function).
 
 1. the area summary (always)
 2. the typical tests, each with one of its data entries
-3. the test classes' scaffold (class header and setup/teardown methods)
+3. the test classes' scaffold (class header, setup/teardown and the class's own helper methods)
 4. the page objects the area's chains reach, most used first
 5. the base-class helper methods the tests call
 """
@@ -70,8 +70,9 @@ def pick_material(area: AreaSummary, index: IndexData, settings: Settings) -> Ma
         found = next((c for c in info.classes if c.name == cls.name), None) if info else None
         if found is None:
             continue
-        scaffold = [found.header_code] + [
-            m.code for m in found.methods if m.name in settings.generate.scaffold_methods
+        prefix = settings.index.test_function_prefix
+        scaffold = [found.header_code] + [  # setup/teardown and helpers such as _add_item()
+            m.code for m in found.methods if not m.name.startswith(prefix)
         ]
         add(f"Test class scaffold {cls.file_path}::{cls.name}", _code("\n\n".join(scaffold)))
 

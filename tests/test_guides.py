@@ -118,6 +118,34 @@ def test_the_check_removes_invented_names(index: IndexData, suite_map: SuiteMap)
     # literal values such as the placeholder aren't names
 
 
+def test_names_the_suite_uses_are_not_flagged(index: IndexData, suite_map: SuiteMap) -> None:
+    """False alarms from the first real run: unittest assertions (used by the tests, defined
+    outside the repo), nested data keys, request methods, decorator values, JSON literals."""
+    api = next(a for a in suite_map.areas if a.name == "api")
+    guide = GuideOutput(
+        **_guide(
+            helpers=[{"name": "self.check.assertEqual", "use": "the assertion object"}],
+            data=["`targets` items have `method`, `path`, `payload`, `status_code`, `response`."],
+            pitfalls=["`GET` vs `PUT`; `cloud` and `on_prem`; `true` in JSON."],
+            how_to_add=["Call `delete_test()` first."],
+        )
+    )
+    checked, removed, unverified = check_guide(guide, api, index)
+    assert [h.name for h in checked.helpers] == ["self.check.assertEqual"]
+    assert not any("assertEqual" in r for r in removed)
+    assert "delete_test()" in unverified  # a vague name the model made up is still flagged
+    for word in ("method", "payload", "status_code", "GET", "PUT", "cloud", "on_prem", "true"):
+        assert word not in unverified
+
+
+def test_class_helpers_are_in_the_material(index: IndexData, suite_map: SuiteMap) -> None:
+    """A real guide said a class helper was "not shown in the material": the scaffold now
+    carries the class's own non-test methods, not only setup/teardown."""
+    profiles = next(a for a in suite_map.areas if a.name == "profiles")
+    material = pick_material(profiles, index, Settings())
+    assert "def _add_profile(" in material.text
+
+
 # --- estimate, budget, ceiling ---------------------------------------------------------
 
 
