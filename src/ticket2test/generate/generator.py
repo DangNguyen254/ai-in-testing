@@ -24,6 +24,7 @@ from ticket2test.generate.context import (
 )
 from ticket2test.generate.entries import build_entry, function_of
 from ticket2test.generate.inspect import data_use
+from ticket2test.index.datafile import function_data_path, layout_of, module_data_path
 from ticket2test.index.indexer import IndexData
 from ticket2test.llm.base import LLMClient, LLMError, LLMRequest, Message
 from ticket2test.llm.factory import model_name
@@ -226,10 +227,22 @@ def assemble(
     folder = PurePosixPath(setup.template_chunk.file_path).parent
     file_name = str(folder / f"{response.module_name}.py")
     checklist = list(dict.fromkeys([*gen.review_checklist_defaults, *response.review_checklist]))
+    data_file_name = module_data_path(file_name, settings.index)
+    tpl = setup.template_chunk
+    if order and layout_of(tpl.file_path, tpl.symbol_name, tpl.data_file, settings.index) == (
+        "function"
+    ):  # the area keeps one data file per test: name it after the (first) test
+        functions = list(dict.fromkeys(function_of(i) for i in order))
+        data_file_name = function_data_path(file_name, functions[0], settings.index)
+        if len(functions) > 1:
+            checklist.append(
+                f"This area keeps one data file per test: split the entries of "
+                f"{', '.join(functions[1:])} out of {data_file_name}."
+            )
     return GeneratedTest(
         code=code,
         file_name=file_name,
-        data_file_name=str(PurePosixPath(file_name).with_suffix(settings.index.data_file_suffix)),
+        data_file_name=data_file_name,
         data_entries=entries,
         data_format=setup.layout,
         test_ids=[*order, *(i for i in inherited_ids if i not in order)],

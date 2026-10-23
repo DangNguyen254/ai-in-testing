@@ -9,6 +9,7 @@ from typing import Any, NamedTuple
 
 from ticket2test.config import IndexSettings
 from ticket2test.index.catalog import SymbolCatalog
+from ticket2test.index.datafile import function_data_path
 from ticket2test.index.extract import ClassInfo, FileInfo, FunctionInfo
 from ticket2test.index.inheritance import inherited_tests, variant_classes
 from ticket2test.index.pytest_ids import compute_test_ids, is_parametrize
@@ -17,7 +18,8 @@ from ticket2test.models.chunk import Chunk, DataFormat, Marker, Parametrize
 
 class DataFile(NamedTuple):
     format: DataFormat
-    entries: dict[str, Any]  # pytest id -> entry
+    entries: dict[str, Any]  # pytest id -> entry (own keys)
+    defaults: dict[str, Any] | None = None  # the defaults row (index/datafile.py)
 
 
 DataReader = Callable[[str], DataFile | None]
@@ -30,6 +32,23 @@ def is_test_file(path: str, settings: IndexSettings) -> bool:
 
 def data_file_for(path: str, settings: IndexSettings) -> str:
     return path.removesuffix(".py") + settings.data_file_suffix
+
+
+def _data_of(
+    info: FileInfo,
+    function: str,
+    module_data: tuple[DataFile | None, str],
+    read_data: DataReader,
+    settings: IndexSettings,
+) -> tuple[DataFile | None, str]:
+    """A per-function data file when the suite has one for this test, else the module's."""
+    if settings.function_data_files:
+        path = function_data_path(info.path, function, settings)
+        if path != module_data[1]:
+            found = read_data(path)
+            if found is not None:
+                return found, path
+    return module_data
 
 
 def parse_marker(decorator: str, source: str = "function") -> Marker | None:
@@ -74,8 +93,9 @@ def build_chunks(
     chunks: list[Chunk] = []
     for fn in info.functions:
         if test_file and fn.name.startswith(settings.test_function_prefix):
+            own, own_path = _data_of(info, fn.name, (data, data_path), read_data, settings)
             chunks.append(
-                _test_chunk(info, fn, None, data, data_path, parametrized_fixtures, custom_id_hook)
+                _test_chunk(info, fn, None, own, own_path, parametrized_fixtures, custom_id_hook)
             )
         else:
             chunks.append(_function_chunk(info, fn, None))
@@ -94,8 +114,9 @@ def build_chunks(
         ) or []
         for method in cls.methods:
             if is_test_class and method.name.startswith(settings.test_function_prefix):
+                own, own_path = _data_of(info, method.name, (data, data_path), read_data, settings)
                 chunk = _test_chunk(
-                    info, method, cls, data, data_path, parametrized_fixtures, custom_id_hook
+                    info, method, cls, own, own_path, parametrized_fixtures, custom_id_hook
                 )
                 chunks.append(chunk.model_copy(update={"collected_classes": collected}))
             else:
@@ -208,5 +229,6 @@ def _test_chunk(
         test_ids_note=ids.note,
         data_file=data_path if data is not None else None,
         data_entries=entries,
+        data_defaults=(data.defaults or {}) if data is not None else {},
         data_format=data.format if data is not None else None,
     )

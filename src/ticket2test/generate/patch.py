@@ -31,13 +31,14 @@ import json
 import re
 from collections import Counter
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any
 
 from ticket2test.config import Settings
 from ticket2test.generate.entries import EntryError, delete_path, function_of, parse_path
 from ticket2test.generate.generator import first_party
 from ticket2test.generate.reuse import ReuseDecision
+from ticket2test.index.datafile import function_data_path, layout_of, module_data_path
 from ticket2test.index.indexer import IndexData
 from ticket2test.index.tokens import split_identifier
 from ticket2test.llm.base import LLMClient, LLMRequest, Message
@@ -548,9 +549,9 @@ def variant_patch(
         )
         for p in plans
     ]
-    entries, layout, data_text = read_suite_data(repo_root, chunk.file_path, settings)
+    data_name = chunk.data_file or module_data_path(chunk.file_path, settings.index)
+    entries, layout, data_text = read_suite_data(repo_root, chunk.file_path, settings, data_name)
     all_entries = _insert_after(entries, new_entries, function, id_field)
-    data_name = str(PurePosixPath(chunk.file_path).with_suffix(settings.index.data_file_suffix))
     after_code = site.insert(source, [p.case for p in plans])
     after_data = format_entries(all_entries, settings.data, settings.style.json_files, layout)
     patches = [
@@ -735,7 +736,14 @@ def method_patch(
     spliced, added = splice_methods(source, class_name, generated.code, settings)
     style = settings.style.python
     after_code = format_python(spliced, style, first_party(index, settings))
-    entries, layout, data_text = read_suite_data(repo_root, file_path, settings)
+    data_name = module_data_path(file_path, settings.index)
+    if _function_layout(index, class_name, file_path, settings):
+        if len(added) != 1:
+            raise PatchError(
+                f"{class_name} keeps one data file per test: a patch adds one test at a time"
+            )
+        data_name = function_data_path(file_path, next(iter(added)), settings.index)
+    entries, layout, data_text = read_suite_data(repo_root, file_path, settings, data_name)
     id_field = settings.data.id_field
     have = {str(e.get(id_field)) for e in entries}
     ours = [  # the added methods' entries (the class already has its inherited ones)
@@ -746,7 +754,6 @@ def method_patch(
     if clash:
         raise PatchError(f"entries already exist for {clash}; the new test needs another name")
     all_entries = [*entries, *ours]
-    data_name = str(PurePosixPath(file_path).with_suffix(settings.index.data_file_suffix))
     after_data = format_entries(all_entries, settings.data, settings.style.json_files, layout)
     patches = [
         FilePatch(file_path, source, after_code),
@@ -769,6 +776,15 @@ def method_patch(
     )
 
 
+def _function_layout(index: IndexData, class_name: str, file_path: str, settings: Settings) -> bool:
+    """The class's tests keep their data in files named after each test function."""
+    return any(
+        layout_of(c.file_path, c.symbol_name, c.data_file, settings.index) == "function"
+        for c in index.chunks
+        if c.kind == "test" and c.file_path == file_path and c.class_name == class_name
+    )
+
+
 # --- validation of a patched file ---------------------------------------------------------------
 
 
@@ -781,7 +797,9 @@ def validate_patch(
 ) -> ValidationReport:
     """Validate the whole patched file; report only findings the unpatched file doesn't have."""
     roots, imports = first_party(index, settings), module_imports(index)
-    entries, layout, data_text = read_suite_data(repo_root, generated.file_name, settings)
+    entries, layout, data_text = read_suite_data(
+        repo_root, generated.file_name, settings, generated.data_file_name
+    )
     before = generated.model_copy(
         update={
             "code": (repo_root / generated.file_name).read_text(encoding="utf-8"),

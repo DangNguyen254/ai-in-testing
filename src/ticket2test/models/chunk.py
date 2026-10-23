@@ -68,7 +68,8 @@ class Chunk(BaseModel):
     test_ids_computed: bool = True  # False: ids need `pytest --collect-only` to know
     test_ids_note: str | None = None
     data_file: str | None = None
-    data_entries: dict[str, Any] = Field(default_factory=dict)  # test id -> JSON entry
+    data_entries: dict[str, Any] = Field(default_factory=dict)  # test id -> JSON entry (own keys)
+    data_defaults: dict[str, Any] = Field(default_factory=dict)  # the file's defaults row, if any
     data_format: DataFormat | None = None  # layout of data_file
     # Classes pytest collects the test under (empty: ``class_name``): differs for class variants.
     collected_classes: list[str] = Field(default_factory=list)

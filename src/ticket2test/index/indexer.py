@@ -18,9 +18,10 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from ticket2test.adapters.repo.local_path import LocalPathRepoSource, RepoReadError
-from ticket2test.config import Settings
+from ticket2test.config import DataSettings, Settings
 from ticket2test.index.catalog import SymbolCatalog, build_catalog
 from ticket2test.index.chunks import DataFile, build_chunks, is_test_file
+from ticket2test.index.datafile import split_defaults
 from ticket2test.index.extract import FileInfo, ParseError, extract_file, sha256_of
 from ticket2test.index.search import SearchIndex, chunk_search_text
 from ticket2test.index.tokens import tokenize
@@ -28,8 +29,8 @@ from ticket2test.models.chunk import Chunk
 
 log = logging.getLogger(__name__)
 
-INDEX_VERSION = 5  # 2: syntax-tree refs; 3: array data files, returned calls; 4: imports;
-# 5: inherited tests and class variants
+INDEX_VERSION = 6  # 2: syntax-tree refs; 3: array data files, returned calls; 4: imports;
+# 5: inherited tests and class variants; 6: defaults rows, per-function data files
 INDEX_FILE = "index.json"
 
 
@@ -177,7 +178,7 @@ def build_index(
                 info,
                 catalog,
                 index_settings,
-                lambda p: _read_data_file(repo, p, settings.data.id_field),
+                lambda p: _read_data_file(repo, p, settings.data),
                 custom_id_hook,
                 infos_by_path,
             )
@@ -228,8 +229,12 @@ def _skip(stats: BuildStats, path: str, digest: str, reason: str) -> FileRecord:
     return FileRecord(sha256=digest, error=reason)
 
 
-def _read_data_file(repo: LocalPathRepoSource, path: str, id_field: str) -> DataFile | None:
-    """Entries by pytest id, from an array of entries (each with ``id_field``) or an object."""
+def _read_data_file(
+    repo: LocalPathRepoSource, path: str, data_cfg: DataSettings
+) -> DataFile | None:
+    """Entries by pytest id, from an array of entries (each with the id field, after an optional
+    defaults row) or an object keyed by id."""
+    id_field = data_cfg.id_field
     rel = PurePosixPath(path)
     if not repo.exists(rel):
         return None
@@ -242,15 +247,16 @@ def _read_data_file(repo: LocalPathRepoSource, path: str, id_field: str) -> Data
         return DataFile(format="object", entries=data)
     if not isinstance(data, list):
         return None
+    defaults, rows = split_defaults(data, data_cfg)
     entries: dict[str, Any] = {}
-    for entry in data:
+    for entry in rows:
         if isinstance(entry, dict) and isinstance(entry.get(id_field), str):
             entries[entry[id_field]] = entry
-    if len(entries) < len(data):
+    if len(entries) < len(rows):
         log.warning(
-            "Data file %s: %d entries without a unique %r", path, len(data) - len(entries), id_field
+            "Data file %s: %d entries without a unique %r", path, len(rows) - len(entries), id_field
         )
-    return DataFile(format="array", entries=entries)
+    return DataFile(format="array", entries=entries, defaults=defaults)
 
 
 __all__ = [

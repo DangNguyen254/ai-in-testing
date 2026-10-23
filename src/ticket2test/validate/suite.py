@@ -23,6 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from ticket2test.config import Settings
 from ticket2test.generate.generator import first_party
+from ticket2test.index.datafile import layout_of, split_defaults
 from ticket2test.index.indexer import IndexData, update_index
 from ticket2test.models.generated import GeneratedTest
 from ticket2test.sandbox.runner import collect_suite
@@ -108,6 +109,9 @@ def check_suite(repo: Path, settings: Settings, collect: bool = False) -> SuiteR
     for path in _test_files(index, settings):
         code = (repo / path).read_text(encoding="utf-8")
         entries, layout, data_text = read_suite_data(repo, path, settings)
+        extra = _function_file_entries(repo, path, index, settings)
+        if extra:  # tests with their own data file: judge them with their entries
+            entries, data_text = [*entries, *extra], None  # formatting is per file: not here
         ids = static_ids(index, path)
         generated = GeneratedTest(
             code=code,
@@ -275,11 +279,34 @@ def static_ids(index: IndexData, path: str) -> list[str]:
     ]
 
 
+def _function_file_entries(
+    repo: Path, path: str, index: IndexData, settings: Settings
+) -> list[dict[str, Any]]:
+    """Entries of the module's tests that keep their data in a file of their own."""
+    found: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for chunk in index.chunks:
+        if chunk.kind != "test" or chunk.file_path != path or not chunk.data_file:
+            continue
+        if chunk.data_file in seen:
+            continue
+        own = layout_of(chunk.file_path, chunk.symbol_name, chunk.data_file, settings.index)
+        if own != "function":
+            continue
+        seen.add(chunk.data_file)
+        rows, _, _ = read_suite_data(repo, path, settings, chunk.data_file)
+        found += split_defaults(rows, settings.data)[1]
+    return found
+
+
 def read_suite_data(
-    repo: Path, path: str, settings: Settings
+    repo: Path, path: str, settings: Settings, data_path_name: str | None = None
 ) -> tuple[list[dict[str, Any]], Any, str | None]:
-    """The test file's data entries as a list (object layout converted), the layout, the text."""
-    data_path = repo / PurePosixPath(path).with_suffix(settings.index.data_file_suffix)
+    """The test file's data entries as a list (object layout converted; a defaults row kept as
+    the first row), the layout, the text. ``data_path_name``: a data file other than the
+    module's (a per-function file)."""
+    name = data_path_name or str(PurePosixPath(path).with_suffix(settings.index.data_file_suffix))
+    data_path = repo / name
     if not data_path.is_file():
         return [], settings.data.format, None
     text = data_path.read_text(encoding="utf-8")

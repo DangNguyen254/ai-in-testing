@@ -19,6 +19,7 @@ from ticket2test.config import Settings
 from ticket2test.generate.entries import function_of
 from ticket2test.generate.inspect import DataUse, computed_test_ids, data_use
 from ticket2test.index.catalog import ClassEntry, SymbolCatalog
+from ticket2test.index.datafile import merged, split_defaults
 from ticket2test.index.indexer import IndexData
 from ticket2test.index.tokens import split_identifier
 from ticket2test.models.draft import TestCaseDraft
@@ -74,7 +75,21 @@ class Subject:
 
     @property
     def entries(self) -> list[dict[str, Any]]:
-        return self.generated.data_entries
+        """The test entries, without a defaults row."""
+        return split_defaults(self.generated.data_entries, self.settings.data)[1]
+
+    @property
+    def defaults(self) -> dict[str, Any] | None:
+        """The data file's defaults row: in the written entries (a patched file), or in the
+        indexed file the generated test writes to."""
+        own, _ = split_defaults(self.generated.data_entries, self.settings.data)
+        if own is not None or self.index is None:
+            return own
+        name = self.generated.data_file_name
+        found = next(
+            (c for c in self.index.chunks if c.data_file == name and c.data_defaults), None
+        )
+        return found.data_defaults if found else None
 
     def entries_for(self, function: str) -> list[dict[str, Any]]:
         id_field = self.settings.data.id_field
@@ -359,10 +374,12 @@ def check_data_keys(s: Subject) -> Iterator[Finding]:
         "per_entry_keys": d.per_entry_keys,
         "expectation_sections": d.expectation_sections,
     }
+    defaults = s.defaults
     for entry in s.entries:
         test_id = str(entry.get(d.id_field, ""))
         use = uses.get(function_of(test_id))
-        absent = sorted(use.keys - set(entry)) if use else []
+        seen = merged(entry, defaults, d)  # keys may come from the file's defaults row
+        absent = sorted(use.keys - set(seen)) if use else []
         if absent:
             yield _f("data_keys", f"reads keys its entry lacks: {absent}", test=test_id)
         unused = _unconsumed_keys(entry, use, ctx)
@@ -445,7 +462,8 @@ def check_data_file(s: Subject) -> Iterator[Finding]:
         return
     if s.data_text is None:
         return
-    expected = format_entries(s.entries, d, s.settings.style.json_files, s.generated.data_format)
+    written = s.generated.data_entries  # the whole file, defaults row included
+    expected = format_entries(written, d, s.settings.style.json_files, s.generated.data_format)
     if s.data_text != expected:
         yield _f("data_file", "the data file is not formatted to the suite's JSON style")
 

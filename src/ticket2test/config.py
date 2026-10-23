@@ -129,6 +129,9 @@ class IndexSettings(_Section):
     test_function_prefix: str = "test"
     test_class_prefix: str = "Test"
     data_file_suffix: str = ".json"  # test_x.py -> test_x.json
+    # Also look for a data file per test function, named after it, next to the module
+    # (test_x.py::test_y -> test_y.json); it wins over the module's file for that test.
+    function_data_files: bool = True
     chain_roots: list[str] = Field(default_factory=lambda: ["nav"])
     max_chain_depth: int = Field(default=4, ge=1)
     max_chain_entries: int = Field(default=5000, ge=1)
@@ -166,6 +169,10 @@ class DataSettings(_Section):
     )
     # Per-entry overrides that a new entry never inherits from its base entry.
     per_entry_keys: list[str] = Field(default_factory=lambda: ["priority", "skip"])
+    # A first entry without the id field holds defaults for every entry in the file (array
+    # layout); how the suite's loader combines them: top-level keys, or nested objects too.
+    defaults_row: bool = True
+    defaults_merge: Literal["shallow", "deep"] = "shallow"
 
 
 class PythonStyle(_Section):

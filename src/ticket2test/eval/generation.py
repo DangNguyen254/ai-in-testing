@@ -32,6 +32,7 @@ from ticket2test.eval.pairs import EvalCache, EvalPair, PairSet
 from ticket2test.eval.retrieval import manifest_test_to_chunk_id
 from ticket2test.generate.generator import first_party
 from ticket2test.generate.pipeline import generate_reusing
+from ticket2test.index.datafile import layout_of
 from ticket2test.index.indexer import IndexData, update_index
 from ticket2test.llm.base import LLMClient, LLMError
 from ticket2test.llm.factory import model_name
@@ -172,6 +173,10 @@ def leave_one_out_repo(
             text = format_python(text, settings.style.python, first_party(index, settings))
         path.write_text(text, encoding="utf-8", newline="\n")
         removed = {i for c in cut for i in c.test_ids}
+        for chunk in cut:  # a test with its own data file: the file goes with it
+            own = layout_of(chunk.file_path, chunk.symbol_name, chunk.data_file, settings.index)
+            if own == "function" and chunk.data_file:
+                (dest / chunk.data_file).unlink(missing_ok=True)
         entries, layout, data_text = read_suite_data(dest, file_path, settings)
         if data_text is not None:
             kept = [e for e in entries if str(e.get(id_field)) not in removed]
