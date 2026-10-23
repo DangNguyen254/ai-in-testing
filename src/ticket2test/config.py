@@ -500,7 +500,12 @@ class GuideSettings(_Section):
     prompt: str = "guide_v1"
     max_budget_usd: float = Field(default=50.0, ge=0)  # hard ceiling; --budget can't exceed it
     max_input_tokens: int = Field(default=20000, ge=1000)  # per area: summary + picked code
-    max_output_tokens: int = Field(default=4000, ge=500)
+    max_output_tokens: int = Field(default=4000, ge=500)  # asked for; not every provider obeys
+    # Worst-case planning per call, raised by what real calls use (calibration.json next to the
+    # guides). Defaults from the first run through the Claude CLI (2026-10-23): it adds up to
+    # ~23k input tokens of its own; Opus wrote ~5.3k output tokens against a 4k cap.
+    call_overhead_tokens: int = Field(default=25000, ge=0)
+    output_allowance_tokens: int = Field(default=8000, ge=1)
     max_areas_per_run: int = Field(default=50, ge=1)
     dir: Path | None = None  # default: <output_dir>/guides/<repo folder name>
     use_in_generation: bool = True  # put the ticket's area guide into the generation context

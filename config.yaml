@@ -243,7 +243,12 @@ guides:                          # area guides: one strong-model call per area (
   prompt: guide_v1
   max_budget_usd: 50.0           # hard ceiling; --budget can go lower, never higher
   max_input_tokens: 20000        # per area: the area summary + code picked by the tool
-  max_output_tokens: 4000
+  max_output_tokens: 4000         # asked for; the Claude CLI doesn't enforce it
+  # Worst case per call, raised by what real calls use (calibration.json next to the guides).
+  # Defaults from the first run through the Claude CLI (2026-10-23): up to ~23k input tokens
+  # of its own per call; Opus wrote ~5.3k output tokens against the 4k cap.
+  call_overhead_tokens: 25000
+  output_allowance_tokens: 8000
   max_areas_per_run: 50
   dir: null                      # default: output/guides/<repo folder name>
   use_in_generation: true        # the ticket's area guide goes into the generation context

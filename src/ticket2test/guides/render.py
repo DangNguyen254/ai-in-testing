@@ -66,7 +66,10 @@ def render_run(run: GuideRun) -> str:
         f"- Model `{run.model}`, prompt `{run.prompt_version}`",
         f"- Budget ${run.budget_usd:.2f} (ceiling ${run.ceiling_usd:.2f})"
         + ("" if run.prices_known else "; **no price configured for this model**"),
-        f"- Worst case for the areas to build: ${estimated:.2f}",
+        f"- Worst case for the areas to build: ${estimated:.2f} (one call each; the budget is "
+        "checked again before every call, retries included)",
+        f"- Per call: estimated prompt + {run.overhead_tokens} overhead tokens in, "
+        f"{run.output_allowance_tokens} tokens out (configured, raised by measured calls)",
     ]
     if not run.estimate_only:
         lines.append(f"- Spent: ${run.spent_usd:.4f}")

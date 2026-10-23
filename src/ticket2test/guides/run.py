@@ -15,12 +15,20 @@ from pathlib import Path
 
 from ticket2test.config import Settings
 from ticket2test.generate.context import estimate_tokens
+from ticket2test.guides.budget import (
+    BudgetExceeded,
+    BudgetGuard,
+    CostUnknown,
+    call_cost,
+    load_calibration,
+    save_calibration,
+)
 from ticket2test.guides.check import check_guide
 from ticket2test.guides.inputs import pick_material
 from ticket2test.index.indexer import IndexData
 from ticket2test.llm.base import LLMClient, LLMError, LLMRequest, Message
 from ticket2test.llm.factory import model_name
-from ticket2test.llm.meter import Usage, UsageMeter
+from ticket2test.llm.meter import UsageMeter
 from ticket2test.llm.schema import strict_schema
 from ticket2test.llm.structured import StructuredOutputError, complete_structured
 from ticket2test.models.guide import AreaGuide, GuideOutput, GuidePlanItem, GuideRun
@@ -71,7 +79,6 @@ def run_guides(
         )
     prompt = load_prompt(cfg.prompt, settings.paths.prompts_dir)
     model = model_name(settings, "guide")
-    price = cfg.prices.get(model)
     run = GuideRun(
         repo_root=suite_map.repo_root,
         created_at=datetime.now(UTC),
@@ -80,24 +87,32 @@ def run_guides(
         estimate_only=estimate_only,
         budget_usd=budget,
         ceiling_usd=cfg.max_budget_usd,
-        prices_known=price is not None,
+        prices_known=model in cfg.prices,
         items=[],
     )
     wanted = [a for a in suite_map.areas if areas is None or a.name in areas]
     ordered = sorted(wanted, key=lambda a: (-a.tests, a.name))
+    calibration = load_calibration(folder, model, settings)
+    run.overhead_tokens, run.output_allowance_tokens = (
+        calibration.overhead_tokens,
+        calibration.output_tokens,
+    )
     meter = UsageMeter(client) if client is not None and not estimate_only else None
+    guard = BudgetGuard(meter, model, settings, budget, calibration) if meter is not None else None
     built = 0
     for area in ordered:
         material = pick_material(area, index, settings)
         user = _user(prompt, area, material.text)
         tokens_in = estimate_tokens(prompt.system + user, settings.context.chars_per_token)
-        worst = _cost(tokens_in, cfg.max_output_tokens, model, settings)
+        worst = call_cost(
+            tokens_in + calibration.overhead_tokens, calibration.output_tokens, model, settings
+        )
         item = GuidePlanItem(
             area=area.name,
             tests=area.tests,
             status="planned",
             input_tokens_estimate=tokens_in,
-            max_output_tokens=cfg.max_output_tokens,
+            max_output_tokens=calibration.output_tokens,
             cost_estimate_usd=worst,
         )
         run.items.append(item)
@@ -113,65 +128,60 @@ def run_guides(
             continue
         if estimate_only:
             continue
-        if built >= cfg.max_areas_per_run:
-            item.status = "over_limit"
-            continue
         if run.stopped:
             item.status = "stopped"
             continue
-        if worst is None:
-            item.status = "failed"
-            item.note = f"no price configured for {model}: can't check the budget before calling"
-            run.stopped = item.note
+        if built >= cfg.max_areas_per_run:
+            item.status = "over_limit"
             continue
-        if run.spent_usd + worst > budget:
-            item.status = "over_budget"
-            run.stopped = f"the next area's worst case (${worst:.2f}) would exceed the budget"
-            continue
-        assert meter is not None
+        assert meter is not None and guard is not None
         started = time.monotonic()
-        before = meter.usage
+        before, spent_before = meter.usage, guard.spent_usd
         try:
-            guide = _write(meter, prompt, user, model, settings)
+            guide = _write(guard, prompt, user, model, settings)
+        except BudgetExceeded as exc:
+            item.status = "over_budget" if meter.usage == before else "failed"
+            item.note = str(exc)[:300]
+            run.stopped = item.note
+        except CostUnknown as exc:
+            item.status = "failed"
+            item.note = f"{exc}: stopping"
+            run.stopped = item.note
         except (LLMError, StructuredOutputError) as exc:
             item.status = "failed"
             item.note = str(exc)[:300]
+        else:
+            checked, removed, unverified = check_guide(guide, area, index)
             usage = meter.usage.minus(before)
-            spent = _actual(usage, model, settings)
-            run.spent_usd = round(run.spent_usd + (spent or 0.0), 6)
-            item.usage, item.cost_usd = usage, spent
-            continue
-        usage = meter.usage.minus(before)
-        spent = _actual(usage, model, settings)
-        if spent is None:
-            item.status = "failed"
-            item.note = "the call's cost is unknown (no reported cost, no tokens): stopping"
-            run.stopped = item.note
-            continue
-        checked, removed, unverified = check_guide(guide, area, index)
-        save_guide(
-            folder,
-            AreaGuide(
-                area=area.name,
-                digest=area.digest,
-                sources=area.sources,
-                model=model,
-                prompt_version=prompt.version,
-                built_at=datetime.now(UTC),
-                input_pieces=material.pieces,
-                input_tokens_estimate=tokens_in,
-                guide=checked,
-                removed=removed,
-                unverified=unverified,
-                usage=usage,
-                cost_usd=spent,
-            ),
-        )
-        built += 1
-        run.spent_usd = round(run.spent_usd + spent, 6)
-        item.status, item.usage, item.cost_usd = "built", usage, spent
-        item.removed, item.unverified = len(removed), len(unverified)
+            save_guide(
+                folder,
+                AreaGuide(
+                    area=area.name,
+                    digest=area.digest,
+                    sources=area.sources,
+                    model=model,
+                    prompt_version=prompt.version,
+                    built_at=datetime.now(UTC),
+                    input_pieces=material.pieces,
+                    input_tokens_estimate=tokens_in,
+                    guide=checked,
+                    removed=removed,
+                    unverified=unverified,
+                    usage=usage,
+                    cost_usd=round(guard.spent_usd - spent_before, 6),
+                ),
+            )
+            built += 1
+            item.status = "built"
+            item.removed, item.unverified = len(removed), len(unverified)
+        item.usage = meter.usage.minus(before)
+        item.cost_usd = round(guard.spent_usd - spent_before, 6)
         item.seconds = round(time.monotonic() - started, 1)
+        run.spent_usd = guard.spent_usd
+    if guard is not None and guard.calibration.calls:
+        save_calibration(folder, model, guard.calibration)
+        run.overhead_tokens = guard.calibration.overhead_tokens
+        run.output_allowance_tokens = guard.calibration.output_tokens
     return run
 
 
@@ -208,23 +218,3 @@ def _write(
         max_retries=settings.llm.max_retries_on_bad_json,
     )
     return result.value
-
-
-def _cost(tokens_in: int, tokens_out: int, model: str, settings: Settings) -> float | None:
-    price = settings.guides.prices.get(model)
-    if price is None:
-        return None
-    return round(
-        (tokens_in * price.input_per_mtok + tokens_out * price.output_per_mtok) / 1_000_000, 6
-    )
-
-
-def _actual(usage: Usage, model: str, settings: Settings) -> float | None:
-    """The provider's reported cost; else tokens x configured prices; else unknown."""
-    if usage.calls and not usage.unpriced_calls:
-        return usage.cost_usd
-    if usage.input_tokens or usage.output_tokens:
-        priced = _cost(usage.input_tokens, usage.output_tokens, model, settings)
-        if priced is not None:
-            return round(priced, 6)
-    return None

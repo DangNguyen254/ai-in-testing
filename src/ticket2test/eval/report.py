@@ -160,6 +160,7 @@ def render_markdown(report: EvalRunReport) -> str:
             f"| Mean repair rounds | {_fmt(m['mean_repairs'])} |",
             f"| Reviewer warnings per test | {_fmt(m['warnings_per_test'])} |",
             f"| Leave-one-out violations | {m['leave_one_out_violations']} |",
+            f"| Area guide in the context | {sum(bool(p.guide) for p in gen.pairs)} tickets |",
             f"| LLM calls / time | {gen.llm_calls} / {gen.elapsed_seconds} s |",
             f"| Cost, provider-reported ($) | {_cost([gen.usage])} |",
             "",

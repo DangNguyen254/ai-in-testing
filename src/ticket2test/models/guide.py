@@ -66,8 +66,8 @@ class GuidePlanItem(BaseModel):
         "up_to_date", "planned", "built", "failed", "over_budget", "over_limit", "stopped"
     ]
     input_tokens_estimate: int
-    max_output_tokens: int
-    cost_estimate_usd: float | None  # worst case: estimated input + the full output cap
+    max_output_tokens: int  # the output allowance used for the worst case
+    cost_estimate_usd: float | None  # worst case of one call: input + overhead, output allowance
     cost_usd: float | None = None  # actual, when built
     usage: Usage | None = None
     removed: int = 0
@@ -90,5 +90,7 @@ class GuideRun(BaseModel):
     ceiling_usd: float
     prices_known: bool  # input/output prices configured for the model
     items: list[GuidePlanItem]
+    overhead_tokens: int = 0  # per-call input overhead used for the worst cases
+    output_allowance_tokens: int = 0  # per-call output used for the worst cases
     spent_usd: float = 0.0
     stopped: str = ""  # why the run stopped early, if it did

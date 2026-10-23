@@ -872,6 +872,11 @@ Read this first when resuming in a new session.
   - **Stand-in estimate (Sonnet):** 7 areas, 2.5k-6.3k input tokens each, worst case $0.35 in total.
   - **For Part C:** guides built from the full repo describe the tests that leave-one-out removes; the eval must build its guides from a copy without the eval's linked tests, and point `guides.dir` at them (eval repo copies have other folder names).
   - **Verified:** ruff, mypy strict (105 files), pytest 694 passed, 14 deselected.
+- 2026-10-23: **Part C, first attempt: both guide runs failed; two bugs fixed.** On the stand-in copy without the 21 eval tests (`.scratch/standin-noeval`, 34 own tests), Sonnet spent $1.30 (estimate $0.34) and Opus $2.42 against a $2.00 budget (estimate $0.68); every call failed validation, so no guide was written. (Costs are the Claude CLI's reported API-price estimates.)
+  - **Schema bug (general):** `strict_schema` dropped JSON-Schema keywords (`title`, `examples`, `format`, `pattern`, ...) also when they were field names under `properties`, so `GuideOutput.examples` was never in the schema the model saw, and validation required it. Fixed; a comparison of all nine LLM output schemas before and after shows only `GuideOutput` changed, so earlier results are unaffected.
+  - **Budget bug:** the worst case missed the Claude CLI's own input per call (6k-23k tokens), the output cap isn't enforced by the CLI (Opus ~5.3k tokens against 4k; its thinking counts as output), and the budget was checked once per area while JSON retries made up to three calls. Now `BudgetGuard` (`guides/budget.py`) checks the worst case before every call, retries included; per-call overhead (`call_overhead_tokens` 25000) and output (`output_allowance_tokens` 8000) are raised by what real calls use and saved in `calibration.json` next to the guides (never lowered below the configured values).
+  - **Corrected estimates:** Sonnet $0.97, Opus $1.94 worst case for the 7 areas.
+  - **Verified:** ruff, mypy strict (106 files), pytest 697 passed, 14 deselected.
 
 ## Global open questions (for the human)
 - Which LLM provider/endpoint will the company environment require?

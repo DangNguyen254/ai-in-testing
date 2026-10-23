@@ -126,25 +126,68 @@ def test_an_estimate_calls_nothing(index: IndexData, suite_map: SuiteMap, tmp_pa
     assert [i.area for i in run.items][:2] == ["rules", "agent"]  # most tests first
     assert {i.status for i in run.items} == {"planned"} and run.spent_usd == 0
     first = run.items[0]
-    expected = (first.input_tokens_estimate * 2.0 + 4000 * 10.0) / 1_000_000  # Sonnet prices
+    # Worst case of one call: prompt + the CLI overhead in, the output allowance out (Sonnet).
+    expected = ((first.input_tokens_estimate + 25000) * 2.0 + 8000 * 10.0) / 1_000_000
     assert first.cost_estimate_usd == pytest.approx(expected)
     assert run.prices_known and run.model == "claude-sonnet-5-5"
+    assert (run.overhead_tokens, run.output_allowance_tokens) == (25000, 8000)
+
+
+_LEAN = {"call_overhead_tokens": 0, "output_allowance_tokens": 4000}  # ~$0.05 per call
 
 
 def test_the_budget_stops_before_a_call_could_exceed_it(
     index: IndexData, suite_map: SuiteMap, tmp_path: Path
 ) -> None:
     fake = PricedFake(_replies(10), cost=0.01)
-    run = _run(
-        index, suite_map, _settings(tmp_path), fake, budget_usd=0.06
-    )  # one worst case (~$0.05) fits, not two
+    run = _run(index, suite_map, _settings(tmp_path, **_LEAN), fake, budget_usd=0.06)
     statuses = [i.status for i in run.items]
-    assert statuses[0] == "built" and "over_budget" in statuses
+    assert statuses[:2] == ["built", "over_budget"]  # one worst case fits, two don't
+    assert statuses[2:] == ["stopped"] * (len(statuses) - 2)
     assert run.spent_usd == pytest.approx(0.01) and len(fake.requests) == 1
-    assert statuses[statuses.index("over_budget") + 1 :] == ["stopped"] * (
-        len(statuses) - statuses.index("over_budget") - 1
-    )
     assert "would exceed the budget" in run.stopped
+
+
+def test_retries_are_checked_against_the_budget_too(
+    index: IndexData, suite_map: SuiteMap, tmp_path: Path
+) -> None:
+    """Found on the first real run: retries made three calls per area while the budget was
+    checked once per area, and the run went over."""
+    settings = _settings(tmp_path, call_overhead_tokens=0, output_allowance_tokens=1000)
+    fake = PricedFake(["not json"] * 10, cost=0.03)  # every attempt fails validation
+    run = _run(index, suite_map, settings, fake, budget_usd=0.07, areas=["rules"])
+    (item,) = run.items
+    assert len(fake.requests) == 2  # the third attempt's worst case didn't fit
+    assert item.status == "failed" and "would exceed the budget" in item.note
+    assert run.spent_usd == pytest.approx(0.06) and run.spent_usd <= 0.07
+
+
+def test_calibration_learns_from_real_calls(
+    index: IndexData, suite_map: SuiteMap, tmp_path: Path
+) -> None:
+    class Heavy(PricedFake):
+        def complete(self, request: Any) -> Any:
+            response = super().complete(request)
+            return response.model_copy(update={"input_tokens": 60000, "output_tokens": 9000})
+
+    settings = _settings(tmp_path)
+    folder = settings.guides.dir
+    assert folder is not None
+    run = _run(index, suite_map, settings, Heavy(_replies(1), cost=0.02), areas=["rules"])
+    prompt = run.items[0].input_tokens_estimate
+    saved = json.loads((folder / "calibration.json").read_text(encoding="utf-8"))
+    assert saved["claude-sonnet-5-5"]["output_tokens"] == 9000
+    assert saved["claude-sonnet-5-5"]["overhead_tokens"] >= 60000 - prompt - 10  # ~ the excess
+    estimate = _run(index, suite_map, settings, None, estimate_only=True, force=True)
+    assert estimate.output_allowance_tokens == 9000  # the next estimate uses what was seen
+    assert estimate.overhead_tokens == saved["claude-sonnet-5-5"]["overhead_tokens"]
+    # Measured numbers never lower the configured defaults.
+    (folder / "calibration.json").write_text(
+        json.dumps({"claude-sonnet-5-5": {"overhead_tokens": 5, "output_tokens": 5, "calls": 1}}),
+        encoding="utf-8",
+    )
+    low = _run(index, suite_map, settings, None, estimate_only=True, force=True)
+    assert (low.overhead_tokens, low.output_allowance_tokens) == (25000, 8000)
 
 
 def test_the_ceiling_cant_be_passed(index: IndexData, suite_map: SuiteMap, tmp_path: Path) -> None:
@@ -158,7 +201,7 @@ def test_the_ceiling_cant_be_passed(index: IndexData, suite_map: SuiteMap, tmp_p
 def test_no_price_means_no_call(index: IndexData, suite_map: SuiteMap, tmp_path: Path) -> None:
     fake = PricedFake(_replies(10))
     run = _run(index, suite_map, _settings(tmp_path, prices={}), fake)
-    assert fake.requests == [] and run.items[0].status == "failed"
+    assert fake.requests == [] and run.items[0].status == "over_budget"
     assert "no price configured" in run.stopped
     assert {i.status for i in run.items[1:]} == {"stopped"}
 
@@ -176,7 +219,7 @@ def test_cost_from_tokens_when_the_provider_reports_none(
 def test_unknown_cost_stops_the_run(index: IndexData, suite_map: SuiteMap, tmp_path: Path) -> None:
     fake = FakeLLMClient(_replies(10))  # reports neither cost nor tokens
     run = _run(index, suite_map, _settings(tmp_path), fake)
-    assert run.items[0].status == "failed" and "cost is unknown" in run.stopped
+    assert run.items[0].status == "failed" and "neither a cost nor tokens" in run.stopped
     assert len(fake.requests) == 1
 
 

@@ -59,6 +59,7 @@ class GenerationPairResult(BaseModel):
     decided: str | None = None  # the decision before fallbacks
     reuse_target: str | None = None
     reuse_notes: list[str] = Field(default_factory=list)  # fallbacks taken
+    guide: str = ""  # the area guide in the context ("" when none)
     fixed_in_code: str = ""  # fixes made in code instead of an LLM retry (from notes)
     draft_cached: bool = False
     test_kind: str | None = None
@@ -326,6 +327,7 @@ def _one(
 
     result.reuse_kind, result.decided = outcome.kind, outcome.decision.kind
     result.reuse_target, result.reuse_notes = outcome.decision.target, list(outcome.notes)
+    result.guide = outcome.guide
     if outcome.generated is None or outcome.report is None:  # covered: nothing generated
         result.status = "covered"
         result.test_ids = [outcome.decision.test_id or ""]

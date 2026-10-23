@@ -54,6 +54,10 @@ def _convert(node: Any, defs: dict[str, Any], depth: int) -> Any:
         return _convert(merged, defs, depth + 1)
 
     out = {k: _convert(v, defs, depth + 1) for k, v in node.items() if k not in _DROP_KEYS}
+    if isinstance(node.get("properties"), dict):  # field names, not keywords: keep them all
+        out["properties"] = {
+            name: _convert(value, defs, depth + 1) for name, value in node["properties"].items()
+        }
     if out.get("type") == "object" or "properties" in out:
         props = out.get("properties", {})
         out["properties"] = props

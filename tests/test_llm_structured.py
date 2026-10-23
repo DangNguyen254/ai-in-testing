@@ -115,3 +115,28 @@ def test_validation_context_reaches_validators() -> None:
         fake, _request(), DraftResponse, max_retries=0, context={"priorities": ["p1"]}
     )
     assert result.value.status == "insufficient_info"
+
+
+def test_field_names_that_are_schema_keywords_are_kept() -> None:
+    """Found on the first real guide run: a field named ``examples`` was dropped from the
+    schema (keywords such as title, examples, format were removed even as field names), so
+    the model never saw it and every answer failed validation."""
+    from pydantic import BaseModel, Field
+
+    from ticket2test.llm.schema import strict_schema
+
+    class Item(BaseModel):
+        format: str = Field(max_length=5)
+
+    class Out(BaseModel):
+        title: str
+        examples: list[Item] = Field(max_length=3)
+        pattern: str = Field(pattern="^a", examples=["a"])
+
+    schema = strict_schema(Out)
+    assert list(schema["properties"]) == ["title", "examples", "pattern"]
+    assert schema["required"] == ["title", "examples", "pattern"]
+    assert "format" in schema["properties"]["examples"]["items"]["properties"]
+    pattern = schema["properties"]["pattern"]
+    assert "pattern" not in pattern and "examples" not in pattern  # keywords still dropped
+    assert "maxItems" not in schema["properties"]["examples"]
