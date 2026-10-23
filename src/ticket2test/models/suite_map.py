@@ -78,6 +78,7 @@ class SuiteOverview(BaseModel):
     shared_helpers: list[Count]  # base-class helpers used in two or more areas -> areas
     marker_values: dict[str, list[str]]
     unassigned_tests: list[str]  # test chunk ids outside every area
+    skipped_files: list[str] = Field(default_factory=list)  # "path: reason" (legacy, unreadable)
 
 
 class SuiteMap(BaseModel):

@@ -42,6 +42,7 @@ markers:                       # generic placeholders; set real values per envir
   suites: [smoke, regression]
   project: example-project
   required: [priority, project, component, suite]
+  value_separator: ","           # joined values ("a,b") are checked part by part; "" = whole
 
 eval:
   ticket_id_pattern: '\b[A-Z][A-Z0-9]+-\d+\b'   # Jira-style: KEY-123

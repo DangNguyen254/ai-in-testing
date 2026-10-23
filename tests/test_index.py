@@ -280,7 +280,7 @@ def test_parse_errors_are_logged_and_skipped(
         data, stats, _ = update_index(repo, settings)
     reasons = {s.path: s.reason for s in stats.skipped}
     assert set(reasons) == {"framework/broken.py", "framework/latin1.py"}
-    assert "syntax error" in reasons["framework/broken.py"]
+    assert "does not parse as Python 3" in reasons["framework/broken.py"]
     assert "UTF-8" in reasons["framework/latin1.py"]
     assert "broken.py" in caplog.text
     assert any(c.kind == "test" for c in data.chunks)  # everything else still indexed

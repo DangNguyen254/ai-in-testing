@@ -73,6 +73,9 @@ def render_overview(m: SuiteMap) -> str:
     if o.unassigned_tests:
         lines += ["", f"## Tests outside every area ({len(o.unassigned_tests)})", ""]
         lines += [f"- `{t}`" for t in o.unassigned_tests[:50]]
+    if o.skipped_files:
+        lines += ["", f"## Files left out ({len(o.skipped_files)})", ""]
+        lines += [f"- {f}" for f in o.skipped_files[:50]]
     gaps = len(m.coverage)
     lines += ["", f"Coverage: {gaps} unreferenced test-side item(s); see [coverage](coverage.md)."]
     return "\n".join(lines) + "\n"

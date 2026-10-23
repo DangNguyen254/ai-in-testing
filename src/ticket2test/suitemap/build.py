@@ -389,6 +389,11 @@ def _overview(
         shared_helpers=[c for c in _top(shared, None) if c.count >= 2],
         marker_values={k: sorted(v) for k, v in sorted(catalog.markers.items())},
         unassigned_tests=sorted(t.id for t in tests if t.id not in assigned),
+        skipped_files=sorted(
+            f"{path}: {record.error or 'skipped'}"
+            for path, record in index.files.items()
+            if record.info is None
+        ),
     )
 
 

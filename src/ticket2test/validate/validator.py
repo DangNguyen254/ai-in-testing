@@ -10,7 +10,7 @@ import ast
 import json
 import re
 import sys
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Any
@@ -369,11 +369,16 @@ def check_assertions(s: Subject) -> Iterator[Finding]:
 
 def check_markers(s: Subject) -> Iterator[Finding]:
     m = s.settings.markers
+
+    def parts(values: Iterable[str]) -> set[str]:
+        sep = m.value_separator
+        return {p.strip() for v in values for p in (v.split(sep) if sep else [v]) if p.strip()}
+
     allowed: dict[str, set[str]] = {
         "priority": set(m.priorities),
         "suite": set(m.suites),
-        "project": {m.project, *s.catalog.markers.get("project", [])},
-        "component": set(s.catalog.markers.get("component", [])),
+        "project": parts([m.project, *s.catalog.markers.get("project", [])]),
+        "component": parts(s.catalog.markers.get("component", [])),
     }
     for cls, fn in s.tests:
         found = markers(cls.decorator_list if cls else [])
@@ -385,7 +390,7 @@ def check_markers(s: Subject) -> Iterator[Finding]:
                 yield _f("markers", f"missing @pytest.mark.{name}(...)", test=fn.name)
                 continue
             known = allowed.get(name)
-            for value in values:
+            for value in sorted(parts(values)) if name in ("project", "component") else values:
                 if known and value not in known:
                     yield _f(
                         "markers",

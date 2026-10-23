@@ -787,3 +787,12 @@ def test_only_assert_methods_on_self_count() -> None:
     assert not is_assertion("self.unique_name", "self.check", True)  # a helper, not a check
     assert not is_assertion("self.assertIn", "self.check", False)
     assert is_assertion("self.check.whatever", "self.check", False)  # judged by the method list
+
+
+def test_joined_marker_values_are_checked_part_by_part(setup: Any) -> None:
+    joined = _replace('@pytest.mark.component("rules")', '@pytest.mark.component("rules,profiles")')
+    assert _messages(_validate(setup, code=joined), "markers") == []  # both parts known
+    unknown = _replace('@pytest.mark.component("rules")', '@pytest.mark.component("rules,nope")')
+    messages = _messages(_validate(setup, code=unknown), "markers")
+    assert len(messages) == 1 and "component value 'nope' is not approved" in messages[0]
+    assert GOOD_CODE.count('@pytest.mark.component("rules")') == 1

@@ -87,6 +87,9 @@ class MarkerSettings(_Section):
     required: list[str] = Field(
         default_factory=lambda: ["priority", "project", "component", "suite"]
     )
+    # Some suites join several values in one marker argument ("rules,profiles"); each part is
+    # checked on its own. Empty: values are taken whole.
+    value_separator: str = ","
 
 
 class EvalSettings(_Section):

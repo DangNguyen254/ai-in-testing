@@ -7,6 +7,7 @@ A file that can't be read or parsed is logged and skipped, never fatal.
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import logging
@@ -29,9 +30,9 @@ from ticket2test.models.chunk import Chunk
 
 log = logging.getLogger(__name__)
 
-INDEX_VERSION = 7  # 2: syntax-tree refs; 3: array data files, returned calls; 4: imports;
+INDEX_VERSION = 8  # 2: syntax-tree refs; 3: array data files, returned calls; 4: imports;
 # 5: inherited tests and class variants; 6: defaults rows, per-function data files;
-# 7: page objects by type traversal, chains_truncated
+# 7: page objects by type traversal, chains_truncated; 8: Python 3 parse check
 INDEX_FILE = "index.json"
 
 
@@ -151,7 +152,11 @@ def build_index(
             continue
         stats.parsed += 1
         try:
-            source.decode("utf-8")
+            text = source.decode("utf-8")
+            legacy = _python3_error(text)
+            if legacy is not None:  # tree-sitter would accept it; Python 3 can't run it
+                records[path] = _skip(stats, path, digest, f"{path}: {legacy}")
+                continue
             records[path] = FileRecord(sha256=digest, info=extract_file(path, source))
         except UnicodeDecodeError:
             records[path] = _skip(stats, path, digest, f"{path}: not valid UTF-8")
@@ -226,6 +231,18 @@ def update_index(
     previous = None if force else load_index(directory, settings)
     data, stats = build_index(repo, settings, previous)
     return data, stats, save_index(data, directory, settings.index.save_attempts)
+
+
+def _python3_error(text: str) -> str | None:
+    """Why the file doesn't parse as Python 3 (legacy Python 2 code, a broken file), or None.
+    Such a file can't run, so it is left out instead of becoming chunks a test is copied from."""
+    try:
+        ast.parse(text)
+    except SyntaxError as exc:
+        return f"does not parse as Python 3 (line {exc.lineno}: {exc.msg}); legacy code?"
+    except ValueError as exc:  # null bytes
+        return f"does not parse as Python 3 ({exc})"
+    return None
 
 
 def _skip(stats: BuildStats, path: str, digest: str, reason: str) -> FileRecord:
