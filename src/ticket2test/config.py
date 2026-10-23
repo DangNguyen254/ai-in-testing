@@ -336,6 +336,11 @@ class ValidateSettings(_Section):
     # Classes that inherit one of these (anywhere up the lineage) may also assert on ``self``
     # (``self.assertEqual``): real suites mix both styles. Only assert*/fail* methods count.
     testcase_bases: list[str] = Field(default_factory=lambda: ["unittest.TestCase", "TestCase"])
+    # Helpers that take a page-object path as a dotted string (``navigate("area.page")``) and
+    # resolve it with getattr: the string is checked like a chain. Discovered too: functions
+    # whose body splits a string on "." and calls getattr.
+    path_string_helpers: list[str] = Field(default_factory=list)
+    discover_path_string_helpers: bool = True
     assertion_methods: list[str] = Field(
         default_factory=lambda: [
             "assertEqual", "assertNotEqual", "assertTrue", "assertFalse", "assertIn",

@@ -212,6 +212,56 @@ def check_base_class(s: Subject) -> Iterator[Finding]:
             yield _f("base_class", f"class {cls.name} must inherit {wanted}", line=cls.lineno)
 
 
+_SPLIT_ON_DOT = re.compile(r"""\.split\(\s*["']\.["']\s*\)""")
+
+
+def path_string_helpers(index: IndexData | None, settings: Settings) -> set[str]:
+    """Helper names that resolve a dotted page-object path string with getattr."""
+    v = settings.validation
+    found = set(v.path_string_helpers)
+    if v.discover_path_string_helpers and index is not None:
+        for chunk in index.chunks:
+            if (
+                chunk.kind == "function"
+                and "getattr(" in chunk.code
+                and _SPLIT_ON_DOT.search(chunk.code)
+            ):
+                found.add(chunk.symbol_name)
+    return found
+
+
+def check_path_strings(s: Subject) -> Iterator[Finding]:
+    """A dotted page-object path passed as a string (``navigate("rules.list")``) must resolve
+    through the catalog, from a chain root, like a property chain does."""
+    helpers = path_string_helpers(s.index, s.settings)
+    roots = list(s.catalog.chain_roots)
+    if not helpers or not roots:
+        return
+    for _, fn in s.tests:
+        for node in ast.walk(fn):
+            if not isinstance(node, ast.Call) or not node.args:
+                continue
+            if dotted(node.func).rsplit(".", 1)[-1] not in helpers:
+                continue
+            arg = node.args[0]
+            if not isinstance(arg, ast.Constant) or not isinstance(arg.value, str):
+                continue  # built at run time: can't be checked statically
+            text = arg.value.strip().strip(".")
+            if not text:
+                continue
+            tries = [text] if text.split(".")[0] in roots else [f"{r}.{text}" for r in roots]
+            results = [s.catalog.resolve_chain_from_roots(t) for t in tries]
+            # Like chains: only a member that is missing is an error; a type that can't be
+            # followed statically ("unknown_type") is not.
+            if all(r.status in ("missing", "no_root") for r in results):
+                yield _f(
+                    "names",
+                    f"page path {arg.value!r} doesn't resolve: {results[0].message}",
+                    test=fn.name,
+                    line=node.lineno,
+                )
+
+
 _HOOK_ROLES = {
     "setup": ("setup", "setup_method", "setUp", "setup_class", "setUpClass"),
     "teardown": ("teardown", "teardown_method", "tearDown", "teardown_class", "tearDownClass"),
@@ -811,6 +861,7 @@ CHECKS: list[tuple[str, Check]] = [
     ("capabilities", check_capability_gates),
     ("claims", check_claims),
     ("hooks", check_hooks),
+    ("path_strings", check_path_strings),
     ("draft_outcome", check_draft_outcome),
     ("variants", check_variants),
     ("constants", check_unstated_constants),

@@ -173,6 +173,8 @@ validation:                     # deterministic checks of generated tests (Phase
   discover_base_classes: true
   assertion_object: self.check    # a unittest.TestCase instance
   testcase_bases: [unittest.TestCase, TestCase]   # classes inheriting these may also use self.assert*
+  path_string_helpers: []         # helpers taking a dotted page path string; checked like chains
+  discover_path_string_helpers: true   # also: functions that split on "." and call getattr
   assertion_methods: [assertEqual, assertNotEqual, assertTrue, assertFalse, assertIn,
                       assertNotIn, assertIsNone, assertIsNotNone, assertGreater, assertLess,
                       assertRaises]
