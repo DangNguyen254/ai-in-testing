@@ -439,7 +439,7 @@ def _coverage(
 # pytest calls these itself (xunit-style setup/teardown); nothing in the repo has to.
 _HOOKS = (
     "setup", "teardown", "setup_method", "teardown_method", "setup_class", "teardown_class",
-    "setup_module", "teardown_module",
+    "setup_module", "teardown_module", "setUp", "tearDown", "setUpClass", "tearDownClass",
 )  # fmt: skip
 
 

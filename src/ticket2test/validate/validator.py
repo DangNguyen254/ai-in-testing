@@ -19,6 +19,7 @@ from ticket2test.config import Settings
 from ticket2test.generate.entries import function_of
 from ticket2test.generate.inspect import DataUse, computed_test_ids, data_use
 from ticket2test.index.catalog import ClassEntry, SymbolCatalog
+from ticket2test.index.chunks import is_test_file
 from ticket2test.index.datafile import merged, split_defaults
 from ticket2test.index.indexer import IndexData
 from ticket2test.index.tokens import split_identifier
@@ -169,9 +170,27 @@ def check_names(s: Subject) -> Iterator[Finding]:
             yield _f("names", f"undefined name {node.id!r}", line=node.lineno)
 
 
+def suite_base_classes(catalog: SymbolCatalog, settings: Settings) -> list[str]:
+    """The configured base classes, or the in-repo classes the suite's test classes directly
+    inherit (discovered; a class inheriting one of those inherits its whole lineage, while a
+    mixin further up doesn't count on its own)."""
+    v = settings.validation
+    if v.base_classes or not v.discover_base_classes:
+        return list(v.base_classes)
+    prefix = settings.index.test_class_prefix
+    found: dict[str, int] = {}
+    for entry in catalog.classes.values():
+        if entry.name.startswith(prefix) and is_test_file(entry.file_path, settings.index):
+            for written in entry.bases:
+                base = catalog.resolve_type(written, entry.module)
+                if base is not None and not base.name.startswith(prefix):
+                    found[base.name] = found.get(base.name, 0) + 1
+    return sorted(found, key=lambda name: (-found[name], name))  # most used first
+
+
 def check_base_class(s: Subject) -> Iterator[Finding]:
     assert s.tree is not None
-    allowed = s.settings.validation.base_classes
+    allowed = suite_base_classes(s.catalog, s.settings)
     if not allowed:
         return
     known = [b for b in allowed if s.catalog.class_named(b) is not None]
@@ -188,8 +207,38 @@ def check_base_class(s: Subject) -> Iterator[Finding]:
             for n in names
         )
         if not inherits:
-            wanted = allowed[0] if len(allowed) == 1 else f"one of {', '.join(allowed)}"
+            shown = allowed if len(allowed) <= 6 else [*allowed[:6], "..."]
+            wanted = allowed[0] if len(allowed) == 1 else f"one of {', '.join(shown)}"
             yield _f("base_class", f"class {cls.name} must inherit {wanted}", line=cls.lineno)
+
+
+_HOOK_ROLES = {
+    "setup": ("setup", "setup_method", "setUp", "setup_class", "setUpClass"),
+    "teardown": ("teardown", "teardown_method", "tearDown", "teardown_class", "tearDownClass"),
+}
+
+
+def check_hooks(s: Subject) -> Iterator[Finding]:
+    """A setup/teardown hook whose name the class's bases don't use, while they use another
+    name for the same role: overriding the wrong name does nothing, or skips the base's
+    setup (real suites mix setup, setup_method and setUp)."""
+    if s.resolver is None or s.tree is None:
+        return
+    for cls in test_classes(s.tree, s.settings.index.test_class_prefix):
+        own = {n.name for n in cls.body if isinstance(n, ast.FunctionDef)}
+        bases = s.resolver.repo_bases(cls)
+        for role, names in _HOOK_ROLES.items():
+            used = sorted({n for b in bases for n in b.members if n in names})
+            for name in sorted(own & set(names)):
+                if used and name not in used:
+                    yield _f(
+                        "hooks",
+                        f"{cls.name}.{name}: the base classes use {', '.join(used)} for "
+                        f"{role}, not {name}; define {used[0]} instead so the base's {role} runs",
+                        "warning",
+                        line=next(n.lineno for n in cls.body
+                                  if isinstance(n, ast.FunctionDef) and n.name == name),
+                    )  # fmt: skip
 
 
 def _mro_by_name(catalog: SymbolCatalog, name: str) -> list[ClassEntry]:
@@ -761,6 +810,7 @@ CHECKS: list[tuple[str, Check]] = [
     ("seeded_names", check_seeded_names),
     ("capabilities", check_capability_gates),
     ("claims", check_claims),
+    ("hooks", check_hooks),
     ("draft_outcome", check_draft_outcome),
     ("variants", check_variants),
     ("constants", check_unstated_constants),
@@ -815,7 +865,12 @@ def _prepare(s: Subject) -> None:
     assert s.tree is not None
     v, d = s.settings.validation, s.settings.data
     s.base = next(  # where chains start when a class's own bases aren't in the repo
-        (c for c in (s.catalog.class_named(b) for b in v.base_classes) if c is not None), None
+        (
+            c
+            for c in (s.catalog.class_named(b) for b in suite_base_classes(s.catalog, s.settings))
+            if c is not None
+        ),
+        None,
     )
     s.tests = test_functions(
         s.tree, s.settings.index.test_function_prefix, s.settings.index.test_class_prefix

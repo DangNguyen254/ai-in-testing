@@ -246,7 +246,28 @@ def test_base_class_is_required(setup: Any) -> None:
         "from framework.base_test import BaseTest\n", "", code
     )  # unused import gone too
     messages = _messages(_validate(setup, code=code), "base_class")
-    assert messages == ["class TestRulesListFilter must inherit BaseTest"]
+    # Discovered from the suite: the classes existing test classes directly inherit.
+    assert messages == ["class TestRulesListFilter must inherit one of BaseTest, DownloadChecks"]
+
+
+def test_base_classes_are_discovered_or_configured(setup: Any) -> None:
+    from ticket2test.validate.validator import suite_base_classes
+
+    settings, index, _ = setup
+    assert suite_base_classes(index.catalog, settings) == ["BaseTest", "DownloadChecks"]
+    listed = settings.model_copy(
+        update={"validation": settings.validation.model_copy(update={"base_classes": ["X"]})}
+    )
+    assert suite_base_classes(index.catalog, listed) == ["X"]
+
+
+def test_a_setup_hook_the_base_doesnt_use_is_flagged(setup: Any) -> None:
+    """Real suites mix setup, setup_method and setUp; overriding a name the base classes
+    don't use does nothing (or skips the base's setup)."""
+    code = _replace("   def setup(self):", "   def setUp(self):")
+    warnings = _messages(_validate(setup, code=code), "hooks", "warning")
+    assert len(warnings) == 1 and "use setup for setup, not setUp" in warnings[0]
+    assert _messages(_validate(setup), "hooks", "warning") == []  # setup is what BaseTest uses
 
 
 def test_any_of_several_base_classes_is_accepted(setup: Any) -> None:

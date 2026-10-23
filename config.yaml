@@ -151,7 +151,8 @@ generate:
     - Expected backend responses are not from a real capture; confirm them in a real run.
     - Check whether the page needs a refresh before a field is read again after saving.
     - Confirm the save flow (object save, top-bar save and publish, or reset).
-  scaffold_methods: [setup, teardown, setup_method, teardown_method]   # copied with the scaffold
+  scaffold_methods: [setup, teardown, setup_method, teardown_method, setup_class, teardown_class,
+                     setUp, tearDown, setUpClass, tearDownClass]   # copied with the scaffold
   placeholder_token: "{test_id:24}"   # unique names in data (N = max length)
   max_example_tests: 4
   deployment_decorators: {cloud: cloud_only, on_prem: on_prem_only}
@@ -167,7 +168,9 @@ generate:
   variant_prompt: variant_v1      # only when a new case can't be planned in code
 
 validation:                     # deterministic checks of generated tests (Phase 7)
-  base_classes: [BaseTest]        # every test class inherits one of them (no common root needed)
+  base_classes: []                # every test class inherits one of them; empty: discovered from
+                                  # the classes existing test classes inherit
+  discover_base_classes: true
   assertion_object: self.check    # a unittest.TestCase instance
   assertion_methods: [assertEqual, assertNotEqual, assertTrue, assertFalse, assertIn,
                       assertNotIn, assertIsNone, assertIsNotNone, assertGreater, assertLess,

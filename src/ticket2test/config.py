@@ -290,10 +290,14 @@ class GenerateSettings(_Section):
             "Confirm the save flow (object save, top-bar save and publish, or reset).",
         ]
     )
-    # Class methods copied with the scaffold (setup/teardown with the class's options).
+    # Class methods copied with the scaffold (setup/teardown with the class's options). Real
+    # suites mix pytest (setup_method, setup_class), nose-style (setup) and unittest (setUp).
     scaffold_methods: list[str] = Field(
-        default_factory=lambda: ["setup", "teardown", "setup_method", "teardown_method"]
-    )
+        default_factory=lambda: [
+            "setup", "teardown", "setup_method", "teardown_method", "setup_class",
+            "teardown_class", "setUp", "tearDown", "setUpClass", "tearDownClass",
+        ]
+    )  # fmt: skip
     placeholder_token: str = "{test_id:24}"  # unique names in data; N = max length
     max_example_tests: int = Field(default=4, ge=0)  # similar tests shown as style examples
     # Suite-specific decorator names for deployment-type skips (cloud-only / on-prem-only).
@@ -323,8 +327,11 @@ class ValidateSettings(_Section):
     """Deterministic checks of a generated test (Phase 7). Values describe the target suite."""
 
     # Every test class must inherit one of these (directly or not); there may be no common root.
-    # Empty: the check is off.
-    base_classes: list[str] = Field(default_factory=lambda: ["BaseTest"])
+    # Empty: discovered from the suite (any in-repo class that existing test classes inherit;
+    # real suites have dozens of bases, 2-4 levels deep, per area). ``discover_base_classes``
+    # false and empty: the check is off.
+    base_classes: list[str] = Field(default_factory=list)
+    discover_base_classes: bool = True
     assertion_object: str = "self.check"
     assertion_methods: list[str] = Field(
         default_factory=lambda: [
