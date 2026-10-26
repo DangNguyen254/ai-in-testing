@@ -38,6 +38,7 @@ from ticket2test.models.generated import (
     CTX_BASE_ID,
     CTX_CLASS_PREFIX,
     CTX_DATA_ACCESS,
+    CTX_EXPECTATION_SETS,
     CTX_EXPECTATIONS,
     CTX_ID_FIELD,
     CTX_INHERITED_IDS,
@@ -56,6 +57,7 @@ from ticket2test.prompts import load_prompt
 from ticket2test.security import scrub, scrub_code
 from ticket2test.security.masking import Masker
 from ticket2test.style import FormatError, format_json, format_python
+from ticket2test.style.local import detect_python_style
 
 
 class GenerationError(LLMError):
@@ -154,6 +156,7 @@ def prepare_generation(
             CTX_PER_ENTRY_KEYS: data.per_entry_keys,
             CTX_DATA_ACCESS: data.access,
             CTX_EXPECTATIONS: data.expectation_sections,
+            CTX_EXPECTATION_SETS: data.allowed_expectation_sets,
             CTX_SEED_SECTIONS: data.seed_sections,
             CTX_TICKET_ID: draft.ticket_id,
             CTX_INHERITED_IDS: [
@@ -184,10 +187,11 @@ def assemble(
     response = unmask_generation(response, masker)
     code_scrub = scrub_code(response.code)  # literals and comments only: code stays valid
     notes = response.notes
+    style = settings.style.python
+    if settings.style.follow_local:  # cosmetic rules follow the area: the template's style
+        style = detect_python_style(setup.template_chunk.code, style)
     try:
-        code = format_python(
-            code_scrub.text, settings.style.python, first_party(setup.index, settings)
-        )
+        code = format_python(code_scrub.text, style, first_party(setup.index, settings))
     except FormatError as exc:
         code = code_scrub.text
         notes = f"{notes} (not formatted: {exc})".strip()

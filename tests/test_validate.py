@@ -327,8 +327,15 @@ def test_style_rules(setup: Any) -> None:
     annotated = _replace("def setup(self):", "def setup(self) -> None:")
     assert any("annotations" in m for m in _messages(_validate(setup, code=annotated), "style"))
     four_spaces = GOOD_CODE.replace("   ", "    ")
-    messages = _messages(_validate(setup, code=four_spaces), "style")
+    fixed = setup[0].model_copy(
+        update={"style": setup[0].style.model_copy(update={"follow_local": False})}
+    )
+    messages = _messages(_validate(setup, code=four_spaces, settings=fixed), "style")
     assert any("not formatted" in m for m in messages)
+    # Following the local style, a consistent file in another indent is fine; a messy one isn't.
+    assert not _messages(_validate(setup, code=four_spaces), "style")
+    messy = GOOD_CODE.replace("rules.search()", "rules.search( )")
+    assert any("not formatted" in m for m in _messages(_validate(setup, code=messy), "style"))
     crlf = GOOD_CODE.replace("\n", "\r\n")
     assert any("LF" in m for m in _messages(_validate(setup, code=crlf), "style"))
 
@@ -400,7 +407,14 @@ def test_data_keys_read_must_exist_and_every_key_must_be_used(setup: Any) -> Non
 
 def test_data_file_formatting(setup: Any) -> None:
     text = json.dumps([GOOD_ENTRY], indent=2)
-    messages = _messages(_validate(setup, data_text=text), "data_file")
+    fixed = setup[0].model_copy(
+        update={"style": setup[0].style.model_copy(update={"follow_local": False})}
+    )
+    messages = _messages(_validate(setup, data_text=text, settings=fixed), "data_file")
+    assert messages == ["the data file is not formatted to the suite's JSON style"]
+    assert not _messages(_validate(setup, data_text=text), "data_file")  # its own style
+    mixed = text.replace('"policy": {', '"policy":{', 1)
+    messages = _messages(_validate(setup, data_text=mixed), "data_file")
     assert messages == ["the data file is not formatted to the suite's JSON style"]
 
 

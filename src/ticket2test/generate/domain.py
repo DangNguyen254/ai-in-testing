@@ -75,6 +75,13 @@ def domains(index: IndexData, settings: Settings) -> list[Domain]:
     return [Domain(PurePosixPath(f).name, (f,)) for f in found]
 
 
+def is_legacy(domain: Domain, legacy: list[str]) -> bool:
+    """The domain is listed in ``generate.reuse.legacy_domains`` (by name or folder glob)."""
+    return any(
+        domain.name == item or any(full_match(f, item) for f in domain.folders) for item in legacy
+    )
+
+
 def domain_of(path: str, all_domains: list[Domain]) -> Domain | None:
     return next((d for d in all_domains if d.contains(path)), None)
 

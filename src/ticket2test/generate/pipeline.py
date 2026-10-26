@@ -2,7 +2,8 @@
 
 1. the domain (a folder) and the decision (``generate/domain.py``, ``generate/reuse.py``);
    ``mode`` forces a kind instead (the CLI's ``--as``);
-2. **covered**: nothing is generated; the existing test id is reported;
+2. **covered**: nothing is generated; the existing test id is reported (**out_of_scope**, a
+   legacy area: nothing is generated either);
 3. **variant**: a new case of the target test (``generate/patch.py``; code first, one small LLM
    call only when the draft's inputs don't say which values change);
 4. **method**: the generator writes the test with the target class as template, and its methods
@@ -44,6 +45,7 @@ from ticket2test.proposals import propose_gaps, use_kind
 from ticket2test.proposals.apply import proposal_context, with_proposals
 from ticket2test.validate.repair import generate_with_repair
 from ticket2test.validate.report import ValidationReport
+from ticket2test.validate.suite import file_findings
 
 Mode = Literal["auto", "variant", "method", "module"]
 
@@ -88,7 +90,7 @@ def _generate_reusing(
             conventions = f"{conventions}\n\n{text}" if conventions else text
     if mode != "auto" and mode != decision.kind:
         outcome.notes.append(f"--as {mode} (decided: {decision.kind})")
-    if kind == "covered":
+    if kind in ("covered", "out_of_scope"):  # nothing to generate
         return outcome
 
     if kind == "variant":
@@ -198,7 +200,44 @@ def generate_reusing(
         ]
         checklist = [*outcome.generated.review_checklist, *notes]
         outcome.generated = outcome.generated.model_copy(update={"review_checklist": checklist})
+    if outcome.generated is not None:
+        neighbours = _neighbour_notes(outcome.decision, index, settings, repo_root)
+        if neighbours:
+            checklist = [*outcome.generated.review_checklist, *neighbours]
+            update = {"review_checklist": checklist}
+            outcome.generated = outcome.generated.model_copy(update=update)
     return outcome
+
+
+_DEVIATION_WORDS = {
+    "raw_driver": "drive the browser directly",
+    "page_locators": "use page locators directly",
+    "constructed_pages": "build pages with constructors",
+}
+
+
+def _neighbour_notes(
+    decision: ReuseDecision, index: IndexData, settings: Settings, repo_root: Path
+) -> list[str]:
+    """Correctness rules the new test follows but the tests next to it don't: a reviewer note
+    per rule, since the usual way there may matter for how the page behaves."""
+    path = decision.target_file
+    if not path or not (repo_root / path).is_file():
+        return []
+    try:
+        report = file_findings(repo_root, path, index, settings)
+    except (OSError, ValueError):
+        return []
+    tests: dict[str, set[str]] = {}
+    for finding in report.findings:
+        if finding.severity == "error" and finding.check in settings.validation.deviation_checks:
+            tests.setdefault(finding.check, set()).add(finding.test or "")
+    return [
+        f"Other tests in {path} {_DEVIATION_WORDS.get(check, f'break the {check} rule')} "
+        f"({len(found)} test(s)); this test follows the rule instead. Confirm in a real run "
+        "that it reaches the same state."
+        for check, found in sorted(tests.items())
+    ]
 
 
 def _regenerate(

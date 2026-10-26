@@ -36,7 +36,7 @@ import re
 from dataclasses import dataclass, field
 
 from ticket2test.config import ReuseSettings, Settings
-from ticket2test.generate.domain import DomainChoice
+from ticket2test.generate.domain import DomainChoice, is_legacy
 from ticket2test.index.indexer import IndexData
 from ticket2test.index.tokens import split_identifier
 from ticket2test.models.chunk import Chunk
@@ -44,6 +44,7 @@ from ticket2test.models.draft import TestCaseDraft
 from ticket2test.models.generated import ReuseKind
 from ticket2test.models.retrieval import RetrievalResult
 from ticket2test.validate.claims import norm
+from ticket2test.validate.validator import path_string_helpers
 
 # A class-name word names the draft's subject only if at most this share of the domain's tests
 # use it (stand-in: "download" is in 100% of file tests; "browser", "limit" in 57% of agent tests).
@@ -164,6 +165,13 @@ def decide(
             "not covered: no test in the domain has the draft's case"
             + (f" (values {sorted(values)})" if values else "")
         )
+    if domain is not None and is_legacy(domain, reuse.legacy_domains):
+        decision.kind = "out_of_scope"
+        decision.reasons.append(
+            f"{domain.name} is a legacy area (generate.reuse.legacy_domains): only "
+            "'already covered' is decided there; nothing is generated"
+        )
+        return decision
 
     same_kind = kind == "hybrid" or best.kind == kind
     if patchable and best.flow >= reuse.variant_min and best.parametrized and same_kind:
@@ -281,6 +289,14 @@ def _excluded_classes(
                 f"frozen ({', '.join(sorted(frozen & lineage))}, generate.reuse.frozen_classes)"
             )
             continue
+        if (
+            gen.reuse.ui_needs_page_objects
+            and draft.test_kind != "api"
+            and c.kind == "ui"
+            and not _uses_page_objects(c.file_path, c.class_name, index, settings)
+        ):
+            found[key] = "its tests don't use page objects (they drive the browser directly)"
+            continue
         gate = _deployment_gate(cls.decorators, deployments, settings)
         if gate is not None and not needed <= gate:
             found[key] = (
@@ -302,10 +318,21 @@ def _deployment_gate(
         gate = allowed if gate is None else gate & allowed
 
     by_decorator = {name: deployment for deployment, name in gen.deployment_decorators.items()}
+    by_text = {_squash(name): deployment for name, deployment in by_decorator.items()}
+    patterns = [
+        (re.compile(p), deployment)
+        for deployment, found in gen.deployment_gate_patterns.items()
+        for p in found
+    ]
     for text in decorators:
         head = text.split("(", 1)[0].strip()
         bare = head.rsplit(".", 1)[-1]
-        if bare in gen.reuse.environment_decorators:
+        matched = by_text.get(_squash(text)) or next(
+            (d for p, d in patterns if p.search(text)), None
+        )
+        if matched is not None:  # a whole decorator expression, or a configured pattern
+            narrow({matched})
+        elif bare in gen.reuse.environment_decorators:
             narrow(
                 set(re.findall(r"""["'](\w+)["']""", text)) & set(deployments) or set(deployments)
             )
@@ -315,6 +342,22 @@ def _deployment_gate(
             op, value = m.groups()
             narrow({value} if op == "!=" else set(deployments) - {value})
     return gate
+
+
+def _uses_page_objects(path: str, class_name: str, index: IndexData, settings: Settings) -> bool:
+    """Some test of the class reaches a page through a chain root or a path-string helper."""
+    roots = [f"self.{r}." for r in index.catalog.chain_roots or settings.index.chain_roots]
+    helpers = path_string_helpers(index, settings)
+    calls = [re.compile(rf"\b{re.escape(h.rsplit('.', 1)[-1])}\(") for h in helpers]
+    return any(
+        any(r in c.code for r in roots) or any(p.search(c.code) for p in calls)
+        for c in index.chunks
+        if c.kind == "test" and c.file_path == path and c.class_name == class_name
+    )
+
+
+def _squash(text: str) -> str:
+    return re.sub(r"\s+", "", text.strip().lstrip("@"))
 
 
 def _component_match(

@@ -523,6 +523,10 @@ def generate(
     typer.echo(f"{chosen.id}: {outcome.kind}")
     for reason in [*outcome.decision.reasons, *outcome.notes]:
         typer.echo(f"  - {reason}")
+    if outcome.kind == "out_of_scope":
+        typer.echo("The ticket's area is legacy and out of scope; nothing generated.")
+        typer.echo(f"Wrote {decision_path}")
+        return
     if outcome.generated is None or outcome.report is None:  # covered
         typer.echo(f"Already covered by {outcome.decision.test_id}; nothing generated.")
         typer.echo(f"Wrote {decision_path}")

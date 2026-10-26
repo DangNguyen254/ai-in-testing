@@ -46,7 +46,7 @@ from ticket2test.llm.factory import model_name
 from ticket2test.llm.masking import masker_of, unmask_model
 from ticket2test.llm.schema import strict_schema
 from ticket2test.llm.structured import complete_structured
-from ticket2test.models.chunk import Chunk
+from ticket2test.models.chunk import Chunk, DataFormat
 from ticket2test.models.draft import TestCaseDraft, Variant
 from ticket2test.models.generated import (
     EntryChange,
@@ -60,6 +60,7 @@ from ticket2test.models.retrieval import RetrievalResult, TemplateRef
 from ticket2test.prompts import load_prompt
 from ticket2test.security import scrub_text
 from ticket2test.style import format_entries
+from ticket2test.style.local import detect_json_style, detect_python_style, insert_entries
 from ticket2test.style.python import format_python
 from ticket2test.validate.claims import norm
 from ticket2test.validate.report import Finding, ValidationReport
@@ -553,7 +554,10 @@ def variant_patch(
     entries, layout, data_text = read_suite_data(repo_root, chunk.file_path, settings, data_name)
     all_entries = _insert_after(entries, new_entries, function, id_field)
     after_code = site.insert(source, [p.case for p in plans])
-    after_data = format_entries(all_entries, settings.data, settings.style.json_files, layout)
+    mine = [i for i, e in enumerate(entries) if function_of(str(e.get(id_field, ""))) == function]
+    after_data = _data_after(
+        data_text, all_entries, new_entries, mine[-1] if mine else None, layout, settings
+    )
     patches = [
         FilePatch(chunk.file_path, source, after_code),
         FilePatch(data_name, data_text or "", after_data),
@@ -585,6 +589,25 @@ def variant_patch(
         patches=[p.record() for p in patches],
         new_test_ids=[f"{function}[{p.case}]" for p in plans],
     )
+
+
+def _data_after(
+    data_text: str | None,
+    all_entries: list[dict[str, Any]],
+    new: list[dict[str, Any]],
+    after: int | None,
+    layout: DataFormat,
+    settings: Settings,
+) -> str:
+    """The data file after the patch. With ``style.follow_local``, the new entries are inserted
+    as text in the file's own JSON style (existing lines unchanged); otherwise, or when the file
+    can't be edited that way, the whole file is written in the configured style."""
+    if settings.style.follow_local and data_text and layout == "array":
+        local = detect_json_style(data_text, settings.style.json_files)
+        text = insert_entries(data_text, new, after, local)
+        if text is not None:
+            return text
+    return format_entries(all_entries, settings.data, settings.style.json_files, layout)
 
 
 def _insert_after(
@@ -733,9 +756,14 @@ def method_patch(
     if not class_name or not file_path:
         raise PatchError("a method decision needs its class and file")
     source = (repo_root / file_path).read_text(encoding="utf-8")
-    spliced, added = splice_methods(source, class_name, generated.code, settings)
     style = settings.style.python
-    after_code = format_python(spliced, style, first_party(index, settings))
+    if settings.style.follow_local:  # the new methods take the file's style; nothing else moves
+        local = detect_python_style(source, style)
+        code = format_python(generated.code, local, first_party(index, settings))
+        after_code, added = splice_methods(source, class_name, code, settings)
+    else:
+        spliced, added = splice_methods(source, class_name, generated.code, settings)
+        after_code = format_python(spliced, style, first_party(index, settings))
     data_name = module_data_path(file_path, settings.index)
     if _function_layout(index, class_name, file_path, settings):
         if len(added) != 1:
@@ -754,7 +782,7 @@ def method_patch(
     if clash:
         raise PatchError(f"entries already exist for {clash}; the new test needs another name")
     all_entries = [*entries, *ours]
-    after_data = format_entries(all_entries, settings.data, settings.style.json_files, layout)
+    after_data = _data_after(data_text, all_entries, ours, None, layout, settings)
     patches = [
         FilePatch(file_path, source, after_code),
         FilePatch(data_name, data_text or "", after_data),

@@ -144,7 +144,8 @@ def render_markdown(report: EvalRunReport) -> str:
             "| Metric | Value |",
             "|---|---|",
             f"| Tickets | {m['pairs']} (generated {m['generated']}, covered {m['covered']}, "
-            f"insufficient info {m['insufficient_info']}, failed {m['failed']}) |",
+            + (f"out of scope {m['out_of_scope']}, " if m.get("out_of_scope") else "")
+            + f"insufficient info {m['insufficient_info']}, failed {m['failed']}) |",
             "| Reuse (covered / variant / method / module) | "
             + " / ".join(
                 str(m["reuse_kinds"][k]) for k in ("covered", "variant", "method", "module")

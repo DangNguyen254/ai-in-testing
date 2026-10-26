@@ -28,6 +28,7 @@ from ticket2test.models.generated import GeneratedTest, _name_problems, _unconsu
 from ticket2test.security.masking import TOKEN
 from ticket2test.security.private import MARK, PrivateTerms
 from ticket2test.style import format_entries
+from ticket2test.style.local import detect_json_style, detect_python_style
 from ticket2test.style.python import FormatError, format_python, strip_annotations
 from ticket2test.validate import claims
 from ticket2test.validate.code import (
@@ -412,6 +413,49 @@ def check_raw_driver(s: Subject) -> Iterator[Finding]:
             )
 
 
+def check_constructed_pages(s: Subject) -> Iterator[Finding]:
+    """Pages come from the chain root or a path-string helper. Building one with its
+    constructor (``LoginPage(driver)``) is allowed only where the test's existing class already
+    builds that page, and is then flagged for the reviewer; anywhere else it is an error."""
+    simple = {q.rsplit(".", 1)[-1] for q in s.catalog.page_objects}
+    if not simple:
+        return
+    for cls, fn in s.tests:
+        existing = _class_code(s, cls)
+        for node in ast.walk(fn):
+            if not isinstance(node, ast.Call):
+                continue
+            name = dotted(node.func).rsplit(".", 1)[-1]
+            if name not in simple:
+                continue
+            if existing and re.search(rf"\b{re.escape(name)}\(", existing):
+                yield _f(
+                    "constructed_pages",
+                    f"{name}(...) builds the page directly, as {cls.name if cls else 'the class'} "
+                    "already does: confirm it is the same page state the chain root would give",
+                    severity="warning",
+                    test=fn.name,
+                    line=node.lineno,
+                )
+            else:
+                yield _f(
+                    "constructed_pages",
+                    f"{name}(...) builds a page directly: reach it through the chain root or a "
+                    "path-string helper (a constructor is allowed only where the existing class "
+                    "already builds that page)",
+                    test=fn.name,
+                    line=node.lineno,
+                )
+
+
+def _class_code(s: Subject, cls: ast.ClassDef | None) -> str:
+    """The indexed (existing) source of the test's class, "" for a new class."""
+    record = s.index.files.get(s.generated.file_name) if s.index and cls else None
+    if record is None or record.info is None or cls is None:
+        return ""
+    return next((c.code for c in record.info.classes if c.name == cls.name), "")
+
+
 def check_assertions(s: Subject) -> Iterator[Finding]:
     v = s.settings.validation
     allowed = set(v.assertion_methods)
@@ -493,8 +537,12 @@ def check_naming(s: Subject) -> Iterator[Finding]:
 
 
 def check_style(s: Subject) -> Iterator[Finding]:
+    """The code is a fixed point of the formatter: in the configured style, or (with
+    ``style.follow_local``) in the indent and quotes the file itself uses."""
     style = s.settings.style.python
     code = s.code
+    if s.settings.style.follow_local:
+        style = detect_python_style(code, style)
     if style.line_ending == "lf" and "\r" in code:
         yield _f("style", "line endings must be LF")
     if style.final_newline and not code.endswith("\n"):
@@ -552,6 +600,7 @@ def check_data_keys(s: Subject) -> Iterator[Finding]:
         "seed_sections": d.seed_sections,
         "per_entry_keys": d.per_entry_keys,
         "expectation_sections": d.expectation_sections,
+        "allowed_expectation_sets": d.allowed_expectation_sets,
     }
     defaults = s.defaults
     for entry in s.entries:
@@ -564,6 +613,21 @@ def check_data_keys(s: Subject) -> Iterator[Finding]:
         unused = _unconsumed_keys(entry, use, ctx)
         if unused:
             yield _f("data_keys", unused, test=test_id)
+
+
+def _name_helper(s: Subject, cls: ast.ClassDef | None) -> str:
+    """The unique-name helper the class's lineage provides (``validation.unique_name_helpers``,
+    first match from the class itself up), else ``validation.unique_name_helper``."""
+    v = s.settings.validation
+    if cls is None or not v.unique_name_helpers:
+        return v.unique_name_helper
+    names = [cls.name, *(dotted(b).rsplit(".", 1)[-1] for b in cls.bases)]
+    if s.resolver is not None:
+        names += [entry.name for entry in s.resolver.repo_bases(cls)]
+    return next(
+        (v.unique_name_helpers[n] for n in names if n in v.unique_name_helpers),
+        v.unique_name_helper,
+    )
 
 
 def check_data_shape(s: Subject) -> Iterator[Finding]:
@@ -642,7 +706,10 @@ def check_data_file(s: Subject) -> Iterator[Finding]:
     if s.data_text is None:
         return
     written = s.generated.data_entries  # the whole file, defaults row included
-    expected = format_entries(written, d, s.settings.style.json_files, s.generated.data_format)
+    style = s.settings.style.json_files
+    if s.settings.style.follow_local:
+        style = detect_json_style(s.data_text, style)
+    expected = format_entries(written, d, style, s.generated.data_format)
     if s.data_text != expected:
         yield _f("data_file", "the data file is not formatted to the suite's JSON style")
 
@@ -674,21 +741,36 @@ def check_seeded_names(s: Subject) -> Iterator[Finding]:
                         f"{value!r} can be {length} characters; the limit is {cap}",
                         test=test_id,
                     )
-    helper = v.unique_name_helper
     assert s.tree is not None
-    for node in ast.walk(s.tree):
-        if isinstance(node, ast.Call) and dotted(node.func) == helper and node.args:
-            limit = node.args[0]
-            if (
-                isinstance(limit, ast.Constant)
-                and isinstance(limit.value, int)
-                and limit.value > cap
-            ):
+    known = {v.unique_name_helper, *v.unique_name_helpers.values()}
+    for cls, fn in s.tests:
+        helper = _name_helper(s, cls)
+        for node in ast.walk(fn):
+            if not isinstance(node, ast.Call):
+                continue
+            name = dotted(node.func)
+            if name in known and name != helper:
                 yield _f(
-                    "name_length",
-                    f"{helper}({limit.value}) exceeds the name limit {cap}",
+                    "names_unique",
+                    f"{name}() belongs to another base class; this class's base provides "
+                    f"{helper}()",
                     line=node.lineno,
+                    test=fn.name,
                 )
+            elif name == helper and node.args:
+                limit = node.args[0]
+                if (
+                    isinstance(limit, ast.Constant)
+                    and isinstance(limit.value, int)
+                    and limit.value > cap
+                ):
+                    yield _f(
+                        "name_length",
+                        f"{helper}({limit.value}) exceeds the name limit {cap}",
+                        line=node.lineno,
+                    )
+    helper = v.unique_name_helper
+    for node in ast.walk(s.tree):
         if isinstance(node, ast.Assign):
             for target in node.targets:
                 if (
@@ -943,6 +1025,7 @@ CHECKS: list[tuple[str, Check]] = [
     ("hooks", check_hooks),
     ("page_locators", check_page_locators),
     ("raw_driver", check_raw_driver),
+    ("constructed_pages", check_constructed_pages),
     ("path_strings", check_path_strings),
     ("draft_outcome", check_draft_outcome),
     ("variants", check_variants),

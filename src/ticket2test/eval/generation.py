@@ -58,7 +58,7 @@ class GenerationPairResult(BaseModel):
 
     pair_id: str
     ticket: str
-    status: str  # "generated", "covered", "insufficient_info", "failed"
+    status: str  # "generated", "covered", "out_of_scope", "insufficient_info", "failed"
     error: str = ""
     reuse_kind: str | None = None  # covered / variant / method / module (after fallbacks)
     decided: str | None = None  # the decision before fallbacks
@@ -119,6 +119,7 @@ class GenerationReport(BaseModel):
             "pairs": len(self.pairs),
             "generated": len(gen),
             "covered": sum(p.status == "covered" for p in self.pairs),
+            "out_of_scope": sum(p.status == "out_of_scope" for p in self.pairs),
             "reuse_kinds": {
                 k: sum(p.reuse_kind == k for p in self.pairs)
                 for k in ("covered", "variant", "method", "module")
@@ -366,6 +367,9 @@ def _one(
         + (" (used by the test)" if id(x) in used else "")
         for x in outcome.proposals
     ]
+    if outcome.kind == "out_of_scope":  # a legacy area: nothing generated
+        result.status = "out_of_scope"
+        return _finish(result, started)
     if outcome.generated is None or outcome.report is None:  # covered: nothing generated
         result.status = "covered"
         result.test_ids = [outcome.decision.test_id or ""]

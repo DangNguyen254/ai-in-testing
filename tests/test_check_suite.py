@@ -35,7 +35,7 @@ def test_a_wrong_config_is_reported_by_check_with_the_keys_to_fix(tmp_path: Path
     settings = _settings(
         tmp_path,
         markers={"priorities": ["P0", "P1", "P2", "P3"]},
-        style={"python": {"indent_width": 4}, "json": {"indent": 2}},
+        style={"python": {"indent_width": 4}, "json": {"indent": 2}, "follow_local": False},
         validation={"base_classes": ["SuiteBase"]},
     )
     report = check_suite(STANDIN, settings)
@@ -85,6 +85,9 @@ def test_cli_check_suite(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     assert result.exit_code == 0, result.output
     assert list(out.glob("check-suite-*.md")) and list(out.glob("check-suite-*.json"))
     monkeypatch.setenv("T2T_STYLE__PYTHON__INDENT_WIDTH", "4")
+    result = runner.invoke(app, ["check-suite", str(STANDIN), "--out", str(out)])
+    assert result.exit_code == 0  # each file is judged in its own style (style.follow_local)
+    monkeypatch.setenv("T2T_STYLE__FOLLOW_LOCAL", "false")
     result = runner.invoke(app, ["check-suite", str(STANDIN), "--out", str(out)])
     assert result.exit_code == 1 and "style.python" in result.output
     result = runner.invoke(app, ["check-suite", str(tmp_path / "missing")])

@@ -87,6 +87,9 @@ data:                            # per-test JSON data files (reading accepts bot
     targets: self.verify_targets
     interactions: self.verify_interactions
   per_entry_keys: [priority, skip]       # never inherited from the base entry
+  defaults_row: true                     # a first entry without the id field holds defaults
+  defaults_merge: shallow                # shallow | shallow_if_set (empty keeps the default) | deep
+  allowed_expectation_sets: []           # sections an entry may carry together, e.g. [[targets, interactions]]
 
 style:                           # the target suite's style; generated output is formatted to it
   python:
@@ -103,6 +106,8 @@ style:                           # the target suite's style; generated output is
     item_separator: ","
     ensure_ascii: false
     final_newline: true
+  follow_local: true             # cosmetic rules follow the file being patched (or the template);
+                                 # existing lines are never reformatted
 
 retrieval:
   top_k: 10
@@ -157,7 +162,8 @@ generate:
                      setUp, tearDown, setUpClass, tearDownClass]   # copied with the scaffold
   placeholder_token: "{test_id:24}"   # unique names in data (N = max length)
   max_example_tests: 4
-  deployment_decorators: {cloud: cloud_only, on_prem: on_prem_only}
+  deployment_decorators: {cloud: cloud_only, on_prem: on_prem_only}   # a name, or a whole decorator expression
+  deployment_gate_patterns: {}    # other ways gates are written: deployment -> regexes over decorator text
   domain_globs: ["tests/*"]       # each matching folder is a domain (e.g. "<root>/<group>/*")
   domains: {}                     # optional: name -> [folder globs], overrides domain_globs
   reuse:                          # covered / variant / method / module decision
@@ -169,6 +175,8 @@ generate:
     domain_margin: 0.15
     frozen_classes: []             # new tests never go into these or their subclasses (e.g. a legacy base)
     environment_decorators: [environments]  # class decorators listing the deployments it runs on
+    legacy_domains: []             # areas (names or folder globs) where only "covered" is decided
+    ui_needs_page_objects: true    # UI tests go only into classes that already use page objects
   variant_prompt: variant_v1      # only when a new case can't be planned in code
 
 validation:                     # deterministic checks of generated tests (Phase 7)
@@ -193,6 +201,9 @@ validation:                     # deterministic checks of generated tests (Phase
   unique_name_sections: [settings, policy, tenants]   # where that applies (not site)
   name_max_length: 32             # the app's name length limit ({test_id:N} + suffix)
   unique_name_helper: self.unique_name
+  unique_name_helpers: {}         # base class name -> its own unique-name helper
+  deviation_checks: [raw_driver, page_locators, constructed_pages]   # rules older tests may
+                                  # break: deviations per area in check-suite, not config errors
   placeholder_pattern: '\{[a-z_]+\d*(?::\d+)?\}'   # any data placeholder (regex)
   unique_name_pattern: '\{test_id:(\d+)\}'          # unique name; group 1 = max length
   capability_path: settings.capabilities

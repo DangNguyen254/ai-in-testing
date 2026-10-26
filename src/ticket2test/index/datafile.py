@@ -3,8 +3,9 @@
 Defaults row: some suites start a data file (array layout) with an entry that has no id field.
 Its values apply to every other entry in the file, so a key a test reads may live there instead
 of in the test's own entry. ``data.defaults_row`` turns the detection on; ``data.defaults_merge``
-says how the suite's loader combines the two (``shallow``: top-level keys; ``deep``: nested
-objects merged key by key).
+says how the suite's loader combines the two (``shallow``: top-level keys; ``shallow_if_set``:
+top-level keys whose entry value is set, so an empty or false value keeps the default;
+``deep``: nested objects merged key by key).
 
 Per-function data files: some areas keep one data file per test function, named after it, next
 to the test module, instead of one file per module (``index.function_data_files``).
@@ -39,6 +40,8 @@ def merged(
         return entry
     if data.defaults_merge == "shallow":
         return {**defaults, **entry}
+    if data.defaults_merge == "shallow_if_set":  # an empty or false value keeps the default
+        return {**defaults, **{k: v for k, v in entry.items() if v or k not in defaults}}
     return _deep(defaults, entry, depth=0)
 
 

@@ -22,11 +22,13 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from ticket2test.config import Settings
+from ticket2test.generate.domain import domain_of, domains, is_legacy
 from ticket2test.generate.generator import first_party
 from ticket2test.index.datafile import layout_of, split_defaults
 from ticket2test.index.indexer import IndexData, update_index
 from ticket2test.models.generated import GeneratedTest
 from ticket2test.sandbox.runner import ImportProblem, collect_suite
+from ticket2test.validate.report import ValidationReport
 from ticket2test.validate.validator import module_imports, validate_generated
 
 # Which config keys to look at when a check fails on hand-written tests.
@@ -52,6 +54,19 @@ CONFIG_HINTS: dict[str, str] = {
 }
 _NOT_STATIC = "parametrize values must be literals"
 _EXAMPLES = 3
+
+
+class Deviation(BaseModel):
+    """Existing tests in one area that break a correctness rule, or don't follow the configured
+    style (cosmetic: generated code follows the local style there)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    area: str
+    check: str
+    files: int
+    tests: int
+    examples: list[str] = Field(default_factory=list)
 
 
 class CheckSummary(BaseModel):
@@ -92,6 +107,8 @@ class SuiteReport(BaseModel):
     by_check: list[CheckSummary] = Field(default_factory=list)  # errors only
     warnings_by_check: dict[str, int] = Field(default_factory=dict)
     not_static: list[str] = Field(default_factory=list)  # files with non-literal parametrize
+    legacy_files: int = 0  # test files in generate.reuse.legacy_domains (not checked)
+    deviations: list[Deviation] = Field(default_factory=list)  # not config errors
     ids: IdComparison = Field(default_factory=IdComparison)
     seconds: float = 0.0
 
@@ -111,44 +128,24 @@ def check_suite(repo: Path, settings: Settings, collect: bool = False) -> SuiteR
     errors: dict[str, list[tuple[str, str]]] = defaultdict(list)  # check -> (file, message)
     warnings: dict[str, int] = defaultdict(int)
 
+    all_domains = domains(index, settings)
+    legacy = settings.generate.reuse.legacy_domains
+    local = local_checks(settings)
+    found: dict[tuple[str, str], list[tuple[str, str, str]]] = defaultdict(list)
     for path in _test_files(index, settings):
-        code = (repo / path).read_text(encoding="utf-8")
-        entries, layout, data_text = read_suite_data(repo, path, settings)
-        extra = _function_file_entries(repo, path, index, settings)
-        if extra:  # tests with their own data file: judge them with their entries
-            entries, data_text = [*entries, *extra], None  # formatting is per file: not here
-        ids = static_ids(index, path)
-        generated = GeneratedTest(
-            code=code,
-            file_name=path,
-            data_file_name=str(PurePosixPath(path).with_suffix(settings.index.data_file_suffix)),
-            data_entries=entries,
-            data_format=layout,
-            test_ids=ids,
-            template_entry_ref=None,
-            ticket_id="",
-            draft_ref="",
-            retrieved_chunk_ids=[],
-            prompt_version="",
-            provider="",
-            model="",
-            attempts=1,
-            context_tokens=0,
-        )
-        result = validate_generated(
-            generated,
-            index.catalog,
-            settings,
-            roots,
-            data_text=data_text,
-            imports=imports,
-            index=index,
-        )
+        domain = domain_of(path, all_domains)
+        if domain is not None and is_legacy(domain, legacy):
+            report.legacy_files += 1
+            continue
+        result = file_findings(repo, path, index, settings, roots, imports)
         report.test_files += 1
-        report.tests += len(ids)
+        report.tests += len(static_ids(index, path))
         file_errors = 0
         for finding in result.findings:
-            if finding.severity == "warning":
+            if finding.check in local and finding.severity == "error":
+                area = domain.name if domain else "(no area)"
+                found[(area, finding.check)].append((path, finding.test or "", finding.render()))
+            elif finding.severity == "warning":
                 warnings[finding.check] += 1
             elif finding.check == "ids" and finding.message.startswith(_NOT_STATIC):
                 report.not_static.append(path)  # suite tests may use computed parametrize
@@ -157,6 +154,16 @@ def check_suite(repo: Path, settings: Settings, collect: bool = False) -> SuiteR
                 file_errors += 1
         report.clean_files += int(file_errors == 0)
 
+    report.deviations = [
+        Deviation(
+            area=area,
+            check=check,
+            files=len({f for f, _, _ in rows}),
+            tests=len({(f, t) for f, t, _ in rows if t}),
+            examples=[f"{f}: {m}" for f, _, m in rows[:_EXAMPLES]],
+        )
+        for (area, check), rows in sorted(found.items(), key=lambda kv: (kv[0][0], -len(kv[1])))
+    ]
     report.by_check = [
         CheckSummary(
             check=check,
@@ -174,6 +181,58 @@ def check_suite(repo: Path, settings: Settings, collect: bool = False) -> SuiteR
         report.ids = compare_ids(repo, index, settings)
     report.seconds = round(time.monotonic() - started, 1)
     return report
+
+
+COSMETIC_CHECKS = ("style", "data_file")
+
+
+def local_checks(settings: Settings) -> set[str]:
+    """Checks whose errors on existing tests describe the suite, not the config: the
+    correctness rules older tests may break, and (``style.follow_local``) the cosmetic ones."""
+    cosmetic = set(COSMETIC_CHECKS) if settings.style.follow_local else set()
+    return set(settings.validation.deviation_checks) | cosmetic
+
+
+def file_findings(
+    repo: Path,
+    path: str,
+    index: IndexData,
+    settings: Settings,
+    roots: list[str] | None = None,
+    imports: dict[str, list[str]] | None = None,
+) -> ValidationReport:
+    """Every validator over one existing test file and its data, as if it were generated."""
+    code = (repo / path).read_text(encoding="utf-8")
+    entries, layout, data_text = read_suite_data(repo, path, settings)
+    extra = _function_file_entries(repo, path, index, settings)
+    if extra:  # tests with their own data file: judge them with their entries
+        entries, data_text = [*entries, *extra], None  # formatting is per file: not here
+    generated = GeneratedTest(
+        code=code,
+        file_name=path,
+        data_file_name=str(PurePosixPath(path).with_suffix(settings.index.data_file_suffix)),
+        data_entries=entries,
+        data_format=layout,
+        test_ids=static_ids(index, path),
+        template_entry_ref=None,
+        ticket_id="",
+        draft_ref="",
+        retrieved_chunk_ids=[],
+        prompt_version="",
+        provider="",
+        model="",
+        attempts=1,
+        context_tokens=0,
+    )
+    return validate_generated(
+        generated,
+        index.catalog,
+        settings,
+        roots if roots is not None else first_party(index, settings),
+        data_text=data_text,
+        imports=imports if imports is not None else module_imports(index),
+        index=index,
+    )
 
 
 def compare_ids(repo: Path, index: IndexData, settings: Settings) -> IdComparison:
@@ -238,6 +297,24 @@ def render_markdown(report: SuiteReport) -> str:
         lines += ["", "Examples:"]
         for s in report.by_check:
             lines += [f"- {e}" for e in s.examples]
+        lines.append("")
+    if report.legacy_files:
+        lines += [
+            f"Legacy test files not checked (generate.reuse.legacy_domains): {report.legacy_files}",
+            "",
+        ]
+    if report.deviations:
+        lines += [
+            "## Deviations (existing tests; not config errors)",
+            "",
+            "Correctness rules older tests break, and files not in the configured style. "
+            "Generated tests follow the rules (with a reviewer note in these areas) and the "
+            "local style.",
+            "",
+            "| Area | Check | Files | Tests |",
+            "|---|---|---|---|",
+        ]
+        lines += [f"| {d.area} | {d.check} | {d.files} | {d.tests} |" for d in report.deviations]
         lines.append("")
     if report.warnings_by_check:
         counts = ", ".join(f"{k} {v}" for k, v in report.warnings_by_check.items())

@@ -24,13 +24,14 @@ CTX_ID_FIELD = "id_field"
 CTX_PER_ENTRY_KEYS = "per_entry_keys"
 CTX_DATA_ACCESS = "data_access"
 CTX_EXPECTATIONS = "expectation_sections"  # section -> helper that reads it
+CTX_EXPECTATION_SETS = "allowed_expectation_sets"  # sections an entry may carry together
 CTX_SEED_SECTIONS = "seed_sections"
 CTX_TICKET_ID = "ticket_id"
 CTX_INHERITED_IDS = "inherited_ids"  # ids of tests the template class inherits
 
 # How a draft becomes code (generate/reuse.py): already covered by an existing test, a new
 # case of an existing parametrized test, a new method in an existing class, or a new module.
-ReuseKind = Literal["covered", "variant", "method", "module"]
+ReuseKind = Literal["covered", "variant", "method", "module", "out_of_scope"]
 
 
 class EntryChange(BaseModel):
@@ -212,7 +213,9 @@ def unconsumed_keys(
         else:
             unread[key] = f"custom key {key!r} is never read by the test"
     present = [k for k in expectations if k in entry and k not in unread]
-    conflict = f"an entry has one expectation section, not {present}" if len(present) > 1 else ""
+    allowed = [sorted(group) for group in ctx.get(CTX_EXPECTATION_SETS, [])]
+    together = len(present) > 1 and sorted(present) not in allowed
+    conflict = f"an entry has one expectation section, not {present}" if together else ""
     return unread, conflict
 
 

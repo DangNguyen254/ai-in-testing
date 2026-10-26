@@ -180,7 +180,12 @@ class DataSettings(_Section):
     # A first entry without the id field holds defaults for every entry in the file (array
     # layout); how the suite's loader combines them: top-level keys, or nested objects too.
     defaults_row: bool = True
-    defaults_merge: Literal["shallow", "deep"] = "shallow"
+    # shallow: an entry's top-level key replaces the default; shallow_if_set: only when the
+    # entry's value is set (an empty or false value keeps the default); deep: nested objects too.
+    defaults_merge: Literal["shallow", "shallow_if_set", "deep"] = "shallow"
+    # Expectation sections an entry may carry together (each read by its own helper), e.g.
+    # [[targets, interactions]]. Empty: at most one per entry.
+    allowed_expectation_sets: list[list[str]] = Field(default_factory=list)
 
 
 class PythonStyle(_Section):
@@ -209,6 +214,10 @@ class StyleSettings(_Section):
 
     python: PythonStyle = PythonStyle()
     json_files: JsonStyle = Field(default_factory=JsonStyle, alias="json")
+    # Cosmetic rules follow the local style: code added to an existing file takes that file's
+    # indent and quotes (existing lines are never reformatted), and the suite's own files are
+    # not judged against the settings above (check-suite lists them as deviations).
+    follow_local: bool = True
 
 
 class RerankSettings(_Section):
@@ -288,6 +297,12 @@ class ReuseSettings(_Section):
     frozen_classes: list[str] = Field(default_factory=list)
     # Class decorators that list the deployments a class runs on (``environments("cloud")``).
     environment_decorators: list[str] = Field(default_factory=lambda: ["environments"])
+    # Legacy areas (domain names or repo-relative folder globs): only "already covered" is
+    # decided there; no test is generated or patched ("out_of_scope").
+    legacy_domains: list[str] = Field(default_factory=list)
+    # UI tests in an area go only into classes that already use page objects (a chain root or
+    # a path-string helper in some test), never into classes that drive the browser directly.
+    ui_needs_page_objects: bool = True
 
 
 class GenerateSettings(_Section):
@@ -312,10 +327,15 @@ class GenerateSettings(_Section):
     )  # fmt: skip
     placeholder_token: str = "{test_id:24}"  # unique names in data; N = max length
     max_example_tests: int = Field(default=4, ge=0)  # similar tests shown as style examples
-    # Suite-specific decorator names for deployment-type skips (cloud-only / on-prem-only).
+    # The decorator that limits a test to one deployment (cloud-only / on-prem-only): a name
+    # (``cloud_only``) or a whole decorator expression, e.g. a skip on a condition
+    # (``pytest.mark.skipif(OFFSET != 0, reason="cloud only")``); new tests get it as written.
     deployment_decorators: dict[str, str] = Field(
         default_factory=lambda: {"cloud": "cloud_only", "on_prem": "on_prem_only"}
     )
+    # More ways the suite writes those gates (regexes over a decorator's text): deployment ->
+    # patterns. A matching decorator limits the class to that deployment.
+    deployment_gate_patterns: dict[str, list[str]] = Field(default_factory=dict)
     # Domains are folders: each folder matching one of these globs (repo-relative, "*" = one
     # folder level) is a domain, named after its last part. ``domains`` overrides with
     # explicit names -> folder globs (for domains spread over several folders).
@@ -378,6 +398,16 @@ class ValidateSettings(_Section):
     )
     name_max_length: int = Field(default=32, ge=1)  # the app's name length limit
     unique_name_helper: str = "self.unique_name"
+    # Rules about how tests are written that existing tests may break (older code): on the
+    # suite's own tests they are deviations, counted per area, not config errors. Generated
+    # tests always follow them; when neighbouring tests don't, the reviewer gets a note.
+    deviation_checks: list[str] = Field(
+        default_factory=lambda: ["raw_driver", "page_locators", "constructed_pages"]
+    )
+    # Suites whose base classes provide different unique-name helpers: base class name -> the
+    # helper its tests call. A test uses the helper of the first base in its lineage listed
+    # here (else ``unique_name_helper``); calling another base's helper is an error.
+    unique_name_helpers: dict[str, str] = Field(default_factory=dict)
     # Data placeholders (regexes). Any placeholder makes a seeded name non-literal; the
     # unique-name one has the name's maximum length as its first group.
     placeholder_pattern: str = r"\{[a-z_]+\d*(?::\d+)?\}"

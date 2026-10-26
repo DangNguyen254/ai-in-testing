@@ -194,6 +194,8 @@ Open 3–5 data files from different areas before deciding.
 | `data.seed_sections` | Top-level keys the framework applies before the test | Read the base class / fixtures that load the entry: which keys do they read and apply? | `[settings, policy, tenants]` |
 | `data.expectation_sections` | Expectation key → the helper that reads it | Grep the base class for methods that read the entry and compare backend responses (e.g. `def verify_...`). Map `key: self.<helper>`. | `{targets: self.verify_targets, interactions: self.verify_interactions}` |
 | `data.per_entry_keys` | Keys handled per entry by the framework (not read by the test) | Grep conftest/base for keys like `priority`, `skip`, `xfail` read from the entry. | `[priority, skip]` |
+| `data.defaults_merge` | How a defaults row combines with an entry: `shallow` (entry keys replace), `shallow_if_set` (an empty or false entry value keeps the default), `deep` | Read the data loader. | `shallow` |
+| `data.allowed_expectation_sets` | Expectation sections an entry may carry together, each read by its own helper (e.g. `[[targets, interactions]]`) | Count entries with both; read the helpers. | `[]` |
 
 ### 5.3 Style (`style`)
 
@@ -207,6 +209,7 @@ Open 3–5 data files from different areas before deciding.
 | `style.json.indent` | Spaces of indentation in data files. | `3` |
 | `style.json.key_separator` | `":"` if written `"key":value`, `": "` if `"key": value`. | `":"` |
 | `style.json.final_newline` | Does the data file end with a newline? | `true` |
+| `style.follow_local` | Keep `true` for a suite with mixed style: code added to a file takes that file's indent and quotes, new modules take the template's, existing lines are never reformatted. The `style.*` values above then matter only where nothing local exists. | `true` |
 
 ### 5.4 Markers (`markers`)
 
@@ -232,6 +235,8 @@ Component values are learned automatically from the suite.
 | `validation.placeholder_pattern` | Regex matching **any** data placeholder | Look at data values with `{...}`, `${...}`, `<...>` | `\{[a-z_]+\d*(?::\d+)?\}` |
 | `validation.unique_name_pattern` | Regex for the **unique-name** placeholder; group 1 = max length | e.g. `{test_id:24}` → `\{test_id:(\d+)\}` | `\{test_id:(\d+)\}` |
 | `validation.unique_name_helper` | Base-class method returning the same unique name in code | Grep the base class for the method that builds names from the test id. | `self.unique_name` |
+| `validation.unique_name_helpers` | Only if different bases provide different helpers: base class name → helper | `{}` |
+| `validation.deviation_checks` | Rules older tests may break. Keep the default; check-suite lists those tests as deviations per area (not errors) | `[raw_driver, page_locators, constructed_pages]` |
 | `validation.name_max_length` | The app's maximum object name length | App docs, UI validation messages, or tests about long names. If not found: keep the default, **TODO**. | `32` |
 | `validation.capability_gates` | Component → capability/feature flags its features use | Look at the settings seed section. If unclear, set `{}` (this check only warns). | stand-in map |
 | `validation.capability_path` | Where gates sit in a seed section | e.g. `settings.capabilities` | `settings.capabilities` |
@@ -249,6 +254,9 @@ Component values are learned automatically from the suite.
 | `generate.domain_globs` | Folder globs whose matching folders are the suite's **domains** (one feature area per folder; `*` = one folder level). Look at how test folders are grouped: if tests sit in `<root>/<group>/<domain>/`, use `<root>/<group>/*`. Generation stays inside the ticket's domain. | `["tests/*"]` |
 | `generate.domains` | Only when one domain spans several folders: `name: [folder globs]` (overrides `domain_globs`). Usually `{}`. | `{}` |
 | `generate.reuse` | Thresholds for covered / variant / method. Keep the defaults. | see `config.yaml` |
+| `generate.reuse.legacy_domains` | Areas that are legacy (older base class, unittest style, driving the browser directly): only "already covered" is decided there, nothing is generated. Names or folder globs. **The human confirms the list.** | `[]` |
+| `generate.reuse.frozen_classes` | Classes (or bases) new methods must never go into, inside areas that are otherwise in scope. | `[]` |
+| `generate.deployment_gate_patterns` | Only if the suite writes deployment gates in several ways: deployment → regexes over a decorator's text (e.g. a skip on a tenant condition). `generate.deployment_decorators` may hold a whole decorator expression. | `{}` |
 
 ### 5.7 Sandbox, tickets, LLM
 
