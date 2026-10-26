@@ -24,6 +24,7 @@ from ticket2test.generate.context import (
 )
 from ticket2test.generate.entries import build_entry, function_of
 from ticket2test.generate.inspect import data_use
+from ticket2test.index.catalog import SymbolCatalog
 from ticket2test.index.datafile import function_data_path, layout_of, module_data_path
 from ticket2test.index.indexer import IndexData
 from ticket2test.llm.base import LLMClient, LLMError, LLMRequest, Message
@@ -337,12 +338,44 @@ def with_template_shell(code: str, setup: GenerationSetup) -> tuple[str, str]:
             spliced = spliced.replace(placeholder + "\n", "\n", 1)
         roots = {name_of(ast.parse(d, mode="eval").body).split(".")[0] for d in stack}
         spliced = _add_imports(spliced, code, roots)  # for decorators from the generated class
+        spliced = explicit_star_imports(spliced, setup.index.catalog)
         result = format_python(spliced, settings.style.python, first_party(setup.index, settings))
     except (PatchError, SyntaxError, FormatError):
         return code, ""
     if result == code:
         return code, ""
     return result, f"class shell (imports, decorators, base, setup) from {chunk.class_name}"
+
+
+def explicit_star_imports(code: str, catalog: SymbolCatalog) -> str:
+    """``from m import *`` (copied with a template's imports) as an import of the names the code
+    uses from ``m``, or nothing when it uses none. Star imports from modules outside the repo
+    stay: what they bind isn't known."""
+    import ast
+
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return code
+    loaded = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
+    own = {
+        (a.asname or a.name).split(".")[0]
+        for n in tree.body
+        if isinstance(n, ast.Import | ast.ImportFrom)
+        for a in n.names
+        if a.name != "*"
+    } | {n.name for n in tree.body if isinstance(n, ast.FunctionDef | ast.ClassDef)}
+    lines = code.splitlines(keepends=True)
+    for node in reversed(tree.body):
+        if not (isinstance(node, ast.ImportFrom) and any(a.name == "*" for a in node.names)):
+            continue
+        names, known = catalog.star_names(node.module or "")
+        if not known:
+            continue
+        used = sorted((names & loaded) - own)
+        text = f"from {node.module} import {', '.join(used)}\n" if used else ""
+        lines[node.lineno - 1 : node.end_lineno] = [text]
+    return "".join(lines)
 
 
 def _add_imports(target: str, source: str, names: set[str]) -> str:

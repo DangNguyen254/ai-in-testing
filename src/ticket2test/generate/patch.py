@@ -702,6 +702,7 @@ def splice_methods(
         if isinstance(node, ast.Import | ast.ImportFrom)
         and _local_names(node) & used
         and not _bound_by_imports(ast.Module(body=[node], type_ignores=[])) <= have
+        and not (isinstance(node, ast.ImportFrom) and f"{node.module}:*" in have)  # star-bound
     ]
     if new_imports:
         last_import = max(

@@ -309,6 +309,9 @@ def _one(
     )
     linked = {manifest_test_to_chunk_id(t) for t in pair.tests}
     used_repo, used_index = repo, index
+    # A ticket whose right outcome is "out of scope" has no answer to copy, and hiding the
+    # linked test can remove its (small) legacy area altogether: keep the suite whole.
+    leave_one_out = leave_one_out and pair.expect != "out_of_scope"
     if leave_one_out:  # a real copy without the linked tests, so files and index agree
         loo_settings = settings.model_copy(
             update={

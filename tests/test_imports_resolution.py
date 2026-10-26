@@ -106,3 +106,18 @@ def test_a_star_import_from_outside_the_repo_makes_unknown_names_warnings(
     code = "from selenium.webdriver import *\n\n\ndef test_a():\n   Chrome()\n"
     names = [(sev, msg) for check, sev, msg in _findings(built, code) if check == "names"]
     assert len(names) == 1 and names[0][0] == "warning" and "can't be checked" in names[0][1]
+
+
+def test_a_copied_star_import_becomes_the_names_the_code_uses(
+    built: tuple[Settings, IndexData],
+) -> None:
+    """Found on the v7 dev run: the template's shell carried its star import into every attempt,
+    so the star-import check failed until the repair rounds ran out."""
+    from ticket2test.generate.generator import explicit_star_imports
+
+    catalog = built[1].catalog
+    code = "from helpers import *\nfrom os import *\n\n\ndef test_a():\n   make_thing()\n"
+    fixed = explicit_star_imports(code, catalog)
+    assert fixed.startswith("from helpers import make_thing\nfrom os import *\n")
+    unused = explicit_star_imports("from helpers import *\n\n\ndef test_a():\n   pass\n", catalog)
+    assert "import" not in unused
