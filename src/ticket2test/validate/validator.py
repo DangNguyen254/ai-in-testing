@@ -1021,11 +1021,13 @@ def _prepare(s: Subject) -> None:
     s.resolver = reuse
     prefix = s.settings.index.test_function_prefix
     s.uses = dict(data_use(s.code, d.access, list(helpers), prefix))  # module-level tests
+    path_helpers = path_string_helpers(s.index, s.settings)
     for cls, fn in s.tests:
         local = class_local_members(cls) if cls else set()
         bases = reuse.repo_bases(cls) if cls else []
         start = bases[0] if bases else s.base  # the class's own base, else the suite's
-        s.chains[fn.name] = function_chains(fn, ChainResolver(s.catalog, start, local))
+        resolver = ChainResolver(s.catalog, start, local, path_helpers)
+        s.chains[fn.name] = function_chains(fn, resolver)
         self_asserts = cls is not None and _is_testcase(cls, bases, v.testcase_bases)
         s.checks[fn.name] = check_calls(fn, v.assertion_object, helpers, self_asserts)
         if cls is not None:

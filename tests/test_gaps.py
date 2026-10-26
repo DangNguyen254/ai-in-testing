@@ -177,3 +177,19 @@ def test_a_page_returned_by_a_helper_is_checked(setup: tuple[Settings, IndexData
     )
     assert verdict.piece.name == "clear_expiry" and verdict.owner_class == page.qualname
     assert verdict.status in ("missing", "close_match")
+
+
+def test_a_page_opened_by_a_dotted_path_is_checked(setup: tuple[Settings, IndexData]) -> None:
+    """Dev-set finding (STND-145): ``exceptions = self.go_to("exceptions.list")`` left the
+    variable untyped, so an invented property on it was never checked. The path string now gives
+    the page's type."""
+    settings, index = setup
+    source = (STANDIN / "tests/exceptions/test_exceptions_widgets.py").read_text(encoding="utf-8")
+    code = source.replace("exceptions.help_text", "exceptions.browser_tab_title", 1)
+    assert code != source
+    (verdict,) = check_pieces(
+        from_generated(_generated(code, []), index, settings), index, settings
+    )
+    assert verdict.piece.name == "browser_tab_title"
+    assert verdict.owner_class == "framework.pages.exceptions.ExceptionListPage"
+    assert from_generated(_generated(source, []), index, settings) == []  # the real one is fine

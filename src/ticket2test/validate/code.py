@@ -143,10 +143,35 @@ def _chain_of(node: ast.Attribute) -> tuple[str, list[tuple[str, bool]]] | None:
 class ChainResolver:
     """Resolves chains against the catalog, starting at the base class or a known type."""
 
-    def __init__(self, catalog: SymbolCatalog, base_class: ClassEntry | None, local: set[str]):
+    def __init__(
+        self,
+        catalog: SymbolCatalog,
+        base_class: ClassEntry | None,
+        local: set[str],
+        path_helpers: set[str] | None = None,
+    ):
         self.catalog = catalog
         self.base = base_class
         self.local = local  # members the generated class defines itself
+        self.path_helpers = path_helpers or set()  # helpers taking a dotted page path string
+
+    def path_type(self, call: ast.Call) -> str | None:
+        """The page a path-string helper returns: ``go_to("area.page")`` -> the class at
+        ``<root>.area.page``. None when it isn't such a call or the path doesn't resolve."""
+        name = dotted(call.func).rsplit(".", 1)[-1]
+        if name not in self.path_helpers or not call.args:
+            return None
+        arg = call.args[0]
+        if not isinstance(arg, ast.Constant) or not isinstance(arg.value, str):
+            return None
+        text = arg.value.strip().strip(".")
+        roots = list(self.catalog.chain_roots)
+        tries = [text] if text.split(".")[0] in roots else [f"{r}.{text}" for r in roots]
+        for chain in tries:
+            result = self.catalog.resolve_chain_from_roots(chain)
+            if result.ok and result.types and result.types[-1]:
+                return result.types[-1]
+        return None
 
     def resolve(
         self, root: str, raw: list[tuple[str, bool]], start: str | None
@@ -188,6 +213,14 @@ def function_chains(
             for target in node.targets:
                 visit(target)
             value = node.value
+            page = resolver.path_type(value) if isinstance(value, ast.Call) else None
+            if (
+                page is not None
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+            ):
+                result.local_types[node.targets[0].id] = page  # ``x = self.go_to("area.page")``
+                return
             if isinstance(value, ast.Call) and isinstance(value.func, ast.Attribute):
                 value = value.func  # ``editor = self.open_exception(name)``: the return type
             if (
