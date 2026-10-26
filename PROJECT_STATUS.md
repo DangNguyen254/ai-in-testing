@@ -970,6 +970,19 @@ held out), 149 (units, held out: out of scope); pair sets `eval_data/standin_v7_
 (new pair expectation `out_of_scope`); deterministic retrieval recall@10 1.0 on both.
 pytest 821 passed.
 
+**Haiku 5.5 on the v7 dev set (2026-10-26, 3 runs, ~$0.05 in all):** run 1 found two problems:
+the class shell copied the template file's star import into every attempt (3 repair rounds
+wasted; now turned into an import of the names used), and leave-one-out removed the legacy
+area's only test, so the legacy ticket was generated elsewhere (pairs expecting
+`out_of_scope` now keep the suite whole). Run 2 met both expectations but showed three eval
+or reporting artifacts, all fixed: the leave-one-out copy reformatted the patched file to the
+configured style (now it keeps the file's own style), a false gap from an existing test that
+called the removed test (gaps now count only the new tests of a patch), and the wording of a
+file-level reviewer note. Run 3: STND-146 a new method in `TestReportsList` (the class that
+uses page objects), first attempt clean, in the file's own style (4-space indent, single
+quotes), collect ok; STND-147 out of scope. Reports `output/reports/v7-dev/haiku{,-r2,-r3}/`.
+The held-out v7 set has not been run. pytest 822 passed.
+
 **Decisions (the human, 2026-10-26):**
 - **Rules:** rules that protect correctness always hold; where the surrounding code does it differently, the reviewer gets a warning. Purely cosmetic rules follow the area's local style.
 - **Patching an existing file:** use that file's own style and never reformat existing lines. The correctness rules still apply and are flagged.

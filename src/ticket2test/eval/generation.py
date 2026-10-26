@@ -47,6 +47,7 @@ from ticket2test.normalize import normalize
 from ticket2test.retrieve.pipeline import retrieve
 from ticket2test.sandbox.runner import SandboxError, collect_generated
 from ticket2test.style import FormatError, format_entries, format_python
+from ticket2test.style.local import detect_json_style
 from ticket2test.validate.claims import norm
 from ticket2test.validate.suite import read_suite_data
 
@@ -189,8 +190,9 @@ def leave_one_out_repo(
                 end += 1
             del lines[start:end]
         text = _fill_empty_classes("".join(lines), settings)
-        with contextlib.suppress(FormatError):  # the cut leaves blank lines: restyle the file
-            text = format_python(text, settings.style.python, first_party(index, settings))
+        if not settings.style.follow_local:  # else the file keeps its own style (a patch target)
+            with contextlib.suppress(FormatError):  # the cut leaves blank lines: restyle it
+                text = format_python(text, settings.style.python, first_party(index, settings))
         path.write_text(text, encoding="utf-8", newline="\n")
         removed = {i for c in cut for i in c.test_ids}
         for chunk in cut:  # a test with its own data file: the file goes with it
@@ -201,8 +203,11 @@ def leave_one_out_repo(
         if data_text is not None:
             kept = [e for e in entries if str(e.get(id_field)) not in removed]
             data_path = dest / PurePosixPath(file_path).with_suffix(settings.index.data_file_suffix)
+            json_style = settings.style.json_files
+            if settings.style.follow_local:  # the data file keeps its own style too
+                json_style = detect_json_style(data_text, json_style)
             data_path.write_text(
-                format_entries(kept, settings.data, settings.style.json_files, layout),
+                format_entries(kept, settings.data, json_style, layout),
                 encoding="utf-8",
                 newline="\n",
             )

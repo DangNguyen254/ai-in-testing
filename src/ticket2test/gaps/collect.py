@@ -24,7 +24,12 @@ def from_generated(
 ) -> list[MissingPiece]:
     catalog = index.catalog
     pieces: dict[tuple[str, str], MissingPiece] = {}
+    # A patch holds the whole existing file: only the new tests' needs count (an existing test
+    # may call something the suite lacks, e.g. a test the eval left out).
+    new = {i.split("[", 1)[0] for i in generated.new_test_ids}
     for test, found in chain_analysis(generated, index, settings).items():
+        if new and test not in new:
+            continue
         for use in found.uses:
             if use.status != "missing" or use.missing_owner is None:
                 continue
@@ -48,7 +53,10 @@ def from_generated(
     except SyntaxError:
         return list(pieces.values())
     bound = bound_names(tree)
-    for node in ast.walk(tree):
+    scopes: list[ast.AST] = [
+        n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name in new
+    ] or ([tree] if not new else [])
+    for node in (inner for scope in scopes for inner in ast.walk(scope)):
         if (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)

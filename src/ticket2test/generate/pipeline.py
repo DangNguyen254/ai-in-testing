@@ -213,6 +213,7 @@ _DEVIATION_WORDS = {
     "raw_driver": "drive the browser directly",
     "page_locators": "use page locators directly",
     "constructed_pages": "build pages with constructors",
+    "star_imports": "use a star import",
 }
 
 
@@ -232,12 +233,18 @@ def _neighbour_notes(
     for finding in report.findings:
         if finding.severity == "error" and finding.check in settings.validation.deviation_checks:
             tests.setdefault(finding.check, set()).add(finding.test or "")
-    return [
-        f"Other tests in {path} {_DEVIATION_WORDS.get(check, f'break the {check} rule')} "
-        f"({len(found)} test(s)); this test follows the rule instead. Confirm in a real run "
-        "that it reaches the same state."
-        for check, found in sorted(tests.items())
-    ]
+    notes = []
+    for check, found in sorted(tests.items()):
+        named = sorted(t for t in found if t)
+        words = _DEVIATION_WORDS.get(check, f"break the {check} rule")
+        who = f"{len(named)} test(s) in {path} {words}"
+        if not named:  # a file-level finding (e.g. an import) has no test
+            who = f"{path} breaks the {check} rule"
+        notes.append(
+            f"{who}; this test follows the rule instead. Confirm in a real run that it reaches "
+            "the same state."
+        )
+    return notes
 
 
 def _regenerate(
