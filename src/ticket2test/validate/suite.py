@@ -26,7 +26,7 @@ from ticket2test.generate.generator import first_party
 from ticket2test.index.datafile import layout_of, split_defaults
 from ticket2test.index.indexer import IndexData, update_index
 from ticket2test.models.generated import GeneratedTest
-from ticket2test.sandbox.runner import collect_suite
+from ticket2test.sandbox.runner import ImportProblem, collect_suite
 from ticket2test.validate.validator import module_imports, validate_generated
 
 # Which config keys to look at when a check fails on hand-written tests.
@@ -75,6 +75,8 @@ class IdComparison(BaseModel):
     only_static: list[str] = Field(default_factory=list)  # computed but not collected
     only_collected: list[str] = Field(default_factory=list)  # collected but not computed
     not_computed_tests: list[str] = Field(default_factory=list)  # ids need a real collect
+    ignored_files: int = 0  # test files left out by sandbox.collect_ignore
+    import_problems: list[ImportProblem] = Field(default_factory=list)  # modules that failed
 
 
 class SuiteReport(BaseModel):
@@ -178,8 +180,13 @@ def compare_ids(repo: Path, index: IndexData, settings: Settings) -> IdCompariso
     """Static pytest ids (from the code) vs. ``pytest --collect-only`` in the sandbox."""
     static: set[str] = set()
     not_computed: list[str] = []
+    ignored = [p.strip("/") for p in settings.sandbox.collect_ignore]
+    ignored_files: set[str] = set()
     for chunk in index.chunks:
         if chunk.kind != "test":
+            continue
+        if any(chunk.file_path == p or chunk.file_path.startswith(p + "/") for p in ignored):
+            ignored_files.add(chunk.file_path)
             continue
         for class_name in chunk.collected_classes or [chunk.class_name or ""]:
             node = _node_prefix(chunk.file_path, class_name)
@@ -194,6 +201,8 @@ def compare_ids(repo: Path, index: IndexData, settings: Settings) -> IdCompariso
         static=len(static),
         collected=len(run.node_ids),
         not_computed_tests=sorted(not_computed),
+        ignored_files=len(ignored_files),
+        import_problems=run.import_problems,
     )
     if run.timed_out:
         comparison.note = "timed out (sandbox.timeout_seconds)"
@@ -259,6 +268,13 @@ def render_markdown(report: SuiteReport) -> str:
         ]
         lines += [f"  - only static: `{n}`" for n in ids.only_static[:10]]
         lines += [f"  - only collected: `{n}`" for n in ids.only_collected[:10]]
+        if ids.ignored_files:
+            lines.append(f"- Test files left out (sandbox.collect_ignore): {ids.ignored_files}")
+        if ids.import_problems:
+            lines += ["", "Modules that failed to import (fix with sandbox settings or stubs):", ""]
+            lines += [f"- `{p.path}`: {p.error}" for p in ids.import_problems[:30]]
+            more = len(ids.import_problems) - 30
+            lines += [f"- ... and {more} more"] if more > 0 else []
         if ids.note:
             lines += ["", "Collect output:", "", "```", ids.note, "```"]
     return "\n".join(lines) + "\n"

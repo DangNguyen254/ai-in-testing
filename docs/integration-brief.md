@@ -258,6 +258,10 @@ Component values are learned automatically from the suite.
 | `sandbox.base_image` | An approved image with the suite's Python version. **Ask the human** which registry is allowed. |
 | `sandbox.registry_auth` | `true` only if that registry needs a login (the human decides). |
 | `sandbox.timeout_seconds` | Raise (e.g. `600`) if collecting the whole suite takes long. |
+| `sandbox.env` | Non-secret environment variables the suite needs **at import time** (e.g. a deployment mode or a config root path). Names that look like secrets are refused: stub the module instead. |
+| `sandbox.stub_dir` | A private folder of stand-in modules for modules that do something at import time (write files, run shell commands, read host config, need secrets). A stub named like the module replaces it in the container only, even if the suite puts its own folders first on the import path. Write the smallest stub that lets imports succeed: the names other modules import, with harmless values. |
+| `sandbox.extra_paths` | Repo-relative folders the suite expects on the import path (e.g. one a conftest adds relative to the working directory). |
+| `sandbox.collect_ignore` | Repo-relative paths to leave out of the whole-suite collect (e.g. legacy or Python 2 areas). Their tests are left out of the id comparison too. |
 | `tickets.jira.field_map` | Custom Jira field IDs for `steps_to_reproduce`, `expected`, `actual` (section 9). |
 | `tickets.jira.browse_url` | e.g. `https://<jira host>/browse` (private file only). |
 | `eval.ticket_id_pattern` | Regex of ticket ids in skip reasons; the default fits `ABC-123`. |
@@ -318,6 +322,11 @@ to run `ticket2test sandbox --build` (it builds a container image outside both r
 approves this). Then run `ticket2test check-suite <target repo> --collect`.
 
 **F. Read `ids`.** `exit_code` must be 0, `only_static` and `only_collected` empty.
+- `import_problems` lists each module that failed to import with its last error. Fix them in
+  this order: a missing package → `sandbox-requirements.txt` (rebuild); an import-time side
+  effect or a host file → a stub in `sandbox.stub_dir`; a required environment variable →
+  `sandbox.env` (never a secret); a folder missing from the import path → `sandbox.extra_paths`;
+  an area that can't load at all (legacy) → `sandbox.collect_ignore`, and say so in the report.
 - `exit_code` not 0 and `note` shows `ModuleNotFoundError: X` → add the package to
   `sandbox-requirements.txt`; the human rebuilds.
 - `only_static` / `only_collected` not empty → check `index.test_*_prefix` and

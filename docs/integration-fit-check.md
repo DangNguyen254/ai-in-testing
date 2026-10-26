@@ -174,7 +174,7 @@ This is the core of the fit check. "Strictness" means:
 |---|---|---|---|
 | A1 | Tests are Python and collected by **pytest** (unittest-style classes collected by pytest are fine). | Required | Python 2 files are skipped, not handled. |
 | A2 | Test files match name patterns (default `test_*.py`, `*_test.py`); tests start with `test`, classes with `Test`. | Config | `index.test_file_globs`, prefixes |
-| A3 | The suite **collects with no network, no browser and no secrets**: importing the test modules and `conftest.py` must not connect anywhere or require secret env vars. | **Required** for the sandbox check | If import needs network or secrets, the collect check fails or needs stubs. |
+| A3 | The suite **collects with no network, no browser and no secrets**: importing the test modules and `conftest.py` must not connect anywhere or require secret env vars. | **Required** for the sandbox check | Handled by private sandbox settings: non-secret env vars, stand-in modules that replace modules with import-time side effects (they win over the suite's own import path), extra import paths, and paths left out of the collect. Modules that need real secrets or the network at import must be stubbed. |
 | A4 | Test classes inherit one or more **framework base classes** that provide setup, the page-object root and the assertion object. | Config (several roots allowed; discovered automatically) | `validation.base_classes` |
 | A5 | UI tests reach pages through **property chains from a root attribute** (e.g. `self.nav.<area>.<page>`), or through helpers that take a **dotted path string**, or helpers that `return self.<chain>`. | Config | `index.chain_roots`, `validation.path_string_helpers`. Pages created any other way (constructor calls such as `LoginPage(driver)`, factories, fixtures returning pages) are not typed, so their members **go unchecked** (no errors, but no protection against invented names either). |
 | A6 | Page objects: **value fields are properties** (assign to set, read to get); **actions are methods**; no fluent chaining. | Config for the checks; the style is assumed | Suites with getter/setter methods or chaining still index, but the "property vs action" checks would need turning off. |
@@ -253,7 +253,7 @@ These came from describing real-suite patterns to the tool's authors. Don't coun
 - **Dynamic code.** `__getattr__`-based page objects, runtime-built tests and runtime-computed parametrize values are partly invisible (A7, A11).
 - **Data outside JSON files** is not supported (A9).
 - **Python only.** No JavaScript/TypeScript, Java or Rust tests.
-- **Import-time side effects** (network, secrets, a browser started at import) break the sandbox collect (A3).
+- **Import-time side effects** (network, secrets, a browser started at import) break the sandbox collect until someone writes stubs and settings for them (A3); the collect report names each module that failed and why.
 - **Measured only on a synthetic suite.** Results on the synthetic suite (v6, a small stand-in suite):
   - **Held-out tickets:** 7/7 generated tests passed every check after repair and loaded in the sandbox, with 0 invented names.
   - **Gaps and vague tickets:** the missing-piece ticket's gap was reported, and the vague ticket was recognized.

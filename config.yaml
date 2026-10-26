@@ -220,6 +220,12 @@ sandbox:                          # `pytest --collect-only` in a container (Hard
   memory: 1g
   pids_limit: 256
   work_dir: .scratch/sandbox      # staging folder per run (git-ignored)
+  # What importing the target suite needs (set these in the private config):
+  env: {}                         # non-secret variables in the container (secret-like names refused)
+  stub_dir: null                  # stand-in modules that replace modules with import-time side
+                                  # effects (copied in; they win over the suite's own sys.path)
+  extra_paths: []                 # repo-relative folders added to the import path
+  collect_ignore: []              # repo-relative paths a whole-suite collect skips
 
 results:                        # reading a real run's console log (`ticket2test results`)
   link_pattern: 'https?://(?:[\w-]+\.)*saucelabs\.com/\S+'   # remote-browser session links

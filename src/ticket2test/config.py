@@ -10,10 +10,11 @@ read them directly from the environment.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -23,6 +24,7 @@ from pydantic_settings import (
 
 DEFAULT_CONFIG_PATH = Path("config.yaml")
 CONFIG_PATH_ENV_VAR = "T2T_CONFIG"
+_SECRET_NAME = re.compile(r"SECRET|TOKEN|PASSW|PWD|API_?KEY|PRIVATE_?KEY|CREDENTIAL|AUTH", re.I)
 
 
 class _Section(BaseModel):
@@ -418,6 +420,38 @@ class SandboxSettings(_Section):
     pids_limit: int = Field(default=256, ge=16)
     # Staging folder for each run (inside the repo, git-ignored).
     work_dir: Path = Path(".scratch/sandbox")
+    # What importing the target suite needs (set in the private config). `env`: non-secret
+    # variables set in the container (names that look like secrets are refused). `stub_dir`: a
+    # folder of stand-in modules, copied into the staging folder and put first on the import
+    # path, for modules with import-time side effects. `extra_paths`: repo-relative folders
+    # added to the import path. `collect_ignore`: repo-relative paths a whole-suite collect
+    # skips (pytest --ignore); their tests are left out of the id comparison too.
+    env: dict[str, str] = Field(default_factory=dict)
+    stub_dir: Path | None = None
+    extra_paths: list[str] = Field(default_factory=list)
+    collect_ignore: list[str] = Field(default_factory=list)
+
+    @field_validator("env")
+    @classmethod
+    def _no_secrets_in_env(cls, value: dict[str, str]) -> dict[str, str]:
+        for name in value:
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+                raise ValueError(f"sandbox.env: {name!r} is not a variable name")
+            if _SECRET_NAME.search(name):
+                raise ValueError(
+                    f"sandbox.env: {name!r} looks like a secret; the sandbox gets no secrets "
+                    "(stub the module that needs it instead)"
+                )
+        return value
+
+    @field_validator("extra_paths", "collect_ignore")
+    @classmethod
+    def _repo_relative(cls, value: list[str]) -> list[str]:
+        for path in value:
+            parts = path.replace("\\", "/").split("/")
+            if not re.fullmatch(r"[\w./-]+", path) or path.startswith("/") or ".." in parts:
+                raise ValueError(f"{path!r} must be a plain repo-relative path")
+        return value
 
 
 class GitHubSettings(_Section):

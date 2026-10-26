@@ -36,12 +36,22 @@ from ticket2test.style import format_entries
 Runner = Callable[..., subprocess.CompletedProcess[str]]
 
 CONTAINERFILE = Path(__file__).with_name("Containerfile")
+STUB_PLUGIN = Path(__file__).with_name("t2t_stubs.py")  # copied in when stubs are set
 DEFAULT_REQUIREMENTS = Path(__file__).with_name("requirements.txt")
 _OUTPUT_TAIL = 4000
 
 
 class SandboxError(RuntimeError):
     """The sandbox can't run (no runtime, no image). Never falls back to the host."""
+
+
+class ImportProblem(BaseModel):
+    """A module pytest couldn't import while collecting, and the last error it raised."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    path: str  # repo-relative (a test module or a conftest)
+    error: str  # e.g. "ModuleNotFoundError: No module named 'x'"
 
 
 class CollectReport(BaseModel):
@@ -57,6 +67,7 @@ class CollectReport(BaseModel):
     collected: list[str] = Field(default_factory=list)  # pytest names pytest reported
     missing: list[str] = Field(default_factory=list)
     unexpected: list[str] = Field(default_factory=list)
+    import_problems: list[ImportProblem] = Field(default_factory=list)
     output_tail: str = ""  # last part of stdout + stderr
 
 
@@ -145,6 +156,7 @@ def collect_generated(
         collected=collected,
         missing=missing,
         unexpected=unexpected,
+        import_problems=run.import_problems,
         output_tail=run.output_tail,
     )
 
@@ -158,6 +170,7 @@ class SuiteCollect(BaseModel):
     timed_out: bool = False
     duration_seconds: float
     node_ids: list[str] = Field(default_factory=list)  # "path::Class::test[id]"
+    import_problems: list[ImportProblem] = Field(default_factory=list)
     output_tail: str = ""
 
 
@@ -179,6 +192,7 @@ def collect_suite(
         timed_out=run.timed_out,
         duration_seconds=run.seconds,
         node_ids=[] if run.timed_out else parse_node_ids(run.stdout),
+        import_problems=run.import_problems,
         output_tail=run.output_tail,
     )
 
@@ -189,6 +203,7 @@ class _Run(BaseModel):
     seconds: float
     stdout: str
     output_tail: str
+    import_problems: list[ImportProblem] = Field(default_factory=list)
 
 
 def _run(
@@ -207,6 +222,12 @@ def _run(
                 f"Sandbox image {sandbox.image!r} not found. Build it with "
                 "`ticket2test sandbox --build`."
             )
+        if sandbox.stub_dir is not None:  # copied in: no host mount besides repo and stage
+            if not sandbox.stub_dir.is_dir():
+                raise SandboxError(f"sandbox.stub_dir not found: {sandbox.stub_dir}")
+            shutil.copytree(sandbox.stub_dir, stage / "stubs", dirs_exist_ok=True)
+            (stage / "t2t").mkdir(exist_ok=True)
+            shutil.copy(STUB_PLUGIN, stage / "t2t" / "t2t_stubs.py")
         name = f"t2t-collect-{stage.name}"
         args = run_args(exe, sandbox, repo_root.resolve(), stage.resolve(), name, test_file)
         started = time.monotonic()
@@ -227,6 +248,7 @@ def _run(
             seconds=round(time.monotonic() - started, 1),
             stdout=proc.stdout,
             output_tail=_tail(proc.stdout + proc.stderr),
+            import_problems=parse_import_problems(f"{proc.stdout}\n{proc.stderr}"),
         )
     finally:
         shutil.rmtree(stage, ignore_errors=True)
@@ -247,11 +269,20 @@ def run_args(
         if not re.fullmatch(r"[\w./-]+", target) or ".." in target.split("/"):
             raise SandboxError(f"unsafe test file path: {test_file!r}")
         target = f" '{target}'"
+    else:  # the whole suite: skip what the config leaves out
+        target = "".join(f" --ignore='{p}'" for p in sandbox.collect_ignore)
+    plugin = " -p t2t_stubs" if sandbox.stub_dir is not None else ""
     script = (
         "set -e; cp -r /repo /work/repo; "
         "if [ -d /work/generated ]; then cp -r /work/generated/. /work/repo/; fi; cd /work/repo; "
-        f"python -m pytest --collect-only -q -p no:cacheprovider{target}"
+        f"python -m pytest --collect-only -q -p no:cacheprovider{plugin}{target}"
     )
+    paths = ["/work/t2t", "/work/stubs"] if sandbox.stub_dir is not None else []
+    paths += [f"/work/repo/{p.strip('/')}" for p in sandbox.extra_paths]
+    env = dict(sandbox.env)
+    if paths:
+        env["PYTHONPATH"] = ":".join([*paths, env["PYTHONPATH"]] if "PYTHONPATH" in env else paths)
+    env_args = [arg for key, value in sorted(env.items()) for arg in ("-e", f"{key}={value}")]
     return [
         exe,
         "run",
@@ -276,11 +307,42 @@ def run_args(
         f"{stage}:/work:rw",
         "-w",
         "/work",
+        *env_args,
         sandbox.image,
         "sh",
         "-c",
         script,
     ]
+
+
+_COLLECTING = re.compile(r"ERROR collecting (?P<path>\S+?\.py)\b")
+_CONFTEST = re.compile(r"ImportError while loading conftest '(?P<path>[^']+)'")
+_E_LINE = re.compile(r"^E\s+(?P<error>[A-Za-z_][\w.]*(?:Error|Exception|Exit)\b.*)$")
+
+
+def parse_import_problems(output: str) -> list[ImportProblem]:
+    """Modules that failed to import during collection, each with the last error line pytest
+    printed for it (``ERROR collecting x.py`` blocks and conftest import errors)."""
+    found: dict[str, str] = {}
+    current: str | None = None
+    for line in output.splitlines():
+        match = _COLLECTING.search(line) or _CONFTEST.search(line)
+        if match:
+            current = _repo_relative(match.group("path"))
+            found.setdefault(current, "")
+            continue
+        error = _E_LINE.match(line)
+        if error and current is not None:
+            found[current] = error.group("error").strip()[:300]
+    return [ImportProblem(path=p, error=e or "(no error line)") for p, e in found.items()]
+
+
+def _repo_relative(path: str) -> str:
+    path = path.replace("\\", "/")
+    for prefix in ("/work/repo/", "work/repo/"):
+        if path.startswith(prefix):
+            return path[len(prefix) :]
+    return path
 
 
 def parse_collected(stdout: str) -> list[str]:

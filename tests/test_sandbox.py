@@ -288,3 +288,126 @@ def test_collect_suite_runs_the_whole_suite(tmp_path: Path, runtime_on_path: Non
     run = next(c for c in fake.calls if c["args"][1] == "run")
     assert run["args"][-1].endswith("pytest --collect-only -q -p no:cacheprovider")
     assert "if [ -d /work/generated ]" in run["args"][-1]
+
+
+# --- import-time needs of a real suite (env, stubs, paths, ignores) ---------------------------
+
+
+def test_env_stubs_and_paths_reach_the_container(tmp_path: Path, runtime_on_path: None) -> None:
+    from ticket2test.sandbox.runner import collect_suite
+
+    stubs = tmp_path / "stubs"
+    (stubs / "runtime_config").mkdir(parents=True)
+    (stubs / "runtime_config" / "__init__.py").write_text("MODE = 'stub'\n", encoding="utf-8")
+    settings = _settings(
+        tmp_path,
+        env={"APP_MODE": "test", "PYTHONPATH": "/opt/extra"},
+        stub_dir=str(stubs),
+        extra_paths=["lib/deploy"],
+        collect_ignore=["tests/legacy", "tests/old_test.py"],
+    )
+    fake = FakeRuntime(stdout="")
+    collect_suite(STANDIN, settings, runner=fake)
+    args = next(c for c in fake.calls if c["args"][1] == "run")["args"]
+    env = [args[i + 1] for i, a in enumerate(args) if a == "-e"]
+    assert "APP_MODE=test" in env
+    assert "PYTHONPATH=/work/t2t:/work/stubs:/work/repo/lib/deploy:/opt/extra" in env
+    assert fake.staged["stubs/runtime_config/__init__.py"] == "MODE = 'stub'\n"  # copied in
+    assert "def find_spec" in fake.staged["t2t/t2t_stubs.py"]  # the plugin that makes them win
+    assert " -p t2t_stubs " in args[-1]
+    mounts = [args[i + 1] for i, a in enumerate(args) if a == "-v"]
+    assert len(mounts) == 2  # still only the repo (read-only) and the staging folder
+    assert args[-1].endswith("--ignore='tests/legacy' --ignore='tests/old_test.py'")
+    single = run_args("podman", settings.sandbox, Path("/r"), Path("/s"), "n", TEST_FILE)
+    assert "--ignore" not in single[-1]  # a generated module is collected on its own
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "message"),
+    [
+        ("env", {"API_TOKEN": "x"}, "looks like a secret"),
+        ("env", {"DB_PASSWORD": "x"}, "looks like a secret"),
+        ("env", {"bad name": "x"}, "not a variable name"),
+        ("extra_paths", ["../outside"], "repo-relative"),
+        ("collect_ignore", ["/etc"], "repo-relative"),
+        ("collect_ignore", ["tests/x.py'; rm -rf /"], "repo-relative"),
+    ],
+)
+def test_unsafe_sandbox_settings_are_refused(
+    tmp_path: Path, key: str, value: Any, message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        _settings(tmp_path, **{key: value})
+
+
+def test_a_missing_stub_dir_is_a_clear_error(tmp_path: Path, runtime_on_path: None) -> None:
+    from ticket2test.sandbox.runner import collect_suite
+
+    settings = _settings(tmp_path, stub_dir=str(tmp_path / "nope"))
+    with pytest.raises(SandboxError, match="stub_dir not found"):
+        collect_suite(STANDIN, settings, runner=FakeRuntime())
+
+
+def test_import_problems_are_named_per_module() -> None:
+    from ticket2test.sandbox.runner import parse_import_problems
+
+    output = "\n".join(
+        [
+            "ImportError while loading conftest '/work/repo/tests/conftest.py'.",
+            "tests/conftest.py:3: in <module>",
+            "    import deploy",
+            "E   ModuleNotFoundError: No module named 'deploy'",
+            "==== ERRORS ====",
+            "____ ERROR collecting tests/area/test_a.py ____",
+            "tests/area/test_a.py:1: in <module>",
+            "E   KeyError: 'APP_ROOT'",
+            "____ ERROR collecting tests/area/test_b.py ____",
+            "E   PermissionError: [Errno 13] Permission denied: 'logs'",
+            "E   OSError: sudo: not found",
+        ]
+    )
+    found = [(p.path, p.error) for p in parse_import_problems(output)]
+    assert found == [
+        ("tests/conftest.py", "ModuleNotFoundError: No module named 'deploy'"),
+        ("tests/area/test_a.py", "KeyError: 'APP_ROOT'"),
+        ("tests/area/test_b.py", "OSError: sudo: not found"),  # the last error wins
+    ]
+
+
+def _side_effect_repo(root: Path) -> Path:
+    """A tiny suite that fails to import in a sandbox: its conftest needs an env var, and a
+    test module imports a config module that reads a host file at import time."""
+    (root / "tests").mkdir(parents=True)
+    (root / "tests" / "conftest.py").write_text(
+        "import os\n\nMODE = os.environ['APP_MODE']\n", encoding="utf-8"
+    )
+    (root / "runtime_config.py").write_text(
+        "SETTINGS = open('/etc/app/settings.ini').read()\n", encoding="utf-8"
+    )
+    (root / "tests" / "test_a.py").write_text(
+        "import runtime_config\n\n\ndef test_a():\n   pass\n", encoding="utf-8"
+    )
+    (root / "tests" / "test_b.py").write_text("def test_b():\n   pass\n", encoding="utf-8")
+    (root / "pytest.ini").write_text("[pytest]\npythonpath = .\n", encoding="utf-8")
+    return root
+
+
+@pytest.mark.sandbox
+def test_real_sandbox_stubs_and_env_make_a_side_effect_suite_load(tmp_path: Path) -> None:
+    from ticket2test.sandbox.runner import collect_suite
+
+    repo = _side_effect_repo(tmp_path / "repo")
+    base = _real_settings()
+    plain = collect_suite(repo, base)
+    assert plain.exit_code not in (0, None)
+    assert [p.path for p in plain.import_problems] == ["tests/conftest.py"]
+    stubs = tmp_path / "stubs"
+    stubs.mkdir()
+    (stubs / "runtime_config.py").write_text("SETTINGS = ''\n", encoding="utf-8")
+    sandbox = base.sandbox.model_copy(update={"env": {"APP_MODE": "test"}, "stub_dir": stubs})
+    fixed = collect_suite(repo, base.model_copy(update={"sandbox": sandbox}))
+    assert fixed.exit_code == 0, fixed.output_tail
+    assert fixed.node_ids == ["tests/test_a.py::test_a", "tests/test_b.py::test_b"]
+    ignore = sandbox.model_copy(update={"stub_dir": None, "collect_ignore": ["tests/test_a.py"]})
+    partial = collect_suite(repo, base.model_copy(update={"sandbox": ignore}))
+    assert partial.exit_code == 0 and partial.node_ids == ["tests/test_b.py::test_b"]

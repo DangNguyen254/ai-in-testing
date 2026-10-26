@@ -678,7 +678,9 @@ def validate(
                 f"  collect ({collected.runtime}, {collected.duration_seconds}s): "
                 + ", ".join(["ok" if collected.ok else "FAILED", *filter(None, details)])
             )
-            if not collected.ok and collected.output_tail:
+            for problem in collected.import_problems:
+                typer.echo(f"    import failed: {problem.path}: {problem.error}")
+            if not collected.ok and collected.output_tail and not collected.import_problems:
                 typer.echo(collected.output_tail[-800:])
         failed += int(not report.ok or not collect_ok)
         path.write_text(
