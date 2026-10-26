@@ -935,6 +935,23 @@ Read this first when resuming in a new session.
   - **Haiku 5.5 on the three gap tickets** (reports `output/reports/v6-gaps/haiku-proposals/` and `haiku-regen/`; ~$0.06 per pass): STND-132 `ExceptionEditorPage.clear_expiry()` and STND-141 (held-out) `ExceptionListPage.export()`, both one call, every check passed, suite loads; with regeneration both final tests call the new member. In the regeneration run Haiku also reported STND-145's gap (it wrote `tab_title` instead of reusing `page_title`), proposed `tab_title` returning `self.driver.title` (page-object side; the raw-driver rule is for tests), and the final test used it. That ticket is not reliably met: the earlier runs reused the wrong real member (known limitation above).
   - **Verified:** ruff, mypy strict (116 files), pytest 777 passed, 14 deselected.
 
+## Real-suite fit plan (from a generalized fit report, 2026-10-26)
+
+A fit check against a real suite (its details stay private) found the model fits most of it, with general patterns the tool must handle before calibration can go clean. Plan, in order:
+
+1. **Sandbox for import-time needs** (the blocker): private, opt-in `sandbox.env` (non-secret variables), `sandbox.stub_dir` (stand-in modules first on the import path, copied into the staging folder), `sandbox.extra_paths`, `sandbox.collect_ignore`, and a per-module import-error summary.
+2. **Calibration on a mixed suite**: rule levels per area; style taken from the file being patched; defaults-merge variants; several expectation sections per entry where the suite allows it; deployment gates written as conditions; a unique-name helper per base class; data-file naming rules; marker separators with spaces.
+3. **Name protection gaps**: star imports; the same class name in two modules.
+4. **Reviewer warnings** for risky patterns: a test calling a test, bare `except` retries, marker values unsafe for hooks that build code from them, class names that break naming hooks, entries identical to their template.
+5. **Eval without git history**: ticket-test pairs from skip reasons in the current tree.
+Each step adds its pattern to the stand-in (v7) with tests; then a Haiku dev and held-out run.
+
+**Decisions (the human, 2026-10-26):**
+- **Rules:** rules that protect correctness always hold; where the surrounding code does it differently, the reviewer gets a warning. Purely cosmetic rules follow the area's local style.
+- **Patching an existing file:** use that file's own style and never reformat existing lines. The correctness rules still apply and are flagged.
+- **Areas that drive the browser directly:** legacy, out of scope for generation; "already covered" detection still runs there. In mixed areas new methods go only into classes that already use page objects.
+- **Pages built by constructors:** allowed only when the test's own class already builds that page, and every such use is flagged for the reviewer. Typing constructor calls is a later improvement.
+
 ## Global open questions (for the human)
 - Which LLM provider/endpoint will the company environment require?
 - Is there an existing conventions doc for tests at the company?
