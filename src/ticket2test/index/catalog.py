@@ -9,6 +9,7 @@ reported as ``unknown_type`` rather than as an invented name.
 
 from __future__ import annotations
 
+import ast
 import re
 from collections import deque
 from typing import Literal
@@ -100,6 +101,11 @@ class SymbolCatalog(BaseModel):
     chains_truncated: bool = False  # the chain list hit index.max_chain_entries
     _resolving: set[str] = PrivateAttr(default_factory=set)  # return chains being followed
     page_objects: list[str] = Field(default_factory=list)  # class qualnames
+    # Per module: local name -> what it imports ("pkg.mod.Name", or a module for ``import``);
+    # the modules it star-imports; its own top-level names (what ``import *`` gives).
+    module_names: dict[str, dict[str, str]] = Field(default_factory=dict)
+    star_imports: dict[str, list[str]] = Field(default_factory=dict)
+    module_exports: dict[str, list[str]] = Field(default_factory=dict)
 
     # --- lookups -------------------------------------------------------------------------
 
@@ -111,9 +117,17 @@ class SymbolCatalog(BaseModel):
         return [s for s in self.symbols if name in (s.name, s.qualname)]
 
     def class_named(self, name: str, prefer_module: str | None = None) -> ClassEntry | None:
+        """The class ``name`` means: a qualname; else what ``prefer_module`` imports under
+        that name (its imports and star imports, followed through re-exports), so two classes
+        with the same name in different modules are told apart; else by simple name, the one
+        in ``prefer_module`` first."""
         simple = name.rsplit(".", 1)[-1]
         if name in self.classes:
             return self.classes[name]
+        if prefer_module is not None:
+            target = self.imported(prefer_module, name)
+            if target is not None and target in self.classes:
+                return self.classes[target]
         candidates = sorted(
             (c for c in self.classes.values() if c.name == simple), key=lambda c: c.qualname
         )
@@ -123,6 +137,44 @@ class SymbolCatalog(BaseModel):
             if candidate.module == prefer_module:
                 return candidate
         return candidates[0]
+
+    def imported(self, module: str, name: str, depth: int = 0) -> str | None:
+        """The qualified target of ``name`` (``X`` or ``alias.X``) as ``module`` sees it,
+        following re-exports and star imports a few levels; None when unknown."""
+        if depth > 5:
+            return None
+        head, _, rest = name.partition(".")
+        names = self.module_names.get(module, {})
+        if head in names:
+            target = names[head] + (f".{rest}" if rest else "")
+        elif not rest and name in self.module_exports.get(module, []):
+            return f"{module}.{name}"
+        else:
+            for star in self.star_imports.get(module, []):
+                found = self.imported(star, name, depth + 1)
+                if found is not None:
+                    return found
+            return None
+        if target in self.classes:
+            return target
+        owner, _, last = target.rpartition(".")
+        if owner in self.module_names or owner in self.module_exports:
+            return self.imported(owner, last, depth + 1) or target
+        return target
+
+    def star_names(self, module: str, depth: int = 0) -> tuple[set[str], bool]:
+        """Names ``from <module> import *`` binds, and whether that is fully known (False when
+        a module in the chain isn't in the repo)."""
+        if module not in self.module_exports or depth > 5:
+            return set(), False
+        names = {n for n in self.module_exports[module] if not n.startswith("_")}
+        names |= {n for n in self.module_names.get(module, {}) if not n.startswith("_")}
+        known = True
+        for star in self.star_imports.get(module, []):
+            more, ok = self.star_names(star, depth + 1)
+            names |= more
+            known = known and ok
+        return names, known
 
     def resolve_type(self, type_text: str | None, module: str | None = None) -> ClassEntry | None:
         """First identifier in an annotation that names a class in the repo."""
@@ -332,7 +384,51 @@ def build_catalog(
     return catalog
 
 
+def import_map(statements: list[str], module: str) -> tuple[dict[str, str], list[str]]:
+    """(local name -> imported target, star-imported modules) from import statements as
+    written. Relative imports are resolved against ``module``."""
+    names: dict[str, str] = {}
+    stars: list[str] = []
+    for text in statements:
+        try:
+            tree = ast.parse(text.strip())
+        except SyntaxError:
+            continue
+        for node in tree.body:
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.asname:
+                        names[alias.asname] = alias.name
+                    else:
+                        top = alias.name.split(".")[0]
+                        names.setdefault(top, top)
+            elif isinstance(node, ast.ImportFrom):
+                source = _absolute(node.module or "", node.level, module)
+                for alias in node.names:
+                    if alias.name == "*":
+                        stars.append(source)
+                    else:
+                        names[alias.asname or alias.name] = f"{source}.{alias.name}"
+    return names, stars
+
+
+def _absolute(name: str, level: int, module: str) -> str:
+    if not level:
+        return name
+    parts = module.split(".")[: -level or None]
+    return ".".join([*parts, name] if name else parts)
+
+
 def _add_file(catalog: SymbolCatalog, info: FileInfo) -> None:
+    names, stars = import_map(info.imports, info.module)
+    catalog.module_names[info.module] = names
+    if stars:
+        catalog.star_imports[info.module] = stars
+    catalog.module_exports[info.module] = sorted(
+        {f.name for f in info.functions}
+        | {c.name for c in info.classes}
+        | {a.name for a in info.assignments}
+    )
     module_short = info.module.rsplit(".", 1)[-1]
     catalog.symbols.append(
         Symbol(name=module_short, qualname=info.module, kind="module", file_path=info.path, line=1)

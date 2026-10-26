@@ -264,3 +264,95 @@ def test_neighbours_that_break_a_rule_give_a_reviewer_note(setup: Any) -> None:
     notes = _neighbour_notes(decision, setup[1], settings, STANDIN)
     assert len(notes) == 1 and "drive the browser directly" in notes[0]
     assert _neighbour_notes(decision, setup[1], setup[0], STANDIN) == []
+
+
+# --- Phase 4: reviewer warnings for risky patterns -----------------------------------------------
+
+
+def _risky(report: Any) -> list[str]:
+    return [f.message for f in report.findings if f.check == "risky" and f.severity == "warning"]
+
+
+@pytest.mark.parametrize(
+    ("snippet", "words"),
+    [
+        ("self.test_rules_other()", "calls another test"),
+        ("global COUNT", "module globals"),
+        ("self.__class__.shared = 1", "class-level state"),
+        ("type(self).shared = 1", "class-level state"),
+        ("try:\n         rules.search()\n      except Exception:\n         pass", "broad except"),
+        ("try:\n         rules.search()\n      except:\n         pass", "broad except"),
+    ],
+)
+def test_risky_patterns_are_flagged_for_the_reviewer(setup: Any, snippet: str, words: str) -> None:
+    code = GOOD_CODE.replace("rules.search()", f"rules.search()\n      {snippet}", 1)
+    messages = _risky(_validate(setup, code=code))
+    assert any(words in m for m in messages), messages
+
+
+def test_the_good_test_has_no_risky_patterns(setup: Any) -> None:
+    assert _risky(_validate(setup)) == []
+
+
+def test_values_hooks_build_code_from_are_flagged(setup: Any) -> None:
+    from tests.test_validate import GOOD_ENTRY
+
+    code = GOOD_CODE.replace('suite("regression")', """suite("regre'ssion")""", 1)
+    assert any("marker value" in m for m in _risky(_validate(setup, code=code)))
+    entry = {**GOOD_ENTRY, "skip": 'bug "X-1"'}
+    assert any("'skip' value" in m for m in _risky(_validate(setup, entries=[entry])))
+
+
+def test_an_entry_copied_from_its_template_is_flagged(setup: Any) -> None:
+    from ticket2test.models.generated import GeneratedTest, TemplateEntryRef
+    from ticket2test.validate.validator import validate_generated
+
+    settings, index, roots = setup
+    chunk = next(c for c in index.chunks if c.kind == "test" and c.data_entries)
+    key, template = next(iter(chunk.data_entries.items()))
+    copy = {**template, "test_id": "test_rules_list_filter_next_page"}
+    generated = GeneratedTest(
+        code=GOOD_CODE,
+        file_name="tests/rules/test_rules_list_filter.py",
+        data_file_name="tests/rules/test_rules_list_filter.json",
+        data_entries=[copy],
+        data_format="array",
+        test_ids=["test_rules_list_filter_next_page"],
+        template_entry_ref=TemplateEntryRef(chunk_id=chunk.id, entry_key=key),
+        ticket_id="STND-106",
+        draft_ref="STND-106/d1",
+        retrieved_chunk_ids=[],
+        prompt_version="test",
+        provider="fake",
+        model="fake",
+        attempts=1,
+        context_tokens=0,
+    )
+    report = validate_generated(generated, index.catalog, settings, roots, index=index)
+    assert any(f"a copy of {key}" in m for m in _risky(report))
+
+
+# --- Phase 5: eval pairs without git history ----------------------------------------------------
+
+
+def test_pairs_come_from_skips_in_the_current_tree(setup: Any, tmp_path: Path) -> None:
+    from ticket2test.eval.mining import CURRENT_TREE, mine_current_skips
+
+    settings, index, _ = setup
+    files = sorted({c.file_path for c in index.chunks if c.kind == "test"})
+    mined = mine_current_skips(STANDIN, files, settings)
+    by_ticket = {(m.ticket, m.kind) for m in mined}
+    assert ("STND-105", "data_skip") in by_ticket  # an entry's skip cites the ticket
+    assert all(m.subject == CURRENT_TREE and m.commit == "" for m in mined)
+    repo = tmp_path / "repo"
+    (repo / "tests").mkdir(parents=True)
+    (repo / "tests" / "test_a.py").write_text(
+        "import pytest\n\n\nclass TestA:\n"
+        '   @pytest.mark.skip(reason="ABC-12: broken")\n'
+        "   def test_one(self):\n      pass\n\n   def test_two(self):\n      pass\n",
+        encoding="utf-8",
+    )
+    found = mine_current_skips(repo, ["tests/test_a.py"], settings)
+    assert [(m.ticket, m.test, m.kind) for m in found] == [
+        ("ABC-12", "tests/test_a.py::TestA::test_one", "code_skip")
+    ]

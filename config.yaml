@@ -202,7 +202,7 @@ validation:                     # deterministic checks of generated tests (Phase
   name_max_length: 32             # the app's name length limit ({test_id:N} + suffix)
   unique_name_helper: self.unique_name
   unique_name_helpers: {}         # base class name -> its own unique-name helper
-  deviation_checks: [raw_driver, page_locators, constructed_pages]   # rules older tests may
+  deviation_checks: [raw_driver, page_locators, constructed_pages, star_imports]   # rules older tests may
                                   # break: deviations per area in check-suite, not config errors
   placeholder_pattern: '\{[a-z_]+\d*(?::\d+)?\}'   # any data placeholder (regex)
   unique_name_pattern: '\{test_id:(\d+)\}'          # unique name; group 1 = max length

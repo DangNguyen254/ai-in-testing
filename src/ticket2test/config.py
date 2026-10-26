@@ -402,7 +402,12 @@ class ValidateSettings(_Section):
     # suite's own tests they are deviations, counted per area, not config errors. Generated
     # tests always follow them; when neighbouring tests don't, the reviewer gets a note.
     deviation_checks: list[str] = Field(
-        default_factory=lambda: ["raw_driver", "page_locators", "constructed_pages"]
+        default_factory=lambda: [
+            "raw_driver",
+            "page_locators",
+            "constructed_pages",
+            "star_imports",
+        ]
     )
     # Suites whose base classes provide different unique-name helpers: base class name -> the
     # helper its tests call. A test uses the helper of the first base in its lineage listed

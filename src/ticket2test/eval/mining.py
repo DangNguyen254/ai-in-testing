@@ -6,6 +6,10 @@ A fix commit typically re-enables the test that was skipped while the bug was op
 - a data skip: a JSON data entry whose ``skip`` value cites the ticket id, removed by the commit.
 
 The test must still exist after the commit (re-enabled, not deleted).
+
+Without history (a checkout with no version-control metadata), ``mine_current_skips`` reads
+the same two forms in the current tree: tests still skipped for an open ticket. Their pairs say
+where a test for that ticket lives, without a fix commit to confirm it.
 """
 
 from __future__ import annotations
@@ -13,7 +17,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Any, Literal
 
 from ticket2test.adapters.repo.git_history import Commit, GitHistoryReader
@@ -22,6 +26,7 @@ from ticket2test.generate.entries import function_of
 from ticket2test.index.extract import ParseError, extract_file
 
 SkipKind = Literal["code_skip", "data_skip"]
+CURRENT_TREE = "current tree"  # MinedPair.subject for pairs found without history
 
 
 @dataclass(frozen=True)
@@ -47,6 +52,41 @@ def mine_skip_removals(reader: GitHistoryReader, settings: Settings) -> list[Min
                     (ticket, test), MinedPair(ticket, test, commit.sha, commit.subject, kind)
                 )
     return sorted(found.values(), key=lambda p: (p.ticket, p.test))
+
+
+def mine_current_skips(repo: Path, test_files: list[str], settings: Settings) -> list[MinedPair]:
+    """(ticket, test) pairs from skips in the current tree that cite a ticket id: skip
+    decorators on tests or their classes, and ``skip`` values in data entries (the module's
+    data file, or a test's own file named after it)."""
+    pattern = re.compile(settings.eval.ticket_id_pattern)
+    suffix = settings.index.data_file_suffix
+    found: dict[tuple[str, str], MinedPair] = {}
+
+    def add(ticket: str, test: str, kind: SkipKind) -> None:
+        found.setdefault((ticket, test), MinedPair(ticket, test, "", CURRENT_TREE, kind))
+
+    for path in sorted(test_files):
+        text = _read(repo / path)
+        for ticket, test in sorted(_code_skips(text, path, pattern, settings)):
+            add(ticket, test, "code_skip")
+        tests = _test_functions(text, path, settings)
+        folder = PurePosixPath(path).parent
+        data_files = [str(PurePosixPath(path).with_suffix(suffix))]
+        data_files += [str(folder / f"{t.rsplit('::', 1)[-1]}{suffix}") for t in tests]
+        for data_path in dict.fromkeys(data_files):
+            for ticket, entry_id in sorted(_data_skips(_read(repo / data_path), pattern, settings)):
+                function = function_of(entry_id) or PurePosixPath(data_path).stem
+                owner = next((t for t in tests if t.rsplit("::", 1)[-1] == function), None)
+                if owner is not None:
+                    add(ticket, owner, "data_skip")
+    return sorted(found.values(), key=lambda p: (p.ticket, p.test))
+
+
+def _read(path: Path) -> str | None:
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
 
 
 def _removed_skips(

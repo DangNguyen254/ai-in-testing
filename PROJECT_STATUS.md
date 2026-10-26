@@ -946,6 +946,15 @@ A fit check against a real suite (its details stay private) found the model fits
 5. **Eval without git history**: ticket-test pairs from skip reasons in the current tree.
 Each step adds its pattern to the stand-in (v7) with tests; then a Haiku dev and held-out run.
 
+**Progress (2026-10-26):** steps 1 to 5 built, each with unit tests on small synthetic inputs
+(`tests/test_sandbox.py`, `tests/test_mixed_suite.py`, `tests/test_imports_resolution.py`);
+pytest 815 passed. Step 1 includes a pytest plugin that makes stubs win over the suite's own
+import path (found by a real Podman run). Step 3 adds per-module import maps to the catalog
+(index version 10): a class name resolves through the module's imports and re-exports, and star
+imports bind their module's names (a star import from outside the repo turns unknown names into
+warnings); new code never uses star imports (`star_imports`, a deviation check). Step 4 is one
+warning check, `risky`. Still open: the stand-in v7 patterns and the Haiku runs.
+
 **Decisions (the human, 2026-10-26):**
 - **Rules:** rules that protect correctness always hold; where the surrounding code does it differently, the reviewer gets a warning. Purely cosmetic rules follow the area's local style.
 - **Patching an existing file:** use that file's own style and never reformat existing lines. The correctness rules still apply and are flagged.

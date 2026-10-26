@@ -803,32 +803,51 @@ def mine(
     jira_export: Annotated[
         str | None, typer.Option(help="Jira export with the tickets, relative to the project root.")
     ] = None,
+    from_skips: Annotated[
+        bool,
+        typer.Option(
+            "--from-skips",
+            help="No history needed: pairs from skips in the current tree that cite a ticket.",
+        ),
+    ] = False,
 ) -> None:
-    """Mine ticket <-> test pairs from commits that remove a ticket-id skip."""
+    """Mine ticket <-> test pairs from commits that remove a ticket-id skip (or, with
+    --from-skips, from skips in the current tree)."""
     import json
 
     from ticket2test.adapters.repo.git_history import GitHistoryError, GitHistoryReader
-    from ticket2test.eval.mining import mine_skip_removals
+    from ticket2test.eval.mining import mine_current_skips, mine_skip_removals
+    from ticket2test.index.indexer import update_index
 
     state: AppState = ctx.obj
-    try:
-        mined = mine_skip_removals(GitHistoryReader(repo), state.settings)
-    except GitHistoryError as exc:
-        typer.echo(f"Error: {exc}", err=True)
-        raise typer.Exit(code=1) from exc
+    if from_skips:
+        index, _, _ = update_index(repo, state.settings)
+        files = sorted({c.file_path for c in index.chunks if c.kind == "test"})
+        mined = mine_current_skips(repo, files, state.settings)
+    else:
+        try:
+            mined = mine_skip_removals(GitHistoryReader(repo), state.settings)
+        except GitHistoryError as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
     pairs = [
         {
             "id": f"mined-{m.ticket}",
             "ticket": m.ticket,
             "tests": [m.test],
-            "source": f"mined: {m.commit[:10]} {m.kind} ({m.subject})",
+            "source": f"mined: {m.commit[:10] or 'no commit'} {m.kind} ({m.subject})",
         }
         for m in mined
     ]
+    how = (
+        "skips in the current tree citing the ticket id (open tickets, no fix commit). Ground "
+        "truth: the skipped test."
+        if from_skips
+        else "commits that remove a skip citing the ticket id. Ground truth: the re-enabled test."
+    )
     pair_set = {
         "name": name,
-        "description": f"Ticket <-> test pairs mined from {repo.as_posix()}: commits that remove "
-        "a skip citing the ticket id. Ground truth: the re-enabled test.",
+        "description": f"Ticket <-> test pairs mined from {repo.as_posix()}: {how}",
         "repo_path": repo_path or repo.as_posix(),
         "ticket_source": "jira_export",
         "jira_export": jira_export,
@@ -838,7 +857,7 @@ def mine(
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(pair_set, indent=2) + "\n", encoding="utf-8", newline="\n")
     for m in mined:
-        typer.echo(f"{m.ticket}: {m.test} ({m.kind}, {m.commit[:10]})")
+        typer.echo(f"{m.ticket}: {m.test} ({m.kind}, {m.commit[:10] or m.subject})")
     typer.echo(f"{len(mined)} pair(s) -> {out}")
 
 

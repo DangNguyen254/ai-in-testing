@@ -451,4 +451,5 @@ ticket2test validate output/generated --repo <target repo> --collect
 
 Then a human compares the generated test with real ones (style check), and
 `ticket2test mine <target repo> --out <private>/mined.json` builds eval pairs from the git
-history (read-only).
+history (read-only). Without history in the checkout, `--from-skips` builds them from skips in
+the current tree that cite a ticket id (open tickets: the pair says where the test lives).

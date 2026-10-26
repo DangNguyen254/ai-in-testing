@@ -18,7 +18,7 @@ from typing import Any
 from ticket2test.config import Settings
 from ticket2test.generate.entries import function_of
 from ticket2test.generate.inspect import DataUse, computed_test_ids, data_use
-from ticket2test.index.catalog import ClassEntry, SymbolCatalog
+from ticket2test.index.catalog import ClassEntry, SymbolCatalog, import_map
 from ticket2test.index.chunks import is_test_file
 from ticket2test.index.datafile import merged, split_defaults
 from ticket2test.index.indexer import IndexData
@@ -74,6 +74,11 @@ class Subject:
     @property
     def code(self) -> str:
         return self.generated.code
+
+    @property
+    def module(self) -> str:
+        """The module name the file has in the repo."""
+        return PurePosixPath(self.generated.file_name).with_suffix("").as_posix().replace("/", ".")
 
     @property
     def entries(self) -> list[dict[str, Any]]:
@@ -163,12 +168,176 @@ def _known_module(name: str, modules: set[str], external: set[str]) -> bool:
 
 
 def check_names(s: Subject) -> Iterator[Finding]:
-    """Plain names must be bound somewhere in the module (imports, definitions, locals)."""
+    """Plain names must be bound somewhere in the module (imports, definitions, locals). A
+    star import binds what its module defines; from a module outside the repo it could bind
+    anything, so a name not found is then only a warning."""
     assert s.tree is not None
     bound = bound_names(s.tree)
+    unknown_star = ""
+    for star in _star_modules(s):
+        names, known = s.catalog.star_names(star)
+        bound |= names
+        if not known:
+            unknown_star = unknown_star or star
     for node in ast.walk(s.tree):
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id not in bound:
-            yield _f("names", f"undefined name {node.id!r}", line=node.lineno)
+            if unknown_star:
+                yield _f(
+                    "names",
+                    f"name {node.id!r} isn't defined here; it may come from "
+                    f"'from {unknown_star} import *', which can't be checked",
+                    "warning",
+                    line=node.lineno,
+                )
+            else:
+                yield _f("names", f"undefined name {node.id!r}", line=node.lineno)
+
+
+_HOOK_UNSAFE = re.compile(r"""['"\\\n{}]""")
+
+
+def check_risky_patterns(s: Subject) -> Iterator[Finding]:
+    """Reviewer warnings for patterns static checks can't judge but real suites trip on: a
+    test calling another test, state shared between tests, broad ``except`` (it can hide the
+    failure the test is for), marker or per-entry values with characters hooks that build code
+    from them choke on, and new entries identical to their template (copied values)."""
+    assert s.tree is not None
+    prefix = s.settings.index.test_function_prefix
+    for _, fn in s.tests:
+        for node in ast.walk(fn):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                if (
+                    isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == "self"
+                    and node.func.attr.startswith(prefix)
+                ):
+                    yield _f(
+                        "risky",
+                        f"calls another test, self.{node.func.attr}(): it then depends on that "
+                        "test's state and order; call the shared steps through a helper",
+                        "warning",
+                        test=fn.name,
+                        line=node.lineno,
+                    )
+            elif isinstance(node, ast.Global):
+                yield _f(
+                    "risky",
+                    f"changes module globals ({', '.join(node.names)}): state shared between "
+                    "tests makes them depend on run order",
+                    "warning",
+                    test=fn.name,
+                    line=node.lineno,
+                )
+            elif isinstance(node, ast.Assign) and any(_is_class_state(t) for t in node.targets):
+                yield _f(
+                    "risky",
+                    "sets class-level state from a test: later tests in the class see it",
+                    "warning",
+                    test=fn.name,
+                    line=node.lineno,
+                )
+            elif isinstance(node, ast.ExceptHandler) and _broad(node):
+                yield _f(
+                    "risky",
+                    "a broad except can hide the very failure this test should report; catch "
+                    "the specific exception, or let it fail",
+                    "warning",
+                    test=fn.name,
+                    line=node.lineno,
+                )
+    for cls, fn in s.tests:
+        for decorator in [*(cls.decorator_list if cls else []), *fn.decorator_list]:
+            if not isinstance(decorator, ast.Call) or not dotted(decorator.func).startswith(
+                "pytest.mark."
+            ):
+                continue
+            for arg in decorator.args:
+                if (
+                    isinstance(arg, ast.Constant)
+                    and isinstance(arg.value, str)
+                    and _HOOK_UNSAFE.search(arg.value)
+                ):
+                    yield _f(
+                        "risky",
+                        f"marker value {arg.value!r} has quotes, braces or backslashes; hooks "
+                        "that build code from marker values can break on it",
+                        "warning",
+                        line=decorator.lineno,
+                    )
+    d = s.settings.data
+    for entry in s.entries:
+        for key in d.per_entry_keys:
+            value = entry.get(key)
+            if isinstance(value, str) and _HOOK_UNSAFE.search(value):
+                yield _f(
+                    "risky",
+                    f"{key!r} value {value!r} has quotes, braces or backslashes; hooks that "
+                    "build code from entry values can break on it",
+                    "warning",
+                    test=str(entry.get(d.id_field, "")),
+                )
+    yield from _copied_entries(s)
+
+
+def _is_class_state(target: ast.expr) -> bool:
+    """``self.__class__.x = ...``, ``type(self).x = ...``, ``cls.x = ...``."""
+    if not isinstance(target, ast.Attribute):
+        return False
+    owner = target.value
+    if isinstance(owner, ast.Attribute) and owner.attr == "__class__":
+        return True
+    if isinstance(owner, ast.Call) and dotted(owner.func) == "type":
+        return True
+    return isinstance(owner, ast.Name) and owner.id == "cls"
+
+
+def _broad(handler: ast.ExceptHandler) -> bool:
+    if handler.type is None:
+        return True
+    names = [handler.type] if not isinstance(handler.type, ast.Tuple) else handler.type.elts
+    return any(dotted(n) in ("Exception", "BaseException") for n in names)
+
+
+def _copied_entries(s: Subject) -> Iterator[Finding]:
+    """A new entry equal to its template entry except for the id: its values were copied, not
+    chosen for the ticket."""
+    ref = s.generated.template_entry_ref
+    if ref is None or s.index is None:
+        return
+    chunk = next((c for c in s.index.chunks if c.id == ref.chunk_id), None)
+    template = chunk.data_entries.get(ref.entry_key) if chunk else None
+    if not isinstance(template, dict):
+        return
+    id_field = s.settings.data.id_field
+    new = set(s.generated.new_test_ids) or set(s.generated.test_ids)
+    plain = {k: v for k, v in template.items() if k != id_field}
+    for entry in s.entries:
+        test_id = str(entry.get(id_field, ""))
+        same = {k: v for k, v in entry.items() if k != id_field} == plain
+        if test_id in new and test_id != ref.entry_key and same:
+            yield _f(
+                "risky",
+                f"the entry is a copy of {ref.entry_key} apart from its id: check that its "
+                "values fit this ticket",
+                "warning",
+                test=test_id,
+            )
+
+
+def check_star_imports(s: Subject) -> Iterator[Finding]:
+    """New code imports the names it uses: a star import hides them from every name check."""
+    assert s.tree is not None
+    for node in s.tree.body:
+        if isinstance(node, ast.ImportFrom) and any(a.name == "*" for a in node.names):
+            yield _f(
+                "star_imports",
+                f"'from {node.module or '.'} import *': import the names you use instead",
+                line=node.lineno,
+            )
+
+
+def _star_modules(s: Subject) -> list[str]:
+    return s.catalog.star_imports.get(s.module, [])
 
 
 def suite_base_classes(catalog: SymbolCatalog, settings: Settings) -> list[str]:
@@ -1025,6 +1194,8 @@ CHECKS: list[tuple[str, Check]] = [
     ("hooks", check_hooks),
     ("page_locators", check_page_locators),
     ("raw_driver", check_raw_driver),
+    ("star_imports", check_star_imports),
+    ("risky", check_risky_patterns),
     ("constructed_pages", check_constructed_pages),
     ("path_strings", check_path_strings),
     ("draft_outcome", check_draft_outcome),
@@ -1087,6 +1258,18 @@ def _is_testcase(cls: ast.ClassDef, bases: list[ClassEntry], testcase: list[str]
 def _prepare(s: Subject) -> None:
     assert s.tree is not None
     v, d = s.settings.validation, s.settings.data
+    statements = [
+        ast.get_source_segment(s.code, node) or ""
+        for node in s.tree.body
+        if isinstance(node, ast.Import | ast.ImportFrom)
+    ]
+    names, stars = import_map(statements, s.module)  # names resolve through this file's imports
+    s.catalog = s.catalog.model_copy(
+        update={
+            "module_names": {**s.catalog.module_names, s.module: names},
+            "star_imports": {**s.catalog.star_imports, s.module: stars},
+        }
+    )
     s.base = next(  # where chains start when a class's own bases aren't in the repo
         (
             c
