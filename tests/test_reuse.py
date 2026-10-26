@@ -378,3 +378,31 @@ def test_a_class_marked_with_the_tickets_components_is_preferred(
     decision = decide(draft, cross, index, settings, EXCEPTIONS)
     assert decision.kind == "method" and decision.target == "TestExceptionsRules", decision.reasons
     assert any("component marker matches" in r for r in decision.reasons)
+
+
+def test_a_cross_area_ticket_goes_to_the_area_marked_with_its_components(
+    setup: tuple[Settings, IndexData],
+) -> None:
+    settings, index = setup
+    retrieval = _empty_retrieval().model_copy(update={"ticket_components": ["exceptions", "rules"]})
+    choice = choose_domain(retrieval, index, settings)
+    assert choice.domain is not None and choice.domain.name == "exceptions"
+    assert "marked with the ticket's components" in choice.reason and not choice.uncertain
+
+
+def test_an_uncertain_area_never_patches_an_existing_test(
+    setup: tuple[Settings, IndexData],
+) -> None:
+    """Dev-set finding: with the area in doubt, a cross-area ticket became a new case of a test
+    in the wrong area."""
+    from tests.test_patch import _ticketed
+
+    settings, index = setup
+    draft = SCENARIOS["covered"][0]
+    retrieval = _ticketed(settings, index, draft)
+    sure = choose_domain(retrieval, index, settings)
+    assert decide(draft, retrieval, index, settings, sure).kind == "covered"
+    unsure = DomainChoice(domain=sure.domain, uncertain=True, reason="close call")
+    decision = decide(draft, retrieval, index, settings, unsure)
+    assert decision.kind not in ("covered", "variant")
+    assert any("area uncertain" in r for r in decision.reasons)

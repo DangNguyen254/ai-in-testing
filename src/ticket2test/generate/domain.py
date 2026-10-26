@@ -96,6 +96,15 @@ def choose_domain(
         return DomainChoice(
             named[0], {named[0].name: 1.0}, False, f"{named[0].name}: the ticket's component"
         )
+    if len(named) > 1:  # a cross-area ticket: the area whose class is marked with all of them
+        marked = [d for d in named if _has_class_marked(d, ticket_components, index, settings)]
+        if len(marked) == 1:
+            return DomainChoice(
+                marked[0],
+                {marked[0].name: 1.0},
+                False,
+                f"{marked[0].name}: holds a class marked with the ticket's components",
+            )
     totals = dict.fromkeys(by_name, 0.0)
     for hit in retrieval.hits:
         found = domain_of(hit.file_path, all_domains)
@@ -129,6 +138,27 @@ def choose_domain(
         uncertain,
         reason,
     )
+
+
+def _has_class_marked(
+    domain: Domain, components: list[str], index: IndexData, settings: Settings
+) -> bool:
+    """The domain has a test class whose component marker names exactly these components."""
+    wanted = {c.strip().lower() for c in components if c.strip()}
+    sep = settings.markers.value_separator
+    for path, record in index.files.items():
+        if record.info is None or not domain.contains(path):
+            continue
+        for cls in record.info.classes:
+            for text in cls.decorators:
+                if text.split("(", 1)[0].strip().endswith("mark.component"):
+                    values = re.findall(r"""["']([^"']+)["']""", text)
+                    parts = {
+                        p.strip().lower() for v in values for p in (v.split(sep) if sep else [v])
+                    }
+                    if parts == wanted:
+                        return True
+    return False
 
 
 def _named(

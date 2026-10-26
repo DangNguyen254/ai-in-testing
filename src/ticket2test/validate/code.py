@@ -169,10 +169,8 @@ class ChainResolver:
                 return "missing", steps, message, owner.qualname  # the owner, not a type
             defined_in, member = found
             steps.append(Step(name, called, member.kind, owner.qualname))
-            if member.returns_self:
-                next_type: ClassEntry | None = owner
-            else:
-                next_type = self.catalog.resolve_type(member.type_text, defined_in.module)
+            # Annotation, built class, ``return self``, or ``return self.nav.area.page``.
+            next_type: ClassEntry | None = self.catalog._member_type(defined_in, member, owner)
             owner = next_type
         return "ok", steps, "", owner.qualname if owner else None
 
@@ -189,12 +187,15 @@ def function_chains(
             visit(node.value)
             for target in node.targets:
                 visit(target)
+            value = node.value
+            if isinstance(value, ast.Call) and isinstance(value.func, ast.Attribute):
+                value = value.func  # ``editor = self.open_exception(name)``: the return type
             if (
                 len(node.targets) == 1
                 and isinstance(node.targets[0], ast.Name)
-                and isinstance(node.value, ast.Attribute)
+                and isinstance(value, ast.Attribute)
             ):
-                use = _record(node.value, store=False, collect=False)
+                use = _record(value, store=False, collect=False)
                 if use is not None and use[1]:
                     result.local_types[node.targets[0].id] = use[1]
                 else:

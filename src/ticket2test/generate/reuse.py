@@ -140,7 +140,13 @@ def decide(
     best = candidates[0]
     kind = draft.test_kind
 
-    covered = next((c for c in candidates if _covers(c, values, reuse)), None)
+    # Patching an existing test (covered, variant) needs certainty about where it belongs.
+    patchable = not choice.uncertain
+    if not patchable:
+        decision.reasons.append("area uncertain: no covered or variant, a new test instead")
+    covered = (
+        next((c for c in candidates if _covers(c, values, reuse)), None) if patchable else None
+    )
     if covered is not None:
         decision.kind, decision.target = "covered", covered.chunk_id
         decision.target_file = covered.file_path
@@ -153,13 +159,14 @@ def decide(
         )
         decision.reasons.append(f"covered by {decision.test_id} (score {covered.flow:.2f}, {why})")
         return decision
-    decision.reasons.append(
-        "not covered: no test in the domain has the draft's case"
-        + (f" (values {sorted(values)})" if values else "")
-    )
+    if patchable:
+        decision.reasons.append(
+            "not covered: no test in the domain has the draft's case"
+            + (f" (values {sorted(values)})" if values else "")
+        )
 
     same_kind = kind == "hybrid" or best.kind == kind
-    if best.flow >= reuse.variant_min and best.parametrized and same_kind:
+    if patchable and best.flow >= reuse.variant_min and best.parametrized and same_kind:
         decision.kind, decision.target, decision.target_file = (
             "variant",
             best.chunk_id,
@@ -167,16 +174,17 @@ def decide(
         )
         decision.reasons.append(f"new variant of {best.test} (flow {best.flow:.2f})")
         return decision
-    decision.reasons.append(
-        "no variant: "
-        + (
-            f"best flow {best.flow:.2f} < {reuse.variant_min}"
-            if best.flow < reuse.variant_min
-            else f"{best.test} has no single parametrize to add a case to"
-            if not best.parametrized
-            else f"{best.test} is a {best.kind} test, the draft is {kind}"
+    if patchable:
+        decision.reasons.append(
+            "no variant: "
+            + (
+                f"best flow {best.flow:.2f} < {reuse.variant_min}"
+                if best.flow < reuse.variant_min
+                else f"{best.test} has no single parametrize to add a case to"
+                if not best.parametrized
+                else f"{best.test} is a {best.kind} test, the draft is {kind}"
+            )
         )
-    )
 
     excluded = _excluded_classes(candidates, index, settings, draft)
     for key, why in sorted(excluded.items()):

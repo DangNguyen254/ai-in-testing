@@ -48,7 +48,9 @@ class FunctionInfo(BaseModel):
     decorators: list[str] = Field(default_factory=list)  # source text without "@"
     params: list[Param] = Field(default_factory=list)
     returns: str | None = None
-    returned_calls: list[str] = Field(default_factory=list)  # callees of `return Callee(...)`
+    # Callees of ``return Callee(...)``, and ``self`` chains of ``return self.a.b`` (a helper
+    # that hands back a page object), in order.
+    returned_calls: list[str] = Field(default_factory=list)
     docstring: str | None = None
     code: str
     self_assignments: list[Assign] = Field(default_factory=list)
@@ -347,6 +349,10 @@ def _returned_calls(body: Node | None) -> list[str]:
                 callee = _text(value.child_by_field_name("function"))
                 if callee and callee not in found:
                     found.append(callee)
+            elif value is not None and value.type == "attribute":
+                chain = _text(value)
+                if chain.startswith("self.") and chain not in found:
+                    found.append(chain)
             continue
         if node.type in ("function_definition", "class_definition", "lambda", "string"):
             continue

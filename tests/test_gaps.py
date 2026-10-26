@@ -151,3 +151,23 @@ def test_generation_records_checked_gaps(
         ("add_blocklist_hash", "missing"),
         ("build_blocked_file", "missing"),
     ]
+
+
+def test_a_page_returned_by_a_helper_is_checked(setup: tuple[Settings, IndexData]) -> None:
+    """Dev-set finding: ``editor = self.open_exception(name)`` left ``editor`` untyped, so an
+    invented ``editor.clear_expiry()`` was never checked and the gap went unseen. The helper's
+    ``return self.nav.exceptions.editor`` now gives the type."""
+    settings, index = setup
+    catalog = index.catalog
+    owner = catalog.classes["tests.exceptions.exceptions_common.ExceptionsCommon"]
+    defined_in, member = catalog.members_of(owner.qualname)["open_exception"]
+    page = catalog._member_type(defined_in, member, owner)
+    assert page is not None and page.name == "ExceptionEditorPage"
+    source = (STANDIN / "tests/exceptions/test_exceptions.py").read_text(encoding="utf-8")
+    code = source.replace("      editor.enabled = False\n", "      editor.clear_expiry()\n", 1)
+    assert code != source
+    (verdict,) = check_pieces(
+        from_generated(_generated(code, []), index, settings), index, settings
+    )
+    assert verdict.piece.name == "clear_expiry" and verdict.owner_class == page.qualname
+    assert verdict.status in ("missing", "close_match")

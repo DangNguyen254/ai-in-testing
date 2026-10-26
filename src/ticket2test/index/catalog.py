@@ -13,7 +13,7 @@ import re
 from collections import deque
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 from ticket2test.index.extract import Assign, FileInfo, FunctionInfo
 
@@ -98,6 +98,7 @@ class SymbolCatalog(BaseModel):
     chain_roots: list[str] = Field(default_factory=list)
     chains: list[ChainEntry] = Field(default_factory=list)
     chains_truncated: bool = False  # the chain list hit index.max_chain_entries
+    _resolving: set[str] = PrivateAttr(default_factory=set)  # return chains being followed
     page_objects: list[str] = Field(default_factory=list)  # class qualnames
 
     # --- lookups -------------------------------------------------------------------------
@@ -264,6 +265,18 @@ class SymbolCatalog(BaseModel):
     ) -> ClassEntry | None:
         if member.returns_self:
             return owner
+        text = member.type_text or ""
+        if text.startswith("self."):  # ``return self.nav.area.page``: follow it from the owner
+            key = f"{owner.qualname}:{text}"
+            if key in self._resolving or len(self._resolving) > 32:
+                return None  # a cycle, or too deep
+            self._resolving.add(key)
+            try:
+                result = self.resolve_chain(owner.qualname, text.split(".")[1:])
+            finally:
+                self._resolving.discard(key)
+            last = result.types[-1] if result.ok and result.types else None
+            return self.classes.get(last) if last else None
         return self.resolve_type(member.type_text, defined_in.module)
 
 
