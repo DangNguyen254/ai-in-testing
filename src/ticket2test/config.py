@@ -281,6 +281,10 @@ class ReuseSettings(_Section):
     # ... or this much when the class is named after the draft's subject (generate/reuse.py)
     method_named_min: float = Field(default=0.25, ge=0.0, le=1.0)
     domain_margin: float = Field(default=0.15, ge=0.0, le=1.0)  # closer than this: uncertain
+    # Classes (or bases) new tests never go into: legacy or frozen code the team keeps as is.
+    frozen_classes: list[str] = Field(default_factory=list)
+    # Class decorators that list the deployments a class runs on (``environments("cloud")``).
+    environment_decorators: list[str] = Field(default_factory=lambda: ["environments"])
 
 
 class GenerateSettings(_Section):
@@ -341,6 +345,9 @@ class ValidateSettings(_Section):
     # Classes that inherit one of these (anywhere up the lineage) may also assert on ``self``
     # (``self.assertEqual``): real suites mix both styles. Only assert*/fail* methods count.
     testcase_bases: list[str] = Field(default_factory=lambda: ["unittest.TestCase", "TestCase"])
+    # Tests never touch the page objects' locator constants (ALL_CAPS attributes): actions and
+    # properties only. Off for suites whose tests use locators directly.
+    forbid_page_locators: bool = True
     # Helpers that take a page-object path as a dotted string (``navigate("area.page")``) and
     # resolve it with getattr: the string is checked like a chain. Discovered too: functions
     # whose body splits a string on "." and calls getattr.

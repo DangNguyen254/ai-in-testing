@@ -178,14 +178,31 @@ def decide(
         )
     )
 
+    excluded = _excluded_classes(candidates, index, settings, draft)
+    for key, why in sorted(excluded.items()):
+        decision.reasons.append(f"not {key.split('::', 1)[1]}: {why}")
     classes: dict[tuple[str, str], list[float]] = {}
     for c in candidates:
-        if c.class_name is not None and (kind == "hybrid" or c.kind == kind):
+        key = f"{c.file_path}::{c.class_name}"
+        if (
+            c.class_name is not None
+            and (kind == "hybrid" or c.kind == kind)
+            and key not in excluded
+        ):
             classes.setdefault((c.file_path, c.class_name), []).append(c.flow)
     scores = {f"{path}::{name}": max(flows_) for (path, name), flows_ in classes.items()}
     decision.class_scores = dict(sorted(scores.items(), key=lambda kv: -kv[1]))
     if scores:
         target, score = max(scores.items(), key=lambda kv: (kv[1], kv[0]))
+        matching = _component_match(scores, retrieval.ticket_components, index, settings)
+        if matching and target not in matching:
+            better = max(matching, key=lambda k: (scores[k], k))
+            if scores[better] >= reuse.method_named_min:
+                decision.reasons.append(
+                    f"{better.split('::', 1)[1]}: its component marker matches the ticket's "
+                    f"components ({', '.join(sorted(retrieval.ticket_components))})"
+                )
+                target, score = better, max(scores[better], reuse.method_min)
         path, name = target.split("::", 1)
         named = _named_after(name, all_draft_words, domain.name if domain else "", settings)
         common = {
@@ -207,7 +224,13 @@ def decide(
         decision.reasons.append(f"no method: no {kind} test class in the domain")
 
     template = next(
-        (c for c in candidates if c.class_name and (kind == "hybrid" or c.kind == kind)),
+        (
+            c
+            for c in candidates
+            if c.class_name
+            and (kind == "hybrid" or c.kind == kind)
+            and f"{c.file_path}::{c.class_name}" not in excluded
+        ),
         candidates[0],
     )
     decision.target, decision.target_file = template.class_name, template.file_path
@@ -216,6 +239,98 @@ def decide(
         f"flow {template.flow:.2f})"
     )
     return decision
+
+
+_DEPLOYMENT_CONDITION = re.compile(r"""deployment\s*(!=|==)\s*["'](\w+)["']""")
+
+
+def _excluded_classes(
+    candidates: list[Candidate], index: IndexData, settings: Settings, draft: TestCaseDraft
+) -> dict[str, str]:
+    """``path::Class`` -> why a new test must not go there: a frozen class, or a deployment
+    gate narrower than where the draft has to run."""
+    gen = settings.generate
+    deployments = list(gen.deployment_decorators) or ["cloud", "on_prem"]
+    needed = set(deployments) if draft.deployment_type == "both" else {draft.deployment_type}
+    frozen = set(gen.reuse.frozen_classes)
+    found: dict[str, str] = {}
+    for c in candidates:
+        if c.class_name is None:
+            continue
+        key = f"{c.file_path}::{c.class_name}"
+        if key in found:
+            continue
+        info = index.files[c.file_path].info if c.file_path in index.files else None
+        cls = next((k for k in info.classes if k.name == c.class_name), None) if info else None
+        if cls is None:
+            continue
+        lineage = {c.class_name} | {
+            e.name
+            for e in index.catalog.mro(f"{info.module}.{c.class_name}")  # type: ignore[union-attr]
+        }
+        if frozen & lineage:
+            found[key] = (
+                f"frozen ({', '.join(sorted(frozen & lineage))}, generate.reuse.frozen_classes)"
+            )
+            continue
+        gate = _deployment_gate(cls.decorators, deployments, settings)
+        if gate is not None and not needed <= gate:
+            found[key] = (
+                f"runs only on {', '.join(sorted(gate))}; "
+                f"the draft needs {', '.join(sorted(needed))}"
+            )
+    return found
+
+
+def _deployment_gate(
+    decorators: list[str], deployments: list[str], settings: Settings
+) -> set[str] | None:
+    """The deployments a class runs on, from its decorators; None when it isn't gated."""
+    gen = settings.generate
+    gate: set[str] | None = None
+
+    def narrow(allowed: set[str]) -> None:
+        nonlocal gate
+        gate = allowed if gate is None else gate & allowed
+
+    by_decorator = {name: deployment for deployment, name in gen.deployment_decorators.items()}
+    for text in decorators:
+        head = text.split("(", 1)[0].strip()
+        bare = head.rsplit(".", 1)[-1]
+        if bare in gen.reuse.environment_decorators:
+            narrow(
+                set(re.findall(r"""["'](\w+)["']""", text)) & set(deployments) or set(deployments)
+            )
+        elif bare in by_decorator:
+            narrow({by_decorator[bare]})
+        elif "skipif" in head and (m := _DEPLOYMENT_CONDITION.search(text)):
+            op, value = m.groups()
+            narrow({value} if op == "!=" else set(deployments) - {value})
+    return gate
+
+
+def _component_match(
+    scores: dict[str, float], components: list[str], index: IndexData, settings: Settings
+) -> list[str]:
+    """Classes whose component marker names exactly the ticket's components."""
+    wanted = {c.strip().lower() for c in components if c.strip()}
+    if not wanted:
+        return []
+    sep = settings.markers.value_separator
+    found: list[str] = []
+    for key in scores:
+        path, name = key.split("::", 1)
+        info = index.files[path].info if path in index.files else None
+        cls = next((k for k in info.classes if k.name == name), None) if info else None
+        if cls is None:
+            continue
+        for text in cls.decorators:
+            if text.split("(", 1)[0].strip().endswith("mark.component"):
+                values = re.findall(r"""["']([^"']+)["']""", text)
+                parts = {p.strip().lower() for v in values for p in (v.split(sep) if sep else [v])}
+                if parts == wanted:
+                    found.append(key)
+    return found
 
 
 def _candidate(

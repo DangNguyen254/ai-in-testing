@@ -348,6 +348,43 @@ def check_chains(s: Subject) -> Iterator[Finding]:
                     )
 
 
+_CONSTANT = re.compile(r"^[A-Z][A-Z0-9_]*$")
+
+
+def check_page_locators(s: Subject) -> Iterator[Finding]:
+    """Tests use page-object actions and properties, never the page objects' locator constants
+    (``editor.click(editor.CLEAR_EXPIRY)``). A test that needs an action the page object lacks
+    should call it by name: the name check then reports it, and the gap finder records it."""
+    if not s.settings.validation.forbid_page_locators:
+        return
+    page_objects = set(s.catalog.page_objects)
+    constants = {
+        name
+        for q in page_objects
+        if (entry := s.catalog.classes.get(q)) is not None
+        for name, member in entry.members.items()
+        if member.kind == "attribute" and _CONSTANT.match(name)
+    }
+    if not constants:
+        return
+    for _, fn in s.tests:
+        reported: set[str] = set()
+        for node in ast.walk(fn):
+            if isinstance(node, ast.Attribute) and node.attr in constants:
+                text = dotted(node)
+                if text in reported:
+                    continue
+                reported.add(text)
+                yield _f(
+                    "page_locators",
+                    f"{text} is a page object's locator: use the page's actions and "
+                    "properties; if the action you need doesn't exist, call it by the name it "
+                    "would have (it is then reported as a missing piece)",
+                    test=fn.name,
+                    line=node.lineno,
+                )
+
+
 def check_assertions(s: Subject) -> Iterator[Finding]:
     v = s.settings.validation
     allowed = set(v.assertion_methods)
@@ -877,6 +914,7 @@ CHECKS: list[tuple[str, Check]] = [
     ("capabilities", check_capability_gates),
     ("claims", check_claims),
     ("hooks", check_hooks),
+    ("page_locators", check_page_locators),
     ("path_strings", check_path_strings),
     ("draft_outcome", check_draft_outcome),
     ("variants", check_variants),

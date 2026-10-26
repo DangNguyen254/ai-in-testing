@@ -290,3 +290,91 @@ def test_a_class_named_after_the_draft_gets_the_method(setup: tuple[Settings, In
     decision = decide(draft, retrieval, used, settings, choose_domain(retrieval, used, settings))
     assert (decision.kind, decision.target) == ("method", "TestAgentBrowserLimit"), decision.reasons
     assert "named after" in decision.reasons[-1]
+
+
+# --- placement rules (v6 dev-set findings) --------------------------------------------------
+
+
+def test_deployment_gates_are_read_from_class_decorators(setup: tuple[Settings, IndexData]) -> None:
+    from ticket2test.generate.reuse import _deployment_gate
+
+    settings, _ = setup
+    deployments = ["cloud", "on_prem"]
+    skipif = 'pytest.mark.skipif(CONFIG.deployment != "cloud", reason="cloud-only test")'
+    assert _deployment_gate([skipif], deployments, settings) == {"cloud"}
+    equal = 'pytest.mark.skipif(CONFIG.deployment == "cloud", reason="x")'
+    assert _deployment_gate([equal], deployments, settings) == {"on_prem"}
+    both = 'environments("cloud", "on_prem")'
+    assert _deployment_gate([both], deployments, settings) == {"cloud", "on_prem"}
+    assert _deployment_gate(['environments("on_prem")'], deployments, settings) == {"on_prem"}
+    assert _deployment_gate(["cloud_only"], deployments, settings) == {"cloud"}
+    assert _deployment_gate(['browsers("chrome")'], deployments, settings) is None
+
+
+EXCEPTIONS = DomainChoice(domain=Domain("exceptions", ("tests/exceptions",)), reason="test")
+
+
+def _listing_draft() -> TestCaseDraft:
+    return _draft(
+        "X-1",
+        "The exception list shows the names of the existing exceptions",
+        ["Have exceptions a and b", "Open Exceptions"],
+        "The list shows the exception names a and b",
+        markers={"priority": "p3", "component": "exceptions", "suite": "regression"},
+    )
+
+
+def test_a_test_never_goes_into_a_narrower_gated_class(setup: tuple[Settings, IndexData]) -> None:
+    """Dev-set finding: a general list test went into a cloud-only legacy class, so it would
+    never run on-prem."""
+    settings, index = setup
+    decision = decide(_listing_draft(), _empty_retrieval(), index, settings, EXCEPTIONS)
+    assert decision.target not in ("TestExceptionsLegacyList", "TestExceptionsLegacyEditor")
+    assert any(
+        r.startswith("not TestExceptionsLegacyList: runs only on cloud") for r in decision.reasons
+    ), decision.reasons
+    cloud = _listing_draft().model_copy(update={"deployment_type": "cloud"})
+    decision = decide(cloud, _empty_retrieval(), index, settings, EXCEPTIONS)
+    assert not any("runs only on cloud" in r for r in decision.reasons)  # fits a cloud draft
+
+
+def test_frozen_classes_are_skipped(setup: tuple[Settings, IndexData]) -> None:
+    settings, index = setup
+    frozen = settings.model_copy(
+        update={
+            "generate": settings.generate.model_copy(
+                update={
+                    "reuse": settings.generate.reuse.model_copy(
+                        update={"frozen_classes": ["LegacyBrowserBase"]}
+                    )
+                }
+            )
+        }
+    )
+    cloud = _listing_draft().model_copy(update={"deployment_type": "cloud"})
+    decision = decide(cloud, _empty_retrieval(), index, frozen, EXCEPTIONS)
+    assert decision.target not in ("TestExceptionsLegacyList", "TestExceptionsLegacyEditor")
+    assert any("frozen (LegacyBrowserBase" in r for r in decision.reasons), decision.reasons
+
+
+def test_a_class_marked_with_the_tickets_components_is_preferred(
+    setup: tuple[Settings, IndexData],
+) -> None:
+    """A cross-area ticket: the general class scores higher, but a class whose component marker
+    names exactly the ticket's components (and still matches) gets the test, so the test carries
+    the marker the suite selects cross-area tests by."""
+    settings, index = setup
+    draft = _draft(
+        "X-2",
+        "A new exception with a target is published",
+        ["Click Add exception", "Enter a name and a target", "Save the exception",
+         "Save and publish"],
+        "The published policy has the exception with its target",
+        markers={"priority": "p2", "component": "exceptions", "suite": "regression"},
+    )  # fmt: skip
+    plain = decide(draft, _empty_retrieval(), index, settings, EXCEPTIONS)
+    assert plain.target == "TestExceptions"  # the best match on its own
+    cross = _empty_retrieval().model_copy(update={"ticket_components": ["exceptions", "rules"]})
+    decision = decide(draft, cross, index, settings, EXCEPTIONS)
+    assert decision.kind == "method" and decision.target == "TestExceptionsRules", decision.reasons
+    assert any("component marker matches" in r for r in decision.reasons)

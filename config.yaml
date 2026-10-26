@@ -166,6 +166,8 @@ generate:
     method_min: 0.4
     method_named_min: 0.25         # ... when the class is named after the draft's subject
     domain_margin: 0.15
+    frozen_classes: []             # new tests never go into these or their subclasses (e.g. a legacy base)
+    environment_decorators: [environments]  # class decorators listing the deployments it runs on
   variant_prompt: variant_v1      # only when a new case can't be planned in code
 
 validation:                     # deterministic checks of generated tests (Phase 7)
@@ -175,6 +177,7 @@ validation:                     # deterministic checks of generated tests (Phase
   assertion_object: self.check    # a unittest.TestCase instance
   testcase_bases: [unittest.TestCase, TestCase]   # classes inheriting these may also use self.assert*
   path_string_helpers: []         # helpers taking a dotted page path string; checked like chains
+  forbid_page_locators: true      # tests use page actions and properties, never locator constants
   discover_path_string_helpers: true   # also: functions that split on "." and call getattr
   assertion_methods: [assertEqual, assertNotEqual, assertTrue, assertFalse, assertIn,
                       assertNotIn, assertIsNone, assertIsNotNone, assertGreater, assertLess,

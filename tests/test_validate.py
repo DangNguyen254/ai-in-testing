@@ -810,3 +810,13 @@ def test_joined_marker_values_are_checked_part_by_part(setup: Any) -> None:
     messages = _messages(_validate(setup, code=unknown), "markers")
     assert len(messages) == 1 and "component value 'nope' is not approved" in messages[0]
     assert GOOD_CODE.count('@pytest.mark.component("rules")') == 1
+
+
+def test_tests_never_use_page_locators(setup: Any) -> None:
+    """Dev-set finding: a test clicked a page object's locator constant because the page had
+    no action for the button; nothing was invented, so the missing action went unseen."""
+    code = _replace("      rules.search()\n", "      rules.click(rules.SEARCH_BUTTON)\n")
+    messages = _messages(_validate(setup, code=code), "page_locators")
+    assert len(messages) == 1 and "rules.SEARCH_BUTTON is a page object's locator" in messages[0]
+    assert "call it by the name it would have" in messages[0]
+    assert _messages(_validate(setup), "page_locators") == []
