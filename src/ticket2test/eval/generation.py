@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import json
 import shutil
 import time
 from datetime import UTC, datetime
@@ -399,6 +400,11 @@ def _one(
             )
     if keep_dir is not None:
         _keep(keep_dir / pair.id, generated, settings)
+        if outcome.proposals:  # agent 2's patches, for review
+            (keep_dir / pair.id / "proposals.json").write_text(
+                json.dumps([p.model_dump(mode="json") for p in outcome.proposals], indent=2),
+                encoding="utf-8",
+            )
     return _finish(result, started)
 
 
