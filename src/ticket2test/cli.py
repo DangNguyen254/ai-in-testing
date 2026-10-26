@@ -553,6 +553,19 @@ def generate(
             encoding="utf-8",
         )
         written.append(gaps_path)
+    if outcome.proposals:  # agent 2: proposed members, as patches for review (never applied)
+        proposals_path = folder / "proposals.json"
+        proposals_path.write_text(
+            json.dumps([p.model_dump(mode="json") for p in outcome.proposals], indent=2),
+            encoding="utf-8",
+        )
+        written.append(proposals_path)
+        for proposal in outcome.proposals:
+            if proposal.diff:
+                safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in proposal.member)
+                diff_path = folder / f"proposal_{safe}.diff"
+                diff_path.write_text(proposal.diff, encoding="utf-8", newline="\n")
+                written.append(diff_path)
     typer.echo(
         f"{len(generated.test_ids)} test id(s) in {generated.file_name}, template "
         f"{generated.template_entry_ref.entry_key if generated.template_entry_ref else '-'}, "
@@ -572,6 +585,14 @@ def generate(
         extra = f" (close: {', '.join(verdict.close)})" if verdict.close else ""
         found = f" -> {verdict.found}" if verdict.found else ""
         typer.echo(f"  missing piece {where}{piece.name}: {verdict.status}{found}{extra}")
+    for proposal in outcome.proposals:
+        owner = proposal.owner_class.rsplit(".", 1)[-1]
+        verdict_text = "ok" if proposal.ok else f"rejected ({'; '.join(proposal.findings)[:200]})"
+        loads = {True: ", suite loads", False: ", suite fails to load", None: ""}
+        typer.echo(
+            f"  proposed {owner}.{proposal.member}: {verdict_text}{loads[proposal.collect_ok]}, "
+            f"{proposal.attempts} LLM call(s)"
+        )
     if generated.review_checklist:
         typer.echo("Review checklist (needs a real run):")
         for item in generated.review_checklist:

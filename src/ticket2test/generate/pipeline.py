@@ -38,7 +38,9 @@ from ticket2test.llm.base import LLMClient
 from ticket2test.models.draft import TestCaseDraft
 from ticket2test.models.gaps import GapVerdict, MissingPiece
 from ticket2test.models.generated import GeneratedTest, ReuseKind
+from ticket2test.models.proposal import Proposal
 from ticket2test.models.retrieval import RetrievalResult
+from ticket2test.proposals import propose_gaps
 from ticket2test.validate.repair import generate_with_repair
 from ticket2test.validate.report import ValidationReport
 
@@ -55,6 +57,7 @@ class ReuseOutcome:
     guide: str = ""  # the area guide put into the context ("" when none), "(stale)" if so
     missing: list[GapVerdict] = field(default_factory=list)  # checked missing-piece candidates
     attempt_pieces: list[MissingPiece] = field(default_factory=list)  # from every attempt
+    proposals: list[Proposal] = field(default_factory=list)  # agent 2 patches (opt-in)
 
 
 def _generate_reusing(
@@ -162,7 +165,8 @@ def generate_reusing(
     mode: Mode = "auto",
 ) -> ReuseOutcome:
     """Generate (or patch) the test, then check what it needed and the suite lacks: names the
-    final test uses that don't exist, and the investigator's hints, each checked by code."""
+    final test uses that don't exist, and the investigator's hints, each checked by code. With
+    ``proposals.enabled``, each class-owned gap also gets a proposed member as a separate patch."""
     outcome = _generate_reusing(
         draft, retrieval, index, settings, client, provider, model, repo_root, conventions, mode
     )
@@ -177,6 +181,9 @@ def generate_reusing(
         notes = [_gap_note(v) for v in gaps]
         checklist = [*outcome.generated.review_checklist, *notes]
         outcome.generated = outcome.generated.model_copy(update={"review_checklist": checklist})
+    if gaps and settings.proposals.enabled:
+        code = outcome.generated.code if outcome.generated else ""
+        outcome.proposals = propose_gaps(gaps, code, index, settings, client, repo_root)
     return outcome
 
 

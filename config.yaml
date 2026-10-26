@@ -15,7 +15,8 @@ llm:
     executable: claude         # or set T2T_LLM__CLAUDE_CODE_CLI__EXECUTABLE to a full path
     model: claude-sonnet-5-5
     # Per-step override of `model` (steps: draft, query_rewrite, retrieval_followup, investigate,
-    # generate, variant_plan, guide). E.g. guide: claude-opus-5-5 to write guides with Opus.
+    # generate, variant_plan, guide, propose). E.g. guide: claude-opus-5-5 to write guides
+    # with Opus.
     # Empty: every step uses `model`. Haiku 4.5 for the retrieval steps was tried on 2026-10-06
     # and was worse, slower, and not cheaper (PROJECT_STATUS, Phase 6 log).
     # Haiku 5.5 on every step (2026-10-22) matched Sonnet 5.5 on the stand-in generation eval
@@ -273,6 +274,14 @@ guides:                          # area guides: one strong-model call per area (
     claude-opus-5-5: {input_per_mtok: 4.0, output_per_mtok: 20.0}
     claude-sonnet-5-5: {input_per_mtok: 2.0, output_per_mtok: 10.0}
     claude-haiku-5-5: {input_per_mtok: 0.10, output_per_mtok: 0.50}
+
+proposals:                       # agent 2: propose a missing member as a separate patch (opt-in)
+  enabled: false
+  prompt: proposal_v1
+  max_per_ticket: 2
+  max_repairs: 2                 # rounds of check findings sent back to the model
+  collect: true                  # load the suite with the patch in the sandbox
+  max_class_tokens: 3000         # a larger class goes into the prompt as an outline
 
 paths:
   output_dir: output

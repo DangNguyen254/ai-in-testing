@@ -38,6 +38,7 @@ LLMStep = Literal[
     "generate",
     "variant_plan",
     "guide",
+    "propose",
 ]
 
 
@@ -563,6 +564,18 @@ class GuideSettings(_Section):
     )
 
 
+class ProposalSettings(_Section):
+    """Missing-piece proposals (agent 2, proposals/): for a reported gap on a test-side class,
+    the LLM writes the one missing member; code checks that nothing existing changes. Opt-in."""
+
+    enabled: bool = False
+    prompt: str = "proposal_v1"
+    max_per_ticket: int = Field(default=2, ge=1)  # gaps proposed for, per ticket
+    max_repairs: int = Field(default=2, ge=0)  # rounds of check findings sent back
+    collect: bool = True  # load the suite with the patch in the sandbox
+    max_class_tokens: int = Field(default=3000, ge=200)  # larger classes go in as an outline
+
+
 class PathSettings(_Section):
     output_dir: Path = Path("output")
     cache_dir: Path = Path(".t2t_cache")
@@ -599,6 +612,7 @@ class Settings(BaseSettings):
     security: SecuritySettings = SecuritySettings()
     map: MapSettings = MapSettings()
     guides: GuideSettings = GuideSettings()
+    proposals: ProposalSettings = ProposalSettings()
     paths: PathSettings = PathSettings()
 
     @classmethod

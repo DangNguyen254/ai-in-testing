@@ -68,6 +68,7 @@ class GenerationPairResult(BaseModel):
     expectation_met: bool | None = None  # gap and insufficient-info pairs only
     guide: str = ""  # the area guide in the context ("" when none)
     missing: list[str] = Field(default_factory=list)  # "<status> <owner>.<name>" per candidate
+    proposals: list[str] = Field(default_factory=list)  # "<ok|rejected> <Owner>.<member>"
     fixed_in_code: str = ""  # fixes made in code instead of an LLM retry (from notes)
     draft_cached: bool = False
     test_kind: str | None = None
@@ -138,6 +139,8 @@ class GenerationReport(BaseModel):
             "leave_one_out_violations": sum(p.leave_one_out_ok is False for p in gen),
             "gap_pairs": sum(p.expected == "gap" for p in self.pairs),
             "gaps_found": sum(p.expected == "gap" and bool(p.expectation_met) for p in self.pairs),
+            "proposals": sum(len(p.proposals) for p in self.pairs),
+            "proposals_ok": sum(x.startswith("ok ") for p in self.pairs for x in p.proposals),
             "vague_pairs": sum(p.expected == "insufficient_info" for p in self.pairs),
             "vague_recognized": sum(
                 p.expected == "insufficient_info" and bool(p.expectation_met) for p in self.pairs
@@ -352,6 +355,10 @@ def _one(
     result.missing = [
         f"{v.status} {v.piece.owner + '.' if v.piece.owner else ''}{v.piece.name}"
         for v in outcome.missing
+    ]
+    result.proposals = [
+        f"{'ok' if x.ok else 'rejected'} {x.owner_class.rsplit('.', 1)[-1]}.{x.member}"
+        for x in outcome.proposals
     ]
     if outcome.generated is None or outcome.report is None:  # covered: nothing generated
         result.status = "covered"

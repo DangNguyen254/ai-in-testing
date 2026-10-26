@@ -162,10 +162,17 @@ class SuiteCollect(BaseModel):
 
 
 def collect_suite(
-    repo_root: Path, settings: Settings, runner: Runner = subprocess.run
+    repo_root: Path,
+    settings: Settings,
+    runner: Runner = subprocess.run,
+    overlay: dict[str, str] | None = None,
 ) -> SuiteCollect:
+    """Collect the whole suite; ``overlay`` (repo-relative path -> text) replaces those files
+    in the container's copy of the repo (the repo itself is never written)."""
     stage = settings.sandbox.work_dir / f"run-{uuid.uuid4().hex[:12]}"
     stage.mkdir(parents=True)
+    for relative, text in (overlay or {}).items():
+        _safe_write(stage / "generated", relative, text)
     run = _run(repo_root, stage, None, settings, runner)
     return SuiteCollect(
         exit_code=run.exit_code,

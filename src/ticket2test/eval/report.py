@@ -172,6 +172,11 @@ def render_markdown(report: EvalRunReport) -> str:
                 else []
             ),
             *(
+                [f"| Proposed members passing every check | {m['proposals_ok']}/{m['proposals']} |"]
+                if m["proposals"]
+                else []
+            ),
+            *(
                 [
                     f"| Vague tickets: recognized as insufficient info | {m['vague_recognized']}/"
                     f"{m['vague_pairs']} |"
@@ -198,7 +203,8 @@ def render_markdown(report: EvalRunReport) -> str:
             for p in expected:
                 found = f" (found: {'; '.join(p.gaps_found)})" if p.gaps_found else ""
                 verdict = "met" if p.expectation_met else "NOT met"
-                lines.append(f"- {p.ticket}: expected {p.expected}, {verdict}{found}")
+                proposed = f"; proposed: {', '.join(p.proposals)}" if p.proposals else ""
+                lines.append(f"- {p.ticket}: expected {p.expected}, {verdict}{found}{proposed}")
         problems = [p for p in gen.pairs if p.error or p.final_errors or p.collect_note]
         if problems:
             lines += ["", "Details:"]

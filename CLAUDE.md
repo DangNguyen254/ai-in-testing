@@ -119,6 +119,7 @@ src/ticket2test/
   suitemap/      # suite map: per-area summaries of the target suite from the index (no LLM)
   guides/        # area guides: one strong-model call per area, budgeted; read by the generator
   gaps/          # missing pieces: candidates from generated code and hints, checked by code
+  proposals/     # agent 2: a proposed member per gap, checked by code, kept as a patch (opt-in)
   generate/      # few-shot code generation + JSON entry assembly (base entry, per-variant changes)
   style/         # deterministic formatting of generated code and JSON to the suite's style rules
   validate/      # deterministic validators + repair loop

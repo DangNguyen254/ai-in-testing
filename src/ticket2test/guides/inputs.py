@@ -97,7 +97,7 @@ def pick_material(area: AreaSummary, index: IndexData, settings: Settings) -> Ma
                 area_names = {a.name for a in area.page_actions} | {
                     step for c in area.chains for step in c.name.split(".")
                 }
-                add(f"Page object {chunk_id} (outline)", _outline(qualname, index, area_names))
+                add(f"Page object {chunk_id} (outline)", class_outline(qualname, index, area_names))
 
     for helper in area.base_helpers:
         for chunk in index.chunks:
@@ -108,7 +108,7 @@ def pick_material(area: AreaSummary, index: IndexData, settings: Settings) -> Ma
     return Material(text="\n".join(blocks), pieces=pieces, skipped=skipped, tokens=used)
 
 
-def _outline(qualname: str, index: IndexData, used: set[str], limit: int = 80) -> str:
+def class_outline(qualname: str, index: IndexData, used: set[str], limit: int = 80) -> str:
     """A large class as its member list: properties/attributes with their types, method
     signatures (first line of each def); members the area uses first."""
     catalog = index.catalog
