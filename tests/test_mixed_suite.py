@@ -245,7 +245,7 @@ def test_a_method_patch_keeps_the_files_own_style(setup: Any, tmp_path: Path) ->
 
 def test_check_suite_reports_deviations_and_skips_legacy_areas(setup: Any) -> None:
     settings = _with(setup[0], "validation", raw_driver_access=["self.check"])
-    legacy = settings.generate.reuse.model_copy(update={"legacy_domains": ["exceptions"]})
+    legacy = settings.generate.reuse.model_copy(update={"legacy_domains": ["exceptions", "units"]})
     settings = settings.model_copy(
         update={"generate": settings.generate.model_copy(update={"reuse": legacy})}
     )

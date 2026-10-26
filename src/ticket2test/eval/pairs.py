@@ -39,9 +39,9 @@ class EvalPair(BaseModel):
     fix_pr_url: str | None = None
     tests: list[str] = Field(default_factory=list)  # for ground_truth "tests": test function ids
     source: str | None = None  # provenance, e.g. "mined: <commit> code_skip"
-    # What a correct run produces: a test (the default), a reported missing piece, or
-    # insufficient info (a vague ticket).
-    expect: Literal["test", "gap", "insufficient_info"] = "test"
+    # What a correct run produces: a test (the default), a reported missing piece, insufficient
+    # info (a vague ticket), or nothing because the ticket's area is legacy (out of scope).
+    expect: Literal["test", "gap", "insufficient_info", "out_of_scope"] = "test"
     gaps: list[ExpectedGap] = Field(default_factory=list)
 
 

@@ -40,7 +40,8 @@ def _area(m: SuiteMap, name: str) -> Any:
 def test_areas_cover_every_test(index: IndexData, suite_map: SuiteMap) -> None:
     own_tests = [c for c in index.chunks if c.kind == "test" and not c.inherited_from]
     assert [a.name for a in suite_map.areas] == [
-        "agent", "api", "exceptions", "files", "profiles", "rules", "settings", "tenants",
+        "agent", "api", "exceptions", "files", "profiles", "reports", "rules", "settings",
+        "tenants", "units",
     ]  # fmt: skip
     assert sum(a.tests for a in suite_map.areas) == len(own_tests) == suite_map.overview.tests
     assert suite_map.overview.unassigned_tests == []
@@ -155,7 +156,7 @@ def test_cli_map(tmp_path: Path) -> None:
     env = {"T2T_PATHS__CACHE_DIR": str(tmp_path / "cache")}
     first = CliRunner().invoke(app, ["map", str(STANDIN), "--out", str(out)], env=env)
     assert first.exit_code == 0, first.output
-    assert "8 area(s), 83 tests" in first.output and "changed areas" not in first.output
+    assert "10 area(s), 90 tests" in first.output and "changed areas" not in first.output
     second = CliRunner().invoke(app, ["map", str(STANDIN), "--out", str(out)], env=env)
     assert "changed areas: none" in second.output  # same repo, same digests
     assert CliRunner().invoke(app, ["map", str(tmp_path / "missing")], env=env).exit_code == 2

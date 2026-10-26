@@ -22,6 +22,8 @@ output/
 .t2t_cache/
 debug_logs/
 reports/
+# ... but this is a stand-in test area, not pipeline output
+!standin/tests/reports/
 generated/
 drafts/
 

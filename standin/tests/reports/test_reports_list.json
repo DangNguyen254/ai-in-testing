@@ -1,0 +1,22 @@
+[
+   {
+      "test_id":"test_reports_list_search",
+      "query":"weekly",
+      "expected_names":[
+         "weekly-blocked",
+         "weekly-allowed"
+      ]
+   },
+   {
+      "test_id":"test_reports_list_count",
+      "total":4
+   },
+   {
+      "test_id":"test_reports_list_export",
+      "query":"weekly",
+      "expected_names":[
+         "weekly-blocked",
+         "weekly-allowed"
+      ]
+   }
+]

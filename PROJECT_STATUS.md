@@ -953,7 +953,22 @@ import path (found by a real Podman run). Step 3 adds per-module import maps to 
 (index version 10): a class name resolves through the module's imports and re-exports, and star
 imports bind their module's names (a star import from outside the repo turns unknown names into
 warnings); new code never uses star imports (`star_imports`, a deviation check). Step 4 is one
-warning check, `risky`. Still open: the stand-in v7 patterns and the Haiku runs.
+warning check, `risky`. Still open: the Haiku runs.
+
+**Stand-in v7 (2026-10-26):** the reports area (mixed, in scope): an older file in its own style
+(4-space indent, single quotes) with a star import and a test calling a test; a class that
+builds its page with the constructor; a class that drives the browser directly. The units area
+(legacy, `generate.reuse.legacy_domains: [units]` by default): unittest style, bare asserts, an
+old `ReportListPage` with the same name as the current one, and `framework.runtime_config`,
+which needs the deployed runtime settings at import (the sandbox collects the whole suite only
+with `standin/sandbox/stubs`; checked with Podman). check-suite on v7: clean, the legacy file
+skipped, deviations in reports (raw driver in 2 files, a star import). v7 found one bug at
+once: the imports check treated `import *` as a missing name `'*'` (fixed). Stub plugin: also
+replaces one module inside a real package (`framework/runtime_config.py` without an
+`__init__.py`). Tickets STND-146 (reports, dev), 147 (units, dev: out of scope), 148 (reports,
+held out), 149 (units, held out: out of scope); pair sets `eval_data/standin_v7_{dev,test}.json`
+(new pair expectation `out_of_scope`); deterministic retrieval recall@10 1.0 on both.
+pytest 821 passed.
 
 **Decisions (the human, 2026-10-26):**
 - **Rules:** rules that protect correctness always hold; where the surrounding code does it differently, the reviewer gets a warning. Purely cosmetic rules follow the area's local style.

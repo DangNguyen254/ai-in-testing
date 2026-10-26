@@ -8,9 +8,16 @@ extend-exclude = ["tests/exceptions/legacy/test_exceptions_old.py"]
 
 [format]
 line-ending = "lf"
+# An older report file keeps its own style (4-space indent, single quotes): the suite's style
+# isn't applied to it. New code added there follows that file's style (style.follow_local).
+exclude = ["tests/reports/test_reports_list.py"]
 
 [lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+
+[lint.per-file-ignores]
+# The older report file star-imports the report helpers.
+"tests/reports/test_reports_list.py" = ["F403", "F405"]
 
 [lint.isort]
 known-first-party = ["app", "framework", "tests"]

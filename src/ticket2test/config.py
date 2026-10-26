@@ -299,7 +299,7 @@ class ReuseSettings(_Section):
     environment_decorators: list[str] = Field(default_factory=lambda: ["environments"])
     # Legacy areas (domain names or repo-relative folder globs): only "already covered" is
     # decided there; no test is generated or patched ("out_of_scope").
-    legacy_domains: list[str] = Field(default_factory=list)
+    legacy_domains: list[str] = Field(default_factory=lambda: ["units"])  # the stand-in's
     # UI tests in an area go only into classes that already use page objects (a chain root or
     # a path-string helper in some test), never into classes that drive the browser directly.
     ui_needs_page_objects: bool = True

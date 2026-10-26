@@ -1,0 +1,27 @@
+{
+  "name": "standin-v7-dev",
+  "description": "Stand-in v7 tickets, dev set (written before the tool ran on them). A mixed area (reports: older style, a star import, pages built by constructors, the browser driven directly) and a legacy area (units), where the correct outcome is out of scope. Ground truth: the linked tests.",
+  "repo_path": "standin",
+  "ticket_source": "jira_export",
+  "jira_export": "standin/tickets/export.json",
+  "conventions_doc": "standin/CONVENTIONS.md",
+  "ground_truth": "tests",
+  "generation": true,
+  "pairs": [
+    {
+      "id": "standin-146",
+      "ticket": "STND-146",
+      "tests": [
+        "tests/reports/test_reports_list.py::TestReportsList::test_reports_list_search"
+      ]
+    },
+    {
+      "id": "standin-147",
+      "ticket": "STND-147",
+      "tests": [
+        "tests/units/test_units_reports.py::TestUnitsReports::test_units_reports_names"
+      ],
+      "expect": "out_of_scope"
+    }
+  ]
+}

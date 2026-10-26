@@ -4,6 +4,7 @@ from framework.pages.agent import AgentArea
 from framework.pages.exceptions import ExceptionsArea
 from framework.pages.files import FilesArea
 from framework.pages.profiles import ProfilesArea
+from framework.pages.reports import ReportsArea
 from framework.pages.rules import RulesArea
 from framework.pages.settings import SettingsArea
 from framework.pages.top_bar import TopBar
@@ -40,3 +41,7 @@ class Navigator:
    @property
    def agent(self):
       return AgentArea(*self._args)
+
+   @property
+   def reports(self):
+      return ReportsArea(*self._args)

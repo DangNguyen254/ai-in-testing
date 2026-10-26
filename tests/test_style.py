@@ -82,9 +82,16 @@ def _python3(path: Path) -> bool:
     "path", [p for p in sorted((STANDIN / "tests").rglob("test_*.py")) if _python3(p)]
 )
 def test_standin_tests_are_a_fixed_point(path: Path) -> None:
-    """The stand-in's own style equals the configured defaults."""
+    """The stand-in's own style equals the configured defaults; v7's older report file keeps
+    its own style (4-space indent, single quotes) and is a fixed point of that."""
+    from ticket2test.style.local import detect_python_style
+
     code = path.read_text(encoding="utf-8")
-    assert format_python(code, Settings().style.python, FIRST_PARTY) == code
+    style = Settings().style.python
+    if path.name == "test_reports_list.py":
+        style = detect_python_style(code, style)
+        assert (style.indent_width, style.quote_style) == (4, "single")
+    assert format_python(code, style, FIRST_PARTY) == code
 
 
 def test_json_style_matches_the_standin_data_files() -> None:

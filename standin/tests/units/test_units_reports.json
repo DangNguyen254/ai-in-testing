@@ -1,0 +1,11 @@
+[
+   {
+      "test_id":"test_units_reports_names",
+      "names":[
+         "weekly-blocked",
+         "weekly-allowed",
+         "monthly-blocked",
+         "monthly-allowed"
+      ]
+   }
+]

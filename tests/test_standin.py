@@ -74,9 +74,18 @@ raise SystemExit(pytest.main(["--collect-only", "-q"], plugins=[Probe()]))
 """
 
 
+def _runtime_root() -> Path:
+    """The deployed runtime settings the legacy area's import needs (v7), in a scratch folder."""
+    root = REPO_ROOT / ".scratch" / "standin-runtime"
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "runtime.ini").write_text("[runtime]\nmode = cloud\n", encoding="utf-8")
+    return root
+
+
 def _collect(deployment: str, browser: str = "chrome") -> list[dict[str, Any]]:
     env = {k: v for k, v in os.environ.items() if not k.startswith("STANDIN_")}
     env.update(STANDIN_DEPLOYMENT=deployment, STANDIN_BROWSER=browser)
+    env["STANDIN_RUNTIME_ROOT"] = str(_runtime_root())  # the legacy area reads it at import
     result = subprocess.run(
         [sys.executable, "-c", _PROBE],
         cwd=STANDIN,
@@ -261,7 +270,7 @@ def _uses_entry(function: ast.FunctionDef) -> bool:
 
 def test_collects_without_browser_or_network(items: list[dict[str, Any]]) -> None:
     assert len(items) >= 100
-    assert len({i["file"] for i in items}) == 17
+    assert len({i["file"] for i in items}) == 21  # v7: three report files, one legacy unit file
 
 
 def test_entry_ids_are_collected_test_ids(items: list[dict[str, Any]]) -> None:
@@ -413,6 +422,11 @@ def test_base_setup_options_vary_by_class() -> None:
     assert {"fresh_driver", "policy_wait"} <= options
 
 
+# v7: older code the suite still has (deviations the tool must tolerate in existing tests, and
+# never copy): driving the browser directly, and a legacy area with bare asserts.
+OLDER_CODE = {"test_reports_raw.py", "test_units_reports.py"}
+
+
 def test_page_objects_use_properties_and_never_chain() -> None:
     setters = 0
     for path in (STANDIN / "framework" / "pages").glob("*.py"):
@@ -423,6 +437,8 @@ def test_page_objects_use_properties_and_never_chain() -> None:
                 assert node.value.id != "self", path.name  # actions return nothing
     assert setters >= 15
     for path, _cls, function in _test_functions():
+        if path.name in OLDER_CODE:  # raw driver calls chain (``find_element(...).text``)
+            continue
         for statement in function.body:
             for node in ast.walk(statement):
                 is_chained = isinstance(node, ast.Attribute) and isinstance(node.value, ast.Call)
@@ -446,6 +462,8 @@ def test_save_flows_use_the_shared_top_bar() -> None:
 
 def test_checks_use_the_unittest_assertion_object() -> None:
     for path, cls, function in _test_functions():
+        if path.parent.name == "units":  # v7: the legacy area asserts bare
+            continue
         assert not any(isinstance(n, ast.Assert) for n in ast.walk(function)), function.name
         calls = _calls(function)
         prefix = (  # v6: unittest-style classes assert on self
@@ -1130,3 +1148,25 @@ def test_only_generic_hosts_in_the_standin() -> None:
         text = path.read_text("utf-8")
         for found in host.findall(text) + email_domain.findall(text):
             assert found in allowed, f"{path.relative_to(STANDIN)}: {found}"
+
+
+def test_v7_older_patterns_are_present() -> None:
+    """Stand-in v7: patterns a real, older suite has, which the tool must handle."""
+    reports, units = STANDIN / "tests" / "reports", STANDIN / "tests" / "units"
+    listing = (reports / "test_reports_list.py").read_text(encoding="utf-8")
+    assert "from framework.report_helpers import *" in listing  # a star import
+    assert "\n    def setup(self):" in listing and "'p2'" in listing  # 4 spaces, single quotes
+    assert "self.test_reports_list_search()" in listing  # a test calling a test
+    view = (reports / "test_reports_view.py").read_text(encoding="utf-8")
+    assert "ReportViewPage(self.driver" in view  # a page built by its constructor
+    assert "self.driver.find_element" in (reports / "test_reports_raw.py").read_text(
+        encoding="utf-8"
+    )  # the browser driven directly
+    legacy = (units / "test_units_reports.py").read_text(encoding="utf-8")
+    assert "from framework.legacy_pages.reports import ReportListPage" in legacy  # same name
+    assert "from framework import runtime_config" in legacy  # needs the runtime at import
+    assert "class ReportListPage" in (STANDIN / "framework/pages/reports.py").read_text(
+        encoding="utf-8"
+    )
+    stub = STANDIN / "sandbox" / "stubs" / "framework" / "runtime_config.py"
+    assert stub.is_file() and not (stub.parent / "__init__.py").exists()  # one module only

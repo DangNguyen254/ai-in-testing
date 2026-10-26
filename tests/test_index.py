@@ -358,7 +358,7 @@ def test_cli_index_and_search(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     runner = CliRunner()
     result = runner.invoke(app, ["index", str(STANDIN)])
     assert result.exit_code == 0, result.output
-    assert "56 files" in result.output and "page-object chains: 613" in result.output
+    assert "66 files" in result.output and "page-object chains: 673" in result.output
     assert "1 skipped" in result.output  # v6: a Python 2 leftover
 
     result = runner.invoke(

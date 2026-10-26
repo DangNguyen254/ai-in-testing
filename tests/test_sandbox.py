@@ -411,3 +411,51 @@ def test_real_sandbox_stubs_and_env_make_a_side_effect_suite_load(tmp_path: Path
     ignore = sandbox.model_copy(update={"stub_dir": None, "collect_ignore": ["tests/test_a.py"]})
     partial = collect_suite(repo, base.model_copy(update={"sandbox": ignore}))
     assert partial.exit_code == 0 and partial.node_ids == ["tests/test_b.py::test_b"]
+
+
+def test_the_stub_plugin_replaces_one_module_inside_a_real_package(tmp_path: Path) -> None:
+    """The plugin itself (our code, run here in a subprocess): a stub for ``pkg.conf`` without
+    ``pkg/__init__.py`` replaces only that module; the real package and its other modules
+    stay."""
+    import sys
+
+    from ticket2test.sandbox.runner import STUB_PLUGIN
+
+    repo, stubs = tmp_path / "repo", tmp_path / "stubs"
+    (repo / "pkg").mkdir(parents=True)
+    (repo / "pkg" / "__init__.py").write_text("REAL = True\n", encoding="utf-8")
+    needs_host = "raise RuntimeError('needs the host')\n"
+    (repo / "pkg" / "conf.py").write_text(needs_host, encoding="utf-8")
+    (repo / "pkg" / "other.py").write_text("NAME = 'other'\n", encoding="utf-8")
+    (stubs / "pkg").mkdir(parents=True)
+    (stubs / "pkg" / "conf.py").write_text("MODE = 'stub'\n", encoding="utf-8")
+    script = (
+        f"import sys; sys.path[:0] = [{str(repo)!r}, {str(STUB_PLUGIN.parent)!r}]; "
+        "import t2t_stubs, pkg, pkg.conf, pkg.other; "
+        "print(pkg.REAL, pkg.conf.MODE, pkg.other.NAME)"
+    )
+    result = subprocess.run(
+        [sys.executable, "-I", "-c", script],
+        env={**os.environ, "T2T_STUBS_DIR": str(stubs)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.stdout.split() == ["True", "stub", "other"], result.stderr
+
+
+@pytest.mark.sandbox
+def test_real_sandbox_collects_the_standin_with_its_stub() -> None:
+    """Stand-in v7: the legacy area imports a module that needs the deployed host; the whole
+    suite collects in the sandbox only with the stand-in's stub."""
+    from ticket2test.sandbox.runner import collect_suite
+
+    base = _real_settings()
+    plain = collect_suite(STANDIN, base)
+    assert any(p.path == "tests/units/test_units_reports.py" for p in plain.import_problems)
+    sandbox = base.sandbox.model_copy(update={"stub_dir": STANDIN / "sandbox" / "stubs"})
+    fixed = collect_suite(STANDIN, base.model_copy(update={"sandbox": sandbox}))
+    assert fixed.exit_code == 0, fixed.output_tail
+    assert "tests/units/test_units_reports.py::TestUnitsReports::test_units_reports_names" in (
+        fixed.node_ids
+    )

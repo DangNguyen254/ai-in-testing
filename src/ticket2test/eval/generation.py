@@ -66,7 +66,7 @@ class GenerationPairResult(BaseModel):
     reuse_notes: list[str] = Field(default_factory=list)  # fallbacks taken
     expected: str = "test"  # what a correct run produces (see EvalPair.expect)
     gaps_found: list[str] = Field(default_factory=list)  # reported gaps matching the expected
-    expectation_met: bool | None = None  # gap and insufficient-info pairs only
+    expectation_met: bool | None = None  # gap, insufficient-info and out-of-scope pairs only
     guide: str = ""  # the area guide in the context ("" when none)
     missing: list[str] = Field(default_factory=list)  # "<status> <owner>.<name>" per candidate
     proposals: list[str] = Field(default_factory=list)  # "<ok|rejected> <Owner>.<member>"
@@ -454,6 +454,8 @@ def _finish(result: GenerationPairResult, started: float) -> GenerationPairResul
         result.expectation_met = result.status == "insufficient_info"
     elif result.expected == "gap":
         result.expectation_met = bool(result.gaps_found)
+    elif result.expected == "out_of_scope":
+        result.expectation_met = result.status == "out_of_scope"
     return result
 
 

@@ -152,6 +152,13 @@ not only a count).
 - **Older code.** `LegacyBrowserBase` classes are unittest style (`setUp` / `tearDown`, checks
   on `self`); keep them as they are and write new tests in the current style. Python 2 files
   under `legacy/` are not collected.
+- **Reports area.** Reach report pages through `self.nav.reports.list` / `.view`. Some report
+  tests build `ReportViewPage(...)` themselves or drive `self.driver` directly: don't copy
+  that, and don't add tests to those classes. `test_reports_list.py` keeps its own older style
+  (4-space indent, single quotes); code added there follows it. Import the report helpers by
+  name, not with `*`.
+- **Units area.** `tests/units` is legacy (old report pages in `framework.legacy_pages`, bare
+  asserts): no new tests go there.
 - **Waiting.** Use the `@retry` decorator or `framework.waits.retry_until`; don't add another
   retry loop around them.
 

@@ -175,7 +175,7 @@ generate:
     domain_margin: 0.15
     frozen_classes: []             # new tests never go into these or their subclasses (e.g. a legacy base)
     environment_decorators: [environments]  # class decorators listing the deployments it runs on
-    legacy_domains: []             # areas (names or folder globs) where only "covered" is decided
+    legacy_domains: [units]        # areas (names or folder globs) where only "covered" is decided
     ui_needs_page_objects: true    # UI tests go only into classes that already use page objects
   variant_prompt: variant_v1      # only when a new case can't be planned in code
 

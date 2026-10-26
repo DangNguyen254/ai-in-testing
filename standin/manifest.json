@@ -267,6 +267,27 @@
     },
     "tests/exceptions/test_exceptions_widgets.py::TestExceptionsWidgets::test_exceptions_widget_empty_message": {
       "kind": "ui"
+    },
+    "tests/reports/test_reports_list.py::TestReportsList::test_reports_list_search": {
+      "kind": "ui"
+    },
+    "tests/reports/test_reports_list.py::TestReportsList::test_reports_list_count": {
+      "kind": "ui"
+    },
+    "tests/reports/test_reports_list.py::TestReportsList::test_reports_list_export": {
+      "kind": "ui"
+    },
+    "tests/reports/test_reports_view.py::TestReportsView::test_reports_view_title": {
+      "kind": "ui"
+    },
+    "tests/reports/test_reports_view.py::TestReportsView::test_reports_view_rows": {
+      "kind": "ui"
+    },
+    "tests/reports/test_reports_raw.py::TestReportsRaw::test_reports_raw_empty_message": {
+      "kind": "ui"
+    },
+    "tests/units/test_units_reports.py::TestUnitsReports::test_units_reports_names": {
+      "kind": "ui"
     }
   },
   "tickets": {
@@ -612,6 +633,42 @@
           ]
         }
       ]
+    },
+    "STND-146": {
+      "status": "fixed",
+      "set": "dev",
+      "kind": "normal",
+      "tests": [
+        "tests/reports/test_reports_list.py::TestReportsList::test_reports_list_search"
+      ],
+      "gaps": []
+    },
+    "STND-147": {
+      "status": "fixed",
+      "set": "dev",
+      "kind": "legacy",
+      "tests": [
+        "tests/units/test_units_reports.py::TestUnitsReports::test_units_reports_names"
+      ],
+      "gaps": []
+    },
+    "STND-148": {
+      "status": "fixed",
+      "set": "test",
+      "kind": "normal",
+      "tests": [
+        "tests/reports/test_reports_view.py::TestReportsView::test_reports_view_rows"
+      ],
+      "gaps": []
+    },
+    "STND-149": {
+      "status": "fixed",
+      "set": "test",
+      "kind": "legacy",
+      "tests": [
+        "tests/units/test_units_reports.py::TestUnitsReports::test_units_reports_names"
+      ],
+      "gaps": []
     }
   }
 }

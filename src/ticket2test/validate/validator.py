@@ -136,6 +136,8 @@ def check_imports(s: Subject) -> Iterator[Finding]:
             module = node.module or ""
             if module in modules:
                 for alias in node.names:
+                    if alias.name == "*":  # binds what the module defines (check_names)
+                        continue
                     name = f"{module}.{alias.name}"
                     reexported = _reexports(s.module_imports.get(module, []), alias.name)
                     if not (s.catalog.find(name) or name in modules or reexported):

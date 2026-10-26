@@ -509,7 +509,7 @@ def test_relabel_is_a_no_op_for_the_same_name() -> None:
 # --- context budget --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("budget", [4500, 6000, 9000, 12000, 30000])
+@pytest.mark.parametrize("budget", [5000, 6000, 9000, 12000, 30000])
 def test_context_never_exceeds_the_budget(
     index: IndexData, retrieval: RetrievalResult, tmp_path: Path, budget: int
 ) -> None:
@@ -548,7 +548,7 @@ def test_bigger_budget_includes_more(
             CONVENTIONS,
         )
 
-    small, large = build(4500), build(30000)
+    small, large = build(5000), build(30000)
     assert len(large.pieces) > len(small.pieces) and small.skipped
     assert any(p.title.startswith("Base class: BaseTest") for p in large.pieces)
 

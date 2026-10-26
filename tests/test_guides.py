@@ -260,9 +260,9 @@ def test_build_store_and_skip_when_up_to_date(
     settings = _settings(tmp_path)
     folder = settings.guides.dir
     assert folder is not None
-    fake = PricedFake(_replies(8), cost=0.02)
+    fake = PricedFake(_replies(10), cost=0.02)  # one reply per area
     run = _run(index, suite_map, settings, fake)
-    assert [i.status for i in run.items] == ["built"] * 8 and run.spent_usd == pytest.approx(0.16)
+    assert [i.status for i in run.items] == ["built"] * 10 and run.spent_usd == pytest.approx(0.2)
     guide = load_guide(folder, "rules")
     assert guide is not None and guide.model == "claude-sonnet-5-5"
     assert guide.digest == next(a.digest for a in suite_map.areas if a.name == "rules")
@@ -281,9 +281,9 @@ def test_build_store_and_skip_when_up_to_date(
     run = _run(index, suite_map, settings, third)
     assert [i.area for i in run.items if i.status == "built"] == ["rules"]
 
-    forced = PricedFake(_replies(8), cost=0.02)
+    forced = PricedFake(_replies(10), cost=0.02)
     run = _run(index, suite_map, settings, forced, force=True)
-    assert len(forced.requests) == 8
+    assert len(forced.requests) == 10
 
 
 def test_a_failed_area_doesnt_stop_the_others(
@@ -301,7 +301,7 @@ def test_the_area_limit_per_run(index: IndexData, suite_map: SuiteMap, tmp_path:
     fake = PricedFake(_replies(8), cost=0.01)
     run = _run(index, suite_map, _settings(tmp_path, max_areas_per_run=2), fake)
     assert [i.status for i in run.items].count("built") == 2
-    assert [i.status for i in run.items].count("over_limit") == 6
+    assert [i.status for i in run.items].count("over_limit") == 8
 
 
 # --- the generation context ---------------------------------------------------------------

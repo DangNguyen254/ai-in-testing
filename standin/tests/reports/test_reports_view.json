@@ -1,0 +1,12 @@
+[
+   {
+      "test_id":"test_reports_view_title",
+      "report":"weekly-blocked",
+      "title":"Report: weekly-blocked"
+   },
+   {
+      "test_id":"test_reports_view_rows",
+      "report":"weekly-blocked",
+      "rows":3
+   }
+]

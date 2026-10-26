@@ -70,12 +70,21 @@ ruff.toml            the suite's style: 3-space indent, LF, sorted imports
   helpers, a `_v1` module pair and three retry styles; a Python 2 leftover kept out of
   collection. Tickets STND-129..136 (dev) and STND-137..144 (held-out test set), including
   missing-piece and vague tickets.
+- **v7 (older code in a mixed area, and a legacy area):** the reports area has a file in another
+  style (4-space indent, single quotes) with a star import and a test that calls another test,
+  a class that builds its page with the constructor, and a class that drives the browser
+  directly. The units area is legacy: unittest style with bare asserts, an old page object with
+  the same class name as the current one (`ReportListPage`), and a module that reads the
+  deployed runtime settings at import (`framework.runtime_config`: it needs
+  `STANDIN_RUNTIME_ROOT` and `runtime.ini` there; the sandbox uses the stub in
+  `sandbox/stubs/`). Tickets STND-146, 147 (dev) and STND-148, 149 (held out).
 
 ## Usage
 
 ```bash
 cd standin
-python -m pytest --collect-only -q        # no browser and no network needed
+STANDIN_RUNTIME_ROOT=<folder with runtime.ini> python -m pytest --collect-only -q
+                                          # no browser and no network needed
 python -m app.server --port 8080          # run the fake app (for real UI runs)
 python tools/build_history.py --force     # history in ../.scratch/standin-history
 ruff format --check . && ruff check .     # style (uses ruff.toml here)

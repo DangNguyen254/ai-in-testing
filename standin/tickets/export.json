@@ -1,6 +1,6 @@
 {
   "_comment": "Hand-written FAKE tickets for the synthetic stand-in app (Jira API v2 export shape, wiki markup). Not real data.",
-  "total": 45,
+  "total": 49,
   "issues": [
     {
       "id": "30101",
@@ -984,6 +984,91 @@
           }
         ],
         "description": "The page heading is right, but the browser tab still shows the title of the Rules page.\n\nh3. Steps to Reproduce\n# Open Exceptions\n# Look at the title of the browser tab\n\nh3. Expected Behavior\nThe browser tab is titled Exceptions.\n\nh3. Actual Behavior\nThe browser tab is titled Rules.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30146",
+      "key": "STND-146",
+      "self": "https://jira.example.com/rest/api/2/issue/30146",
+      "fields": {
+        "summary": "Report search ignores the search text",
+        "labels": [
+          "reports",
+          "search"
+        ],
+        "components": [
+          {
+            "name": "reports"
+          }
+        ],
+        "description": "Searching the report list returns every report, whatever is typed.\n\nh3. Steps to Reproduce\n# Have the reports weekly-blocked, weekly-allowed, monthly-blocked and monthly-allowed\n# Open Reports\n# Search for weekly\n\nh3. Expected Behavior\nOnly weekly-blocked and weekly-allowed are listed.\n\nh3. Actual Behavior\nAll four reports are listed.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30147",
+      "key": "STND-147",
+      "self": "https://jira.example.com/rest/api/2/issue/30147",
+      "fields": {
+        "summary": "Old report page lists report names twice",
+        "labels": [
+          "units"
+        ],
+        "components": [
+          {
+            "name": "units"
+          }
+        ],
+        "description": "On the old report page each report name appears twice.\n\nh3. Steps to Reproduce\n# Have four reports\n# Open the old report page\n\nh3. Expected Behavior\nEach of the four report names is listed once.\n\nh3. Actual Behavior\nEight names are listed.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30148",
+      "key": "STND-148",
+      "self": "https://jira.example.com/rest/api/2/issue/30148",
+      "fields": {
+        "summary": "Report view shows one row too few",
+        "labels": [
+          "reports"
+        ],
+        "components": [
+          {
+            "name": "reports"
+          }
+        ],
+        "description": "A report's view drops its last row.\n\nh3. Steps to Reproduce\n# Have the report weekly-blocked with three rows\n# Open Reports\n# Open the view of weekly-blocked\n\nh3. Expected Behavior\nThe view shows three rows.\n\nh3. Actual Behavior\nThe view shows two rows.",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30149",
+      "key": "STND-149",
+      "self": "https://jira.example.com/rest/api/2/issue/30149",
+      "fields": {
+        "summary": "Old report page misses monthly reports",
+        "labels": [
+          "units"
+        ],
+        "components": [
+          {
+            "name": "units"
+          }
+        ],
+        "description": "The old report page leaves out the monthly reports.\n\nh3. Steps to Reproduce\n# Have weekly and monthly reports\n# Open the old report page\n\nh3. Expected Behavior\nAll four reports are listed: weekly-blocked, weekly-allowed, monthly-blocked, monthly-allowed.\n\nh3. Actual Behavior\nOnly the two weekly reports are listed.",
         "comment": {
           "total": 0,
           "comments": []

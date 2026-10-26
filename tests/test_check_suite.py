@@ -25,7 +25,12 @@ def _settings(tmp_path: Path, **sections: Any) -> Settings:
 def test_the_standin_is_clean_with_its_own_config(tmp_path: Path) -> None:
     report = check_suite(STANDIN, _settings(tmp_path))
     assert report.ok and report.errors == 0 and report.by_check == []
-    assert report.test_files == 17 and report.tests == 107
+    assert report.test_files == 20 and report.tests == 113  # v7: the legacy units file skipped
+    assert report.legacy_files == 1
+    assert {(d.area, d.check) for d in report.deviations} == {
+        ("reports", "raw_driver"),  # older report tests: deviations, not config errors
+        ("reports", "star_imports"),
+    }
     # framework/base_test.py matches the "*_test.py" glob but has no tests: not checked.
     assert report.clean_files == report.test_files
     assert "**clean**" in render_markdown(report)
@@ -46,7 +51,7 @@ def test_a_wrong_config_is_reported_by_check_with_the_keys_to_fix(tmp_path: Path
     assert "style.python" in by_check["style"].hint
     assert "style.json" in by_check["data_file"].hint
     assert any("priority value 'p2' is not approved" in e for e in by_check["markers"].examples)
-    assert by_check["base_class"].files == 17
+    assert by_check["base_class"].files == 20
     markdown = render_markdown(report)
     assert "config needs changes" in markdown and "| markers |" in markdown
 
@@ -71,7 +76,7 @@ def test_ids_are_compared_with_a_real_collect(
 
     monkeypatch.setattr(suite_module, "collect_suite", fake_collect)
     report = check_suite(STANDIN, settings, collect=True)
-    assert report.ids.ran and report.ids.static == 109 and report.ids.collected == 109
+    assert report.ids.ran and report.ids.static == 116 and report.ids.collected == 116
     assert report.ids.only_static == ["tests/rules/test_rules.py::TestRules::test_rules_list_empty"]
     assert report.ids.only_collected == ["tests/rules/test_rules.py::TestRules::test_rules_extra"]
     assert not report.ok  # validators are clean, but the ids disagree

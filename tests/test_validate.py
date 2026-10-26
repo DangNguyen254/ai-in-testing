@@ -153,13 +153,15 @@ def test_a_good_pair_has_no_findings(setup: Any) -> None:
 
 
 def test_the_hand_written_standin_suite_has_no_errors(setup: Any) -> None:
-    from ticket2test.validate.suite import _function_file_entries
+    from ticket2test.validate.suite import _function_file_entries, local_checks
 
     settings, index, _ = setup
     for path in sorted((STANDIN / "tests").rglob("test_*.py")):
         relative = path.relative_to(STANDIN).as_posix()
         if index.files[relative].info is None:
             continue  # v6: a Python 2 leftover, left out of the index (and of collection)
+        if path.parent.name == "units":
+            continue  # v7: the legacy area (generate.reuse.legacy_domains), never a template
         ids = [  # from the index: includes inherited tests
             t
             for c in index.chunks
@@ -182,7 +184,9 @@ def test_the_hand_written_standin_suite_has_no_errors(setup: Any) -> None:
             data_text=data_text,
             test_ids=ids,
         )
-        assert report.ok, (path.name, [f.render() for f in report.errors])
+        older = local_checks(settings)  # v7: rules older tests break (deviations)
+        errors = [f.render() for f in report.errors if f.check not in older]
+        assert not errors, (path.name, errors)
 
 
 # --- code -------------------------------------------------------------------------------------
