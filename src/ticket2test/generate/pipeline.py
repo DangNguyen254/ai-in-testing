@@ -40,7 +40,8 @@ from ticket2test.models.gaps import GapVerdict, MissingPiece
 from ticket2test.models.generated import GeneratedTest, ReuseKind
 from ticket2test.models.proposal import Proposal
 from ticket2test.models.retrieval import RetrievalResult
-from ticket2test.proposals import propose_gaps
+from ticket2test.proposals import propose_gaps, use_kind
+from ticket2test.proposals.apply import proposal_context, with_proposals
 from ticket2test.validate.repair import generate_with_repair
 from ticket2test.validate.report import ValidationReport
 
@@ -58,6 +59,8 @@ class ReuseOutcome:
     missing: list[GapVerdict] = field(default_factory=list)  # checked missing-piece candidates
     attempt_pieces: list[MissingPiece] = field(default_factory=list)  # from every attempt
     proposals: list[Proposal] = field(default_factory=list)  # agent 2 patches (opt-in)
+    uses_proposals: list[Proposal] = field(default_factory=list)  # the final test uses these
+    first_generated: GeneratedTest | None = None  # the test before regenerating, if replaced
 
 
 def _generate_reusing(
@@ -177,14 +180,78 @@ def generate_reusing(
         pieces += from_hints(retrieval.investigation.missing)
     outcome.missing = check_pieces(pieces, index, settings)
     gaps = [v for v in outcome.missing if v.status in ("missing", "close_match")]
-    if gaps and outcome.generated is not None:  # put the warning where the reviewer looks
-        notes = [_gap_note(v) for v in gaps]
-        checklist = [*outcome.generated.review_checklist, *notes]
-        outcome.generated = outcome.generated.model_copy(update={"review_checklist": checklist})
     if gaps and settings.proposals.enabled:
         code = outcome.generated.code if outcome.generated else ""
         outcome.proposals = propose_gaps(gaps, code, index, settings, client, repo_root)
+        accepted = [p for p in outcome.proposals if p.ok]
+        if accepted and settings.proposals.regenerate and outcome.generated is not None:
+            _regenerate(
+                outcome, accepted, draft, retrieval, index, settings, client, provider, model,
+                repo_root, conventions,
+            )  # fmt: skip
+    if gaps and outcome.generated is not None:  # put the warning where the reviewer looks
+        used = {(p.owner_class, p.member): p for p in outcome.uses_proposals}
+        notes = [
+            _apply_note(used[key]) if key in used else _gap_note(v)
+            for v in gaps
+            for key in [(v.owner_class or "", v.piece.name)]
+        ]
+        checklist = [*outcome.generated.review_checklist, *notes]
+        outcome.generated = outcome.generated.model_copy(update={"review_checklist": checklist})
     return outcome
+
+
+def _regenerate(
+    outcome: ReuseOutcome,
+    accepted: list[Proposal],
+    draft: TestCaseDraft,
+    retrieval: RetrievalResult,
+    index: IndexData,
+    settings: Settings,
+    client: LLMClient,
+    provider: str,
+    model: str,
+    repo_root: Path,
+    conventions: str | None,
+) -> None:
+    """Generate again with the accepted members in the catalog and the context. The new test
+    replaces the first only if it passes validation and uses at least one of them."""
+    extra = proposal_context(accepted)
+    second = _generate_reusing(
+        draft,
+        retrieval,
+        with_proposals(index, accepted),
+        settings,
+        client,
+        provider,
+        model,
+        repo_root,
+        f"{conventions}\n\n{extra}" if conventions else extra,
+        outcome.kind if outcome.kind in ("variant", "method", "module") else "auto",
+    )
+    generated, report = second.generated, second.report
+    used = [p for p in accepted if generated and use_kind(generated.code, p.member)]
+    if generated is None or report is None or not report.ok or not used:
+        why = (
+            "it failed validation"
+            if report is not None and not report.ok
+            else ("it didn't use them" if generated is not None else "nothing was generated")
+        )
+        outcome.notes.append(f"generated again with the proposed members; kept the first: {why}")
+        return
+    outcome.first_generated = outcome.generated
+    outcome.generated, outcome.report, outcome.kind = generated, report, second.kind
+    outcome.uses_proposals = used
+    names = ", ".join(p.member for p in used)
+    outcome.notes.append(f"generated again with the proposed members; the test uses {names}")
+
+
+def _apply_note(proposal: Proposal) -> str:
+    owner = proposal.owner_class.rsplit(".", 1)[-1]
+    return (
+        f"This test uses {owner}.{proposal.member}, which the suite doesn't have yet: it is "
+        f"proposed in proposal_{proposal.member}.diff. Review and apply that patch first."
+    )
 
 
 def _gap_note(verdict: GapVerdict) -> str:

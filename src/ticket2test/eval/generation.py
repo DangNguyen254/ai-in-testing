@@ -142,6 +142,9 @@ class GenerationReport(BaseModel):
             "gaps_found": sum(p.expected == "gap" and bool(p.expectation_met) for p in self.pairs),
             "proposals": sum(len(p.proposals) for p in self.pairs),
             "proposals_ok": sum(x.startswith("ok ") for p in self.pairs for x in p.proposals),
+            "proposals_used": sum(
+                x.endswith("(used by the test)") for p in self.pairs for x in p.proposals
+            ),
             "vague_pairs": sum(p.expected == "insufficient_info" for p in self.pairs),
             "vague_recognized": sum(
                 p.expected == "insufficient_info" and bool(p.expectation_met) for p in self.pairs
@@ -357,8 +360,10 @@ def _one(
         f"{v.status} {v.piece.owner + '.' if v.piece.owner else ''}{v.piece.name}"
         for v in outcome.missing
     ]
+    used = {id(x) for x in outcome.uses_proposals}
     result.proposals = [
         f"{'ok' if x.ok else 'rejected'} {x.owner_class.rsplit('.', 1)[-1]}.{x.member}"
+        + (" (used by the test)" if id(x) in used else "")
         for x in outcome.proposals
     ]
     if outcome.generated is None or outcome.report is None:  # covered: nothing generated

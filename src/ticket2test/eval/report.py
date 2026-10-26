@@ -172,7 +172,11 @@ def render_markdown(report: EvalRunReport) -> str:
                 else []
             ),
             *(
-                [f"| Proposed members passing every check | {m['proposals_ok']}/{m['proposals']} |"]
+                [
+                    f"| Proposed members passing every check | {m['proposals_ok']}/"
+                    f"{m['proposals']} |",
+                    f"| Proposed members the final test uses | {m['proposals_used']} |",
+                ]
                 if m["proposals"]
                 else []
             ),

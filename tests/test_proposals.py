@@ -14,7 +14,9 @@ from ticket2test.config import Settings
 from ticket2test.index.indexer import IndexData, update_index
 from ticket2test.llm.fake import FakeLLMClient
 from ticket2test.models.gaps import GapVerdict, MissingPiece
+from ticket2test.models.proposal import Proposal
 from ticket2test.proposals import propose_gaps, use_kind
+from ticket2test.proposals.apply import proposal_context, with_proposals
 from ticket2test.proposals.check import check_patched, insert_member
 from ticket2test.sandbox.runner import SandboxError, SuiteCollect
 
@@ -214,3 +216,95 @@ def test_sandbox_collect(index: IndexData, tmp_path: Path, monkeypatch: Any) -> 
         [_gap(index)], "", index, settings, FakeLLMClient([_reply(CLEAR)]), STANDIN
     )
     assert proposal.ok and proposal.collect_ok is None
+
+
+# --- increment 2: generate again with the accepted members ------------------------------------
+
+EDITOR_TEST = "tests/exceptions/test_exceptions.py"
+
+
+def _accepted(index: IndexData) -> Proposal:
+    return Proposal(
+        owner_class=_owner(index),
+        member="clear_expiry",
+        kind="method",
+        file_path=PAGE,
+        ok=True,
+        code=CLEAR,
+        diff="--- a\n+++ b\n",
+    )
+
+
+def _uses_clear() -> str:
+    source = (STANDIN / EDITOR_TEST).read_text(encoding="utf-8")
+    code = source.replace("      editor.enabled = False\n", "      editor.clear_expiry()\n", 1)
+    assert code != source
+    return code
+
+
+def test_the_patched_index_knows_the_member(index: IndexData, tmp_path: Path) -> None:
+    from tests.test_patch import _generated
+    from ticket2test.gaps import from_generated
+
+    settings = _settings(tmp_path)
+    generated = _generated(_uses_clear(), [])
+    assert [p.name for p in from_generated(generated, index, settings)] == ["clear_expiry"]
+    patched = with_proposals(index, [_accepted(index)])
+    assert from_generated(generated, patched, settings) == []
+    assert "clear_expiry" in patched.catalog.members_of(_owner(index))
+    assert "clear_expiry" not in index.catalog.members_of(_owner(index))  # original untouched
+    rejected = _accepted(index).model_copy(update={"ok": False})
+    assert "clear_expiry" not in with_proposals(index, [rejected]).catalog.members_of(_owner(index))
+    text = proposal_context([_accepted(index)])
+    assert "ExceptionEditorPage.clear_expiry" in text and "self.click(self.CLEAR_EXPIRY)" in text
+
+
+@pytest.mark.parametrize("second_ok", [True, False])
+def test_the_test_is_generated_again(
+    index: IndexData, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, second_ok: bool
+) -> None:
+    from tests.test_patch import _generated, _ticketed
+    from tests.test_reuse import SCENARIOS
+    from ticket2test.generate import pipeline
+    from ticket2test.generate.reuse import ReuseDecision
+    from ticket2test.validate.report import Finding, ValidationReport
+
+    settings = _settings(tmp_path)
+    draft = SCENARIOS["method"][0]
+    retrieval = _ticketed(settings, index, draft)
+    decision = ReuseDecision("module", "exceptions", False, None, None)
+    first = _generated(_uses_clear(), []).model_copy(update={"file_name": EDITOR_TEST})
+    second = first.model_copy(update={"review_checklist": ["needs a real run"]})
+    bad = Finding(check="names", severity="error", message="x")
+    calls: list[tuple[IndexData, str | None, str]] = []
+
+    def fake(*args: Any) -> pipeline.ReuseOutcome:
+        calls.append((args[2], args[8], args[9]))
+        generated, report = (
+            (first, ValidationReport())
+            if len(calls) == 1
+            else (second, ValidationReport(findings=[] if second_ok else [bad]))
+        )
+        return pipeline.ReuseOutcome("module", decision, generated=generated, report=report)
+
+    monkeypatch.setattr(pipeline, "_generate_reusing", fake)
+    monkeypatch.setattr(pipeline, "propose_gaps", lambda *a: [_accepted(index)])
+    outcome = pipeline.generate_reusing(
+        draft, retrieval, index, settings, FakeLLMClient([]), "f", "m", STANDIN
+    )
+    assert len(calls) == 2
+    patched, conventions, mode = calls[1]
+    assert "clear_expiry" in patched.catalog.members_of(_owner(index))
+    assert conventions is not None and "self.click(self.CLEAR_EXPIRY)" in conventions
+    assert mode == "module"
+    assert outcome.generated is not None
+    checklist = outcome.generated.review_checklist
+    if second_ok:
+        assert outcome.generated is not first and outcome.first_generated is first
+        assert [p.member for p in outcome.uses_proposals] == ["clear_expiry"]
+        assert any("proposal_clear_expiry.diff" in n for n in checklist)
+        assert not any("doesn't fully test" in n for n in checklist)
+    else:
+        assert outcome.generated.code == first.code and outcome.first_generated is None
+        assert any("kept the first: it failed validation" in n for n in outcome.notes)
+        assert any("doesn't fully test" in n for n in checklist)

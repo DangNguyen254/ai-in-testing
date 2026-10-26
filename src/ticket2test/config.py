@@ -573,6 +573,7 @@ class ProposalSettings(_Section):
     max_per_ticket: int = Field(default=2, ge=1)  # gaps proposed for, per ticket
     max_repairs: int = Field(default=2, ge=0)  # rounds of check findings sent back
     collect: bool = True  # load the suite with the patch in the sandbox
+    regenerate: bool = True  # generate the test again using the accepted members
     max_class_tokens: int = Field(default=3000, ge=200)  # larger classes go in as an outline
 
 

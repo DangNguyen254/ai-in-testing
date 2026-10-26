@@ -281,6 +281,7 @@ proposals:                       # agent 2: propose a missing member as a separa
   max_per_ticket: 2
   max_repairs: 2                 # rounds of check findings sent back to the model
   collect: true                  # load the suite with the patch in the sandbox
+  regenerate: true               # generate the test again using the accepted members
   max_class_tokens: 3000         # a larger class goes into the prompt as an outline
 
 paths:
