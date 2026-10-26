@@ -22,6 +22,7 @@ from ticket2test.llm.base import LLMClient, Message
 from ticket2test.llm.masking import masker_of
 from ticket2test.llm.structured import StructuredOutputError, complete_structured
 from ticket2test.models.draft import TestCaseDraft
+from ticket2test.models.gaps import MissingPiece
 from ticket2test.models.generated import GeneratedTest, GenerationResponse
 from ticket2test.models.retrieval import RetrievalResult
 from ticket2test.prompts import PromptTemplate, load_prompt
@@ -36,6 +37,9 @@ class RepairResult:
     generated: GeneratedTest  # with validation_report filled in
     report: ValidationReport
     llm_calls: int  # generation + repairs, retries included
+    # Missing-piece candidates from every attempt: repair may drop a call to a member the suite
+    # lacks to make the validators pass, which hides the gap from the final code.
+    attempt_pieces: tuple[MissingPiece, ...] = ()
 
 
 def validate_test(
@@ -78,6 +82,7 @@ def generate_with_repair(
     calls = result.attempts
     generated = assemble(setup, result.value, calls, provider, model, masker_of(client))
     report = validate_test(generated, setup, settings)
+    pieces = _pieces(generated, index, settings, {})
 
     prompt = load_prompt(settings.repair.prompt_version, settings.paths.prompts_dir)
     messages = list(setup.request.messages)
@@ -105,13 +110,31 @@ def generate_with_repair(
         last_reply = result.response.text
         generated = assemble(setup, result.value, calls, provider, model, masker_of(client))
         report = validate_test(generated, setup, settings)
+        pieces = _pieces(generated, index, settings, pieces)
 
     report.repairs = len(history)
     report.history = history
     final = generated.model_copy(
         update={"attempts": calls, "validation_report": report.model_dump(mode="json")}
     )
-    return RepairResult(generated=final, report=report, llm_calls=calls)
+    return RepairResult(
+        generated=final, report=report, llm_calls=calls, attempt_pieces=tuple(pieces.values())
+    )
+
+
+def _pieces(
+    generated: GeneratedTest,
+    index: IndexData,
+    settings: Settings,
+    found: dict[tuple[str, str], MissingPiece],
+) -> dict[tuple[str, str], MissingPiece]:
+    """Add this attempt's missing-piece candidates (first sighting wins)."""
+    from ticket2test.gaps.collect import from_generated
+
+    merged = dict(found)
+    for piece in from_generated(generated, index, settings):
+        merged.setdefault((piece.owner, piece.name), piece)
+    return merged
 
 
 def _repair_turn(prompt: PromptTemplate, report: ValidationReport) -> str:

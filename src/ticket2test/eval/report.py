@@ -163,6 +163,22 @@ def render_markdown(report: EvalRunReport) -> str:
             f"| Area guide in the context | {sum(bool(p.guide) for p in gen.pairs)} tickets |",
             f"| LLM calls / time | {gen.llm_calls} / {gen.elapsed_seconds} s |",
             f"| Cost, provider-reported ($) | {_cost([gen.usage])} |",
+            *(
+                [
+                    f"| Missing-piece tickets: expected gap reported | {m['gaps_found']}/"
+                    f"{m['gap_pairs']} |"
+                ]
+                if m["gap_pairs"]
+                else []
+            ),
+            *(
+                [
+                    f"| Vague tickets: recognized as insufficient info | {m['vague_recognized']}/"
+                    f"{m['vague_pairs']} |"
+                ]
+                if m["vague_pairs"]
+                else []
+            ),
             "",
             "| Ticket | Status | Kind | Reuse | First-attempt errors | Repairs | Final | Collect | "
             "Warnings | Calls | $ | s |",
@@ -176,6 +192,13 @@ def render_markdown(report: EvalRunReport) -> str:
                 f"{_fmt(p.collect_ok)} | {len(p.warnings)} | {p.llm_calls} | {_cost([p.usage])} | "
                 f"{p.seconds} |"
             )
+        expected = [p for p in gen.pairs if p.expected != "test"]
+        if expected:
+            lines += ["", "Expected outcomes (missing-piece and vague tickets):"]
+            for p in expected:
+                found = f" (found: {'; '.join(p.gaps_found)})" if p.gaps_found else ""
+                verdict = "met" if p.expectation_met else "NOT met"
+                lines.append(f"- {p.ticket}: expected {p.expected}, {verdict}{found}")
         problems = [p for p in gen.pairs if p.error or p.final_errors or p.collect_note]
         if problems:
             lines += ["", "Details:"]

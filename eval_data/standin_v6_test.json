@@ -39,7 +39,16 @@
     {
       "id": "standin-141",
       "ticket": "STND-141",
-      "tests": []
+      "tests": [],
+      "expect": "gap",
+      "gaps": [
+        {
+          "owner": "nav.exceptions.list",
+          "words": [
+            "export"
+          ]
+        }
+      ]
     },
     {
       "id": "standin-142",
@@ -59,7 +68,8 @@
     {
       "id": "standin-144",
       "ticket": "STND-144",
-      "tests": []
+      "tests": [],
+      "expect": "insufficient_info"
     }
   ]
 }

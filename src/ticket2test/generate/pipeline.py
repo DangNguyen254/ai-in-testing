@@ -36,7 +36,7 @@ from ticket2test.guides.context import area_guide_text
 from ticket2test.index.indexer import IndexData
 from ticket2test.llm.base import LLMClient
 from ticket2test.models.draft import TestCaseDraft
-from ticket2test.models.gaps import GapVerdict
+from ticket2test.models.gaps import GapVerdict, MissingPiece
 from ticket2test.models.generated import GeneratedTest, ReuseKind
 from ticket2test.models.retrieval import RetrievalResult
 from ticket2test.validate.repair import generate_with_repair
@@ -54,6 +54,7 @@ class ReuseOutcome:
     notes: list[str] = field(default_factory=list)  # fallbacks taken
     guide: str = ""  # the area guide put into the context ("" when none), "(stale)" if so
     missing: list[GapVerdict] = field(default_factory=list)  # checked missing-piece candidates
+    attempt_pieces: list[MissingPiece] = field(default_factory=list)  # from every attempt
 
 
 def _generate_reusing(
@@ -121,6 +122,7 @@ def _generate_reusing(
                 repaired = generate_with_repair(
                     draft, steered, index, settings, client, provider, model, conventions
                 )
+                outcome.attempt_pieces = list(repaired.attempt_pieces)
                 try:
                     generated = method_patch(repaired.generated, chosen, index, settings, repo_root)
                 except PatchError as exc:
@@ -143,6 +145,7 @@ def _generate_reusing(
     repaired = generate_with_repair(
         draft, steered, index, settings, client, provider, model, conventions
     )
+    outcome.attempt_pieces = list(repaired.attempt_pieces)
     return _module(outcome, repaired.generated, repaired.report)
 
 
@@ -164,6 +167,8 @@ def generate_reusing(
         draft, retrieval, index, settings, client, provider, model, repo_root, conventions, mode
     )
     pieces = from_generated(outcome.generated, index, settings) if outcome.generated else []
+    seen = {(p.owner, p.name) for p in pieces}
+    pieces += [p for p in outcome.attempt_pieces if (p.owner, p.name) not in seen]
     if retrieval.investigation is not None:
         pieces += from_hints(retrieval.investigation.missing)
     outcome.missing = check_pieces(pieces, index, settings)

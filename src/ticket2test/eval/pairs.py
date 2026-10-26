@@ -20,6 +20,15 @@ from ticket2test.adapters.tickets.jira import JiraExportSource
 from ticket2test.config import Settings
 
 
+class ExpectedGap(BaseModel):
+    """A piece the ticket needs that the suite lacks (a missing-piece ticket)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    owner: str  # a page-object chain ("nav.area.page") or a class name
+    words: list[str] = Field(min_length=1)  # words the member's name contains (stemmed)
+
+
 class EvalPair(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -30,6 +39,10 @@ class EvalPair(BaseModel):
     fix_pr_url: str | None = None
     tests: list[str] = Field(default_factory=list)  # for ground_truth "tests": test function ids
     source: str | None = None  # provenance, e.g. "mined: <commit> code_skip"
+    # What a correct run produces: a test (the default), a reported missing piece, or
+    # insufficient info (a vague ticket).
+    expect: Literal["test", "gap", "insufficient_info"] = "test"
+    gaps: list[ExpectedGap] = Field(default_factory=list)
 
 
 class PairSet(BaseModel):

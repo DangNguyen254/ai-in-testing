@@ -428,3 +428,75 @@ def test_an_unexpected_error_fails_one_ticket_not_the_run(
     report = _generation_run(tmp_path, monkeypatch, replies, reuse_drafts=False)
     assert report.pairs[0].status == "failed"
     assert report.pairs[0].error.startswith("unexpected ValueError: the code does not parse")
+
+
+def test_a_gap_seen_only_before_repair_is_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Repair replaced the invented member, so the final code is clean; the gap is still
+    reported, from the first attempt."""
+    replies = [
+        _draft_reply(_DRAFT),
+        _rewrite(["delete", "rule"], []),
+        _generation_reply(BAD_CODE),  # uses rules.rule_count, which RuleListPage lacks
+        _generation_reply(),  # repaired: rules.total_count
+    ]
+    pair = _generation_run(tmp_path, monkeypatch, replies).pairs[0]
+    assert pair.final_ok and any("rule_count" in m for m in pair.missing), pair.missing
+    assert pair.expected == "test" and pair.expectation_met is None  # not a gap ticket
+
+
+def test_expected_gaps_and_vague_tickets_are_scored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ticket2test.eval.pairs import ExpectedGap
+
+    gap_pair = _STND104.pairs[0].model_copy(
+        update={
+            "expect": "gap",
+            "gaps": [ExpectedGap(owner="nav.rules.list", words=["rule", "count"])],
+        }
+    )
+    gap_set = _STND104.model_copy(update={"pairs": [gap_pair]})
+    monkeypatch.setattr(generation_module, "collect_generated", _fake_collect(True))
+    replies = [
+        _draft_reply(_DRAFT),
+        _rewrite(["delete", "rule"], []),
+        _generation_reply(BAD_CODE),
+        _generation_reply(),
+    ]
+    report = run_eval(
+        [gap_set], ROOT, _settings(tmp_path), FakeLLMClient(replies), stage="generation",
+        leave_one_out=False,
+    )  # fmt: skip
+    assert report.generation is not None
+    (pair,) = report.generation.pairs
+    assert pair.expectation_met and pair.gaps_found and "rule_count" in pair.gaps_found[0]
+    metrics = report.generation.metrics()
+    assert (metrics["gap_pairs"], metrics["gaps_found"]) == (1, 1)
+    markdown = render_markdown(report)
+    assert "| Missing-piece tickets: expected gap reported | 1/1 |" in markdown
+    assert "STND-104: expected gap, met" in markdown
+
+    wrong_words = gap_pair.model_copy(
+        update={"gaps": [ExpectedGap(owner="nav.rules.list", words=["export"])]}
+    )
+    monkeypatch.setattr(generation_module, "collect_generated", _fake_collect(True))
+    report = run_eval(
+        [_STND104.model_copy(update={"pairs": [wrong_words]})], ROOT, _settings(tmp_path / "b"),
+        FakeLLMClient(replies), stage="generation", leave_one_out=False,
+    )  # fmt: skip
+    assert report.generation is not None and report.generation.pairs[0].expectation_met is False
+
+    vague = _STND104.pairs[0].model_copy(update={"expect": "insufficient_info"})
+    insufficient = _draft_reply(status="insufficient_info", missing=["steps_to_reproduce"])
+    no_skeleton = _settings(tmp_path / "c").model_copy(
+        update={"draft": Settings().draft.model_copy(update={"skeleton": "never"})}
+    )
+    report = run_eval(
+        [_STND104.model_copy(update={"pairs": [vague]})], ROOT, no_skeleton,
+        FakeLLMClient([insufficient]), stage="generation", leave_one_out=False,
+    )  # fmt: skip
+    assert report.generation is not None
+    (pair,) = report.generation.pairs
+    assert pair.status == "insufficient_info" and pair.expectation_met is True

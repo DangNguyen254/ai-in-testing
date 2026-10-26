@@ -34,16 +34,19 @@ from ticket2test.generate.generator import first_party
 from ticket2test.generate.pipeline import generate_reusing
 from ticket2test.index.datafile import layout_of
 from ticket2test.index.indexer import IndexData, update_index
+from ticket2test.index.tokens import split_identifier
 from ticket2test.llm.base import LLMClient, LLMError
 from ticket2test.llm.factory import model_name
 from ticket2test.llm.meter import Usage, usage_of
 from ticket2test.models.chunk import Chunk
 from ticket2test.models.draft import DraftResult
+from ticket2test.models.gaps import GapVerdict
 from ticket2test.models.ticket import Ticket
 from ticket2test.normalize import normalize
 from ticket2test.retrieve.pipeline import retrieve
 from ticket2test.sandbox.runner import SandboxError, collect_generated
 from ticket2test.style import FormatError, format_entries, format_python
+from ticket2test.validate.claims import norm
 from ticket2test.validate.suite import read_suite_data
 
 _INVENTED = ("[names]", "[imports]")
@@ -60,6 +63,9 @@ class GenerationPairResult(BaseModel):
     decided: str | None = None  # the decision before fallbacks
     reuse_target: str | None = None
     reuse_notes: list[str] = Field(default_factory=list)  # fallbacks taken
+    expected: str = "test"  # what a correct run produces (see EvalPair.expect)
+    gaps_found: list[str] = Field(default_factory=list)  # reported gaps matching the expected
+    expectation_met: bool | None = None  # gap and insufficient-info pairs only
     guide: str = ""  # the area guide in the context ("" when none)
     missing: list[str] = Field(default_factory=list)  # "<status> <owner>.<name>" per candidate
     fixed_in_code: str = ""  # fixes made in code instead of an LLM retry (from notes)
@@ -130,6 +136,12 @@ class GenerationReport(BaseModel):
             if gen
             else None,
             "leave_one_out_violations": sum(p.leave_one_out_ok is False for p in gen),
+            "gap_pairs": sum(p.expected == "gap" for p in self.pairs),
+            "gaps_found": sum(p.expected == "gap" and bool(p.expectation_met) for p in self.pairs),
+            "vague_pairs": sum(p.expected == "insufficient_info" for p in self.pairs),
+            "vague_recognized": sum(
+                p.expected == "insufficient_info" and bool(p.expectation_met) for p in self.pairs
+            ),
         }
 
 
@@ -284,7 +296,9 @@ def _one(
     keep_dir: Path | None,
 ) -> GenerationPairResult:
     started = time.monotonic()
-    result = GenerationPairResult(pair_id=pair.id, ticket=pair.ticket, status="failed")
+    result = GenerationPairResult(
+        pair_id=pair.id, ticket=pair.ticket, status="failed", expected=pair.expect
+    )
     linked = {manifest_test_to_chunk_id(t) for t in pair.tests}
     used_repo, used_index = repo, index
     if leave_one_out:  # a real copy without the linked tests, so files and index agree
@@ -334,6 +348,7 @@ def _one(
     result.reuse_kind, result.decided = outcome.kind, outcome.decision.kind
     result.reuse_target, result.reuse_notes = outcome.decision.target, list(outcome.notes)
     result.guide = outcome.guide
+    result.gaps_found = _matching_gaps(pair, outcome.missing, used_index)
     result.missing = [
         f"{v.status} {v.piece.owner + '.' if v.piece.owner else ''}{v.piece.name}"
         for v in outcome.missing
@@ -413,4 +428,37 @@ def _keep(folder: Path, generated: Any, settings: Settings) -> None:
 
 def _finish(result: GenerationPairResult, started: float) -> GenerationPairResult:
     result.seconds = round(time.monotonic() - started, 1)
+    if result.expected == "insufficient_info":
+        result.expectation_met = result.status == "insufficient_info"
+    elif result.expected == "gap":
+        result.expectation_met = bool(result.gaps_found)
     return result
+
+
+def _matching_gaps(pair: EvalPair, missing: list[GapVerdict], index: IndexData) -> list[str]:
+    """Reported gaps (missing or close match) on the expected owner whose name has the expected
+    words. The owner matches when it is the expected class or related to it by inheritance."""
+    catalog = index.catalog
+    found: list[str] = []
+    for expected in pair.gaps:
+        resolution = (
+            catalog.resolve_chain_from_roots(expected.owner)
+            if expected.owner.split(".")[0] in catalog.chain_roots
+            else None
+        )
+        if resolution is not None:
+            want = resolution.types[-1] if resolution.ok and resolution.types else None
+        else:
+            entry = catalog.class_named(expected.owner)
+            want = entry.qualname if entry else None
+        related = {want} | {e.qualname for e in catalog.mro(want)} if want else set()
+        words = {norm(w) for w in expected.words}
+        for verdict in missing:
+            if verdict.status not in ("missing", "close_match"):
+                continue
+            owner = verdict.owner_class
+            owner_line = {owner} | {e.qualname for e in catalog.mro(owner)} if owner else set()
+            name_words = {norm(w) for w in split_identifier(verdict.piece.name)}
+            if related & owner_line and words <= name_words:
+                found.append(f"{verdict.status} {verdict.piece.owner}.{verdict.piece.name}")
+    return found

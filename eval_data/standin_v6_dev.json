@@ -32,12 +32,23 @@
     {
       "id": "standin-132",
       "ticket": "STND-132",
-      "tests": []
+      "tests": [],
+      "expect": "gap",
+      "gaps": [
+        {
+          "owner": "nav.exceptions.editor",
+          "words": [
+            "clear",
+            "expiry"
+          ]
+        }
+      ]
     },
     {
       "id": "standin-133",
       "ticket": "STND-133",
-      "tests": []
+      "tests": [],
+      "expect": "insufficient_info"
     },
     {
       "id": "standin-134",
