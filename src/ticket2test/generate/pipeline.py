@@ -172,7 +172,23 @@ def generate_reusing(
     if retrieval.investigation is not None:
         pieces += from_hints(retrieval.investigation.missing)
     outcome.missing = check_pieces(pieces, index, settings)
+    gaps = [v for v in outcome.missing if v.status in ("missing", "close_match")]
+    if gaps and outcome.generated is not None:  # put the warning where the reviewer looks
+        notes = [_gap_note(v) for v in gaps]
+        checklist = [*outcome.generated.review_checklist, *notes]
+        outcome.generated = outcome.generated.model_copy(update={"review_checklist": checklist})
     return outcome
+
+
+def _gap_note(verdict: GapVerdict) -> str:
+    piece = verdict.piece
+    owner = (verdict.owner_class or piece.owner).rsplit(".", 1)[-1]
+    where = f"{owner}.{piece.name}" if owner else piece.name
+    close = f" (similar: {', '.join(verdict.close)})" if verdict.close else ""
+    return (
+        f"The ticket needs {where}, which the suite doesn't have{close}. This test may work "
+        "around it, so it doesn't fully test the ticket until that exists."
+    )
 
 
 def _variant_target(decision: ReuseDecision) -> str | None:

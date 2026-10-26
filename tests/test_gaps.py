@@ -151,6 +151,12 @@ def test_generation_records_checked_gaps(
         ("add_blocklist_hash", "missing"),
         ("build_blocked_file", "missing"),
     ]
+    assert outcome.generated is not None
+    notes = [n for n in outcome.generated.review_checklist if "doesn't fully test" in n]
+    assert len(notes) == 2
+    assert any(
+        n.startswith("The ticket needs DownloadPolicyPage.add_blocklist_hash") for n in notes
+    )
 
 
 def test_a_page_returned_by_a_helper_is_checked(setup: tuple[Settings, IndexData]) -> None:
