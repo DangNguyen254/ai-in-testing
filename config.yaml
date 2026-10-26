@@ -178,6 +178,7 @@ validation:                     # deterministic checks of generated tests (Phase
   testcase_bases: [unittest.TestCase, TestCase]   # classes inheriting these may also use self.assert*
   path_string_helpers: []         # helpers taking a dotted page path string; checked like chains
   forbid_page_locators: true      # tests use page actions and properties, never locator constants
+  raw_driver_access: [self.driver, self._driver]   # UI tests never use these (page objects only)
   discover_path_string_helpers: true   # also: functions that split on "." and call getattr
   assertion_methods: [assertEqual, assertNotEqual, assertTrue, assertFalse, assertIn,
                       assertNotIn, assertIsNone, assertIsNotNone, assertGreater, assertLess,

@@ -598,6 +598,20 @@
       "kind": "vague",
       "tests": [],
       "gaps": []
+    },
+    "STND-145": {
+      "status": "open",
+      "set": "dev",
+      "kind": "gap",
+      "tests": [],
+      "gaps": [
+        {
+          "owner": "nav.exceptions.list",
+          "words": [
+            "title"
+          ]
+        }
+      ]
     }
   }
 }

@@ -385,6 +385,33 @@ def check_page_locators(s: Subject) -> Iterator[Finding]:
                 )
 
 
+def check_raw_driver(s: Subject) -> Iterator[Finding]:
+    """UI tests drive the browser through page objects, never the raw driver
+    (``self.driver.get(url)``): a second way around a missing page action, found on the held-out
+    v6 set. As with locators, the action should be called by name so the gap is reported."""
+    raw = s.settings.validation.raw_driver_access
+    if not raw:
+        return
+    for _, fn in s.tests:
+        reported: set[str] = set()
+        for node in ast.walk(fn):
+            if not isinstance(node, ast.Attribute):
+                continue
+            text = dotted(node)
+            base = next((r for r in raw if text == r or text.startswith(r + ".")), None)
+            if base is None or base in reported:
+                continue
+            reported.add(base)
+            yield _f(
+                "raw_driver",
+                f"{text} uses the browser driver directly: go through the page objects; if the "
+                "action or value you need doesn't exist, call it by the name it would have (it "
+                "is then reported as a missing piece)",
+                test=fn.name,
+                line=node.lineno,
+            )
+
+
 def check_assertions(s: Subject) -> Iterator[Finding]:
     v = s.settings.validation
     allowed = set(v.assertion_methods)
@@ -915,6 +942,7 @@ CHECKS: list[tuple[str, Check]] = [
     ("claims", check_claims),
     ("hooks", check_hooks),
     ("page_locators", check_page_locators),
+    ("raw_driver", check_raw_driver),
     ("path_strings", check_path_strings),
     ("draft_outcome", check_draft_outcome),
     ("variants", check_variants),

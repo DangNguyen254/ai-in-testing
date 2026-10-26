@@ -1,6 +1,6 @@
 {
   "_comment": "Hand-written FAKE tickets for the synthetic stand-in app (Jira API v2 export shape, wiki markup). Not real data.",
-  "total": 44,
+  "total": 45,
   "issues": [
     {
       "id": "30101",
@@ -963,6 +963,27 @@
           }
         ],
         "description": "The expiry column looks off for some exceptions.\n\nh3. Steps to Reproduce\n# Open Exceptions\n# Look at the Expires column",
+        "comment": {
+          "total": 0,
+          "comments": []
+        }
+      }
+    },
+    {
+      "id": "30145",
+      "key": "STND-145",
+      "self": "https://jira.example.com/rest/api/2/issue/30145",
+      "fields": {
+        "summary": "The browser tab on the Exceptions page is titled Rules",
+        "labels": [
+          "exceptions"
+        ],
+        "components": [
+          {
+            "name": "exceptions"
+          }
+        ],
+        "description": "The page heading is right, but the browser tab still shows the title of the Rules page.\n\nh3. Steps to Reproduce\n# Open Exceptions\n# Look at the title of the browser tab\n\nh3. Expected Behavior\nThe browser tab is titled Exceptions.\n\nh3. Actual Behavior\nThe browser tab is titled Rules.",
         "comment": {
           "total": 0,
           "comments": []

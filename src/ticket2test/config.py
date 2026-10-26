@@ -348,6 +348,9 @@ class ValidateSettings(_Section):
     # Tests never touch the page objects' locator constants (ALL_CAPS attributes): actions and
     # properties only. Off for suites whose tests use locators directly.
     forbid_page_locators: bool = True
+    # Expressions that reach the raw browser driver; UI tests must not use them (page objects
+    # only). Empty: the check is off.
+    raw_driver_access: list[str] = Field(default_factory=lambda: ["self.driver", "self._driver"])
     # Helpers that take a page-object path as a dotted string (``navigate("area.page")``) and
     # resolve it with getattr: the string is checked like a chain. Discovered too: functions
     # whose body splits a string on "." and calls getattr.

@@ -820,3 +820,15 @@ def test_tests_never_use_page_locators(setup: Any) -> None:
     assert len(messages) == 1 and "rules.SEARCH_BUTTON is a page object's locator" in messages[0]
     assert "call it by the name it would have" in messages[0]
     assert _messages(_validate(setup), "page_locators") == []
+
+
+def test_tests_never_use_the_raw_driver(setup: Any) -> None:
+    """Held-out v6 finding: with no page action for a link, a test opened the URL with the raw
+    driver; the gap was reported, but the test went around the page objects."""
+    code = _replace(
+        "      rules.search()\n",
+        '      self.driver.get(self.config.base_url + "/rules?q=alpha")\n',
+    )
+    messages = _messages(_validate(setup, code=code), "raw_driver")
+    assert len(messages) == 1 and "uses the browser driver directly" in messages[0]
+    assert _messages(_validate(setup), "raw_driver") == []

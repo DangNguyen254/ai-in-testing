@@ -37,6 +37,7 @@ CONFIG_HINTS: dict[str, str] = {
     "base_class": "validation.base_classes (empty: discovered from existing test classes)",
     "hooks": "generate.scaffold_methods (the setup/teardown names the suite uses)",
     "page_locators": "validation.forbid_page_locators (off if tests use locators directly)",
+    "raw_driver": "validation.raw_driver_access (the expressions that reach the raw driver)",
     "page_objects": "index.chain_roots; page objects may not use properties for values",
     "assertions": "validation.assertion_object, validation.assertion_methods",
     "markers": "markers.priorities, markers.suites, markers.project, markers.required",

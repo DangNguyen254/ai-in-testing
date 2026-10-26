@@ -70,6 +70,20 @@
       "tests": [
         "tests/exceptions/test_exceptions.py::TestExceptions::test_exceptions_edit_disable"
       ]
+    },
+    {
+      "id": "standin-145",
+      "ticket": "STND-145",
+      "tests": [],
+      "expect": "gap",
+      "gaps": [
+        {
+          "owner": "nav.exceptions.list",
+          "words": [
+            "title"
+          ]
+        }
+      ]
     }
   ]
 }
