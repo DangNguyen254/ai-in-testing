@@ -158,7 +158,8 @@ def build(out, force=False):
          raise FileExistsError(f"{out} is not empty (use --force to rebuild)")
       _rmtree(out)
    out.mkdir(parents=True, exist_ok=True)
-   _git(out, "init", "-q", "-b", "main")
+   _git(out, "init", "-q")
+   _git(out, "symbolic-ref", "HEAD", "refs/heads/main")  # "init -b" needs git 2.28 or newer
 
    # Commit 1: all three bugs present, their tests skipped with the ticket id.
    _sync(out)
