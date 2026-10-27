@@ -52,8 +52,18 @@ def _data_of(
         if path != module_data[1]:
             found = read_data(path)
             if found is not None:
+                if settings.function_file_cases:  # entries name cases: function[case]
+                    found = found._replace(entries=case_entries(function, found.entries))
                 return found, path
     return module_data
+
+
+def case_entries(function: str, entries: dict[str, Any]) -> dict[str, Any]:
+    """Entries keyed by the pytest id of their case, ``<function>[<entry id>]``."""
+    return {
+        key if key.startswith(f"{function}[") else f"{function}[{key}]": entry
+        for key, entry in entries.items()
+    }
 
 
 def parse_marker(decorator: str, source: str = "function") -> Marker | None:
@@ -205,10 +215,14 @@ def _test_chunk(
         parametrized_fixtures,
         custom_id_hook,
     )
+    names = list(ids.names)
+    if data is not None and names == [fn.name]:  # cases from the function's own data file
+        cases = [k for k in data.entries if k.startswith(f"{fn.name}[")]
+        names = cases or names
     argnames = {name for info_ in ids.decorators for name in info_.argnames}
     markers = [m for d in fn.decorators if (m := parse_marker(d, "function"))]
     markers += [m for d in class_decorators if (m := parse_marker(d, "class"))]
-    entries = {n: data.entries[n] for n in ids.names if data and n in data.entries}
+    entries = {n: data.entries[n] for n in names if data and n in data.entries}
     return Chunk(
         id=f"{info.path}::{qualname}",
         file_path=info.path,
@@ -229,7 +243,7 @@ def _test_chunk(
             if is_parametrize(p.source)
         ],
         fixtures=[p for p in params if p not in argnames],
-        test_ids=ids.names,
+        test_ids=names,
         test_ids_computed=ids.computed,
         test_ids_note=ids.note,
         data_file=data_path if data is not None else None,

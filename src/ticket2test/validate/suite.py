@@ -491,7 +491,16 @@ def _function_file_entries(
             continue
         seen.add(chunk.data_file)
         rows, _, _ = read_suite_data(repo, path, settings, chunk.data_file)
-        found += split_defaults(rows, settings.data)[1]
+        rows = split_defaults(rows, settings.data)[1]
+        if settings.index.function_file_cases:  # each entry is a case of the function
+            id_field, name = settings.data.id_field, chunk.symbol_name
+            rows = [
+                {**row, id_field: f"{name}[{row.get(id_field)}]"}
+                if not str(row.get(id_field, "")).startswith(f"{name}[")
+                else row
+                for row in rows
+            ]
+        found += rows
     return found
 
 

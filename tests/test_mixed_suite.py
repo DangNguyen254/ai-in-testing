@@ -457,3 +457,32 @@ def test_sections_may_list_several_helpers(setup: Any) -> None:
         "targets": ["self.verify_targets", "self.*_validate_result"]
     }
     assert settings.data.helper_patterns() == ["self.verify_targets", "self.*_validate_result"]
+
+
+def test_a_functions_own_data_file_may_hold_its_cases(tmp_path: Path) -> None:
+    """Found on the real suite: the framework runs a test once per entry of the function's own
+    data file, with the id ``function[<entry id>]``; entries name only the case."""
+    repo = tmp_path / "repo"
+    (repo / "tests" / "area").mkdir(parents=True)
+    (repo / "tests" / "area" / "test_a.py").write_text(
+        "from framework.base import Base\n\n\nclass TestA(Base):\n"
+        '   def test_one(self):\n      self.check.assertEqual(1, self.params["k"])\n',
+        encoding="utf-8",
+    )
+    rows = [{"test_id": "small", "k": 1}, {"test_id": "large", "k": 2}]
+    (repo / "tests" / "area" / "test_one.json").write_text(json.dumps(rows), encoding="utf-8")
+    settings = Settings.model_validate(
+        {
+            "paths": {"cache_dir": str(tmp_path / "cache")},
+            "index": {"function_file_cases": True},
+            "validation": {"base_classes": []},
+        }
+    )
+    index, _, _ = update_index(repo, settings)
+    chunk = next(c for c in index.chunks if c.kind == "test")
+    assert chunk.test_ids == ["test_one[small]", "test_one[large]"]
+    assert set(chunk.data_entries) == {"test_one[small]", "test_one[large]"}
+    from ticket2test.validate.suite import file_findings
+
+    report = file_findings(repo, "tests/area/test_a.py", index, settings)
+    assert [f.message for f in report.findings if f.check == "ids"] == []

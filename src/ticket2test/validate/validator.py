@@ -864,8 +864,19 @@ def check_ids_and_entries(s: Subject) -> Iterator[Finding]:
             yield _f("ids", str(exc))
             return
         own = []  # a class that only inherits its tests
-    ids = list(dict.fromkeys([*own, *s.inherited_ids]))
     keys = [e.get(d.id_field) for e in s.entries]
+    if s.settings.index.function_file_cases:  # a function's cases come from its data file
+        own = [
+            case
+            for test_id in own
+            for case in (
+                [k for k in keys if isinstance(k, str) and k.startswith(f"{test_id}[")]
+                if "[" not in test_id
+                else []
+            )
+            or [test_id]
+        ]
+    ids = list(dict.fromkeys([*own, *s.inherited_ids]))
     if any(not isinstance(k, str) for k in keys):
         yield _f("ids", f"every entry needs a string {d.id_field!r}")
     duplicates = sorted({k for k in keys if isinstance(k, str) and keys.count(k) > 1})
