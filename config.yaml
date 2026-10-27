@@ -69,6 +69,7 @@ index:
            "*.egg-info", vendor, vendored, third_party, "*_pb2.py", "*_pb2_grpc.py"]
   max_file_bytes: 1000000
   test_file_globs: ["test_*.py", "*_test.py"]
+  test_paths: []                 # folders where tests live (empty: anywhere); the rest is still indexed
   test_function_prefix: test
   test_class_prefix: Test
   data_file_suffix: .json        # test_x.py -> test_x.json

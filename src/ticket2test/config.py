@@ -132,6 +132,9 @@ class IndexSettings(_Section):
     )  # fmt: skip
     max_file_bytes: int = Field(default=1_000_000, ge=1)
     test_file_globs: list[str] = Field(default_factory=lambda: ["test_*.py", "*_test.py"])
+    # Repo-relative folders where tests live. Empty: tests anywhere. Files outside them are
+    # still indexed (framework code, page objects, helpers) but never count as tests.
+    test_paths: list[str] = Field(default_factory=list)
     test_function_prefix: str = "test"
     test_class_prefix: str = "Test"
     data_file_suffix: str = ".json"  # test_x.py -> test_x.json

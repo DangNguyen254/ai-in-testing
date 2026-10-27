@@ -26,8 +26,13 @@ DataReader = Callable[[str], DataFile | None]
 
 
 def is_test_file(path: str, settings: IndexSettings) -> bool:
+    """The file name matches ``index.test_file_globs`` and, when ``index.test_paths`` is set,
+    the file is inside one of those folders."""
     name = path.rsplit("/", 1)[-1]
-    return any(fnmatch.fnmatch(name, pattern) for pattern in settings.test_file_globs)
+    if not any(fnmatch.fnmatch(name, pattern) for pattern in settings.test_file_globs):
+        return False
+    roots = [p.strip("/") for p in settings.test_paths]
+    return not roots or any(path == r or path.startswith(r + "/") for r in roots)
 
 
 def data_file_for(path: str, settings: IndexSettings) -> str:

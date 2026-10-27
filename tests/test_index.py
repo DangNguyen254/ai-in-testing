@@ -499,3 +499,19 @@ def test_suite_code_warnings_dont_flood_the_output(tmp_path: Path) -> None:
     assert not [w for w in caught if issubclass(w.category, SyntaxWarning)]
     source = Path(ticket2test.cli.__file__).read_text(encoding="utf-8")  # pytest resets filters
     assert 'warnings.filterwarnings("ignore", category=SyntaxWarning)' in source
+
+
+def test_tests_only_count_inside_test_paths(tmp_path: Path) -> None:
+    """index.test_paths: test files elsewhere stay indexed as plain code, not as tests."""
+    repo = tmp_path / "repo"
+    for folder in ("suite/area", "tools"):
+        (repo / folder).mkdir(parents=True)
+    (repo / "suite/area/test_a.py").write_text("def test_a():\n   pass\n", encoding="utf-8")
+    (repo / "tools/test_helper.py").write_text("def test_like():\n   pass\n", encoding="utf-8")
+    settings = Settings.model_validate(
+        {"paths": {"cache_dir": str(tmp_path / "cache")}, "index": {"test_paths": ["suite"]}}
+    )
+    index, _, _ = update_index(repo, settings)
+    kinds = {(c.file_path, c.kind) for c in index.chunks}
+    assert ("suite/area/test_a.py", "test") in kinds
+    assert ("tools/test_helper.py", "function") in kinds  # indexed, not a test
