@@ -380,6 +380,8 @@ class ValidateSettings(_Section):
     forbid_page_locators: bool = True
     # Expressions that reach the raw browser driver; UI tests must not use them (page objects
     # only). Empty: the check is off.
+    # Expressions that reach the raw browser driver (``*`` is a wildcard, e.g.
+    # ``self.driver.find_element*`` when ``self.driver`` itself is the framework's wrapper).
     raw_driver_access: list[str] = Field(default_factory=lambda: ["self.driver", "self._driver"])
     # Helpers that take a page-object path as a dotted string (``navigate("area.page")``) and
     # resolve it with getattr: the string is checked like a chain. Discovered too: functions

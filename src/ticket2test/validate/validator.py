@@ -7,6 +7,7 @@ Each check returns findings; ``error`` findings block the test (and feed the rep
 from __future__ import annotations
 
 import ast
+import fnmatch
 import json
 import re
 import sys
@@ -607,7 +608,7 @@ def check_raw_driver(s: Subject) -> Iterator[Finding]:
             if not isinstance(node, ast.Attribute):
                 continue
             text = dotted(node)
-            base = next((r for r in raw if text == r or text.startswith(r + ".")), None)
+            base = next((r for r in raw if _reaches(text, r)), None)
             if base is None or base in reported:
                 continue
             reported.add(base)
@@ -662,6 +663,15 @@ def _class_code(s: Subject, cls: ast.ClassDef | None) -> str:
     if record is None or record.info is None or cls is None:
         return ""
     return next((c.code for c in record.info.classes if c.name == cls.name), "")
+
+
+def _reaches(text: str, expression: str) -> bool:
+    """``text`` (a dotted attribute) is ``expression`` or goes through it. ``*`` in the
+    expression is a wildcard: ``self.driver.find_element*`` matches ``find_elements`` and
+    ``find_element_by_id``, but not ``self.driver.get`` (a framework wrapper)."""
+    if "*" in expression:
+        return fnmatch.fnmatchcase(text, expression) or fnmatch.fnmatchcase(text, expression + ".*")
+    return text == expression or text.startswith(expression + ".")
 
 
 def check_assertions(s: Subject) -> Iterator[Finding]:

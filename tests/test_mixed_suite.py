@@ -398,3 +398,14 @@ def test_an_import_a_new_method_needs_is_merged_into_the_files_imports(setup: An
     assert body.rstrip("\n") in generated.code
     report = validate_patch(generated, index, settings, STANDIN)
     assert not [f for f in report.errors if f.check == "style"], [f.render() for f in report.errors]
+
+
+def test_raw_driver_expressions_may_use_a_wildcard(setup: Any) -> None:
+    """Real suites wrap the driver: only raw locator calls count, not the wrapper itself."""
+    settings = _with(setup[0], "validation", raw_driver_access=["self.driver.find_element*"])
+    raw = GOOD_CODE.replace(
+        "rules.search()", "rules.search()\n      self.driver.find_elements_by_css('x')", 1
+    )
+    assert _messages(_validate(setup, code=raw, settings=settings), "raw_driver")
+    wrapper = GOOD_CODE.replace("rules.search()", "rules.search()\n      self.driver.get('x')", 1)
+    assert not _messages(_validate(setup, code=wrapper, settings=settings), "raw_driver")
