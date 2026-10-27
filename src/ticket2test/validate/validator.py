@@ -144,10 +144,20 @@ def check_imports(s: Subject) -> Iterator[Finding]:
     assert s.tree is not None
     modules = {sym.qualname for sym in s.catalog.symbols if sym.kind == "module"}
     external = set(s.settings.validation.external_modules) | set(sys.stdlib_module_names)
+    package = s.module.rpartition(".")[0]  # a sibling module: pytest puts the test's folder
+    fallbacks = _import_fallbacks(s.tree)  # on the import path when it isn't a package
+
+    def own(name: str) -> str:
+        """The module's name in the repo: as written, or as a sibling of this file."""
+        sibling = f"{package}.{name}" if package else name
+        return sibling if name not in modules and sibling in modules else name
+
     for node in ast.walk(s.tree):
+        if id(node) in fallbacks:
+            continue  # inside try/except ImportError: an alternative, maybe for another Python
         if isinstance(node, ast.Import):
             for alias in node.names:
-                if not _known_module(alias.name, modules, external):
+                if not _known_module(own(alias.name), modules, external):
                     yield _f("imports", f"unknown module {alias.name!r}", line=node.lineno)
         elif isinstance(node, ast.ImportFrom):
             if node.level:
@@ -156,7 +166,7 @@ def check_imports(s: Subject) -> Iterator[Finding]:
                         "imports", "relative imports are not used in the suite", line=node.lineno
                     )
                 continue
-            module = node.module or ""
+            module = own(node.module or "")
             if module in modules:
                 for alias in node.names:
                     if alias.name == "*":  # binds what the module defines (check_names)
@@ -169,6 +179,30 @@ def check_imports(s: Subject) -> Iterator[Finding]:
                         )
             elif not _known_module(module, modules, external):
                 yield _f("imports", f"unknown module {module!r}", line=node.lineno)
+
+
+def _import_fallbacks(tree: ast.Module) -> set[int]:
+    """Imports inside a ``try`` whose ``except`` catches import errors (``ImportError``,
+    ``ModuleNotFoundError``, ``Exception`` or a bare ``except``): one of the alternatives may
+    not exist on this Python, e.g. a Python 2 module name."""
+    catching = {"ImportError", "ModuleNotFoundError", "Exception", "BaseException"}
+    found: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Try):
+            continue
+        names = set()
+        for handler in node.handlers:
+            if handler.type is None:
+                names.add("Exception")
+            else:
+                kinds = handler.type.elts if isinstance(handler.type, ast.Tuple) else [handler.type]
+                names |= {dotted(k).rsplit(".", 1)[-1] for k in kinds}
+        if names & catching:
+            for part in [*node.body, *(s for h in node.handlers for s in h.body)]:
+                found |= {
+                    id(n) for n in ast.walk(part) if isinstance(n, ast.Import | ast.ImportFrom)
+                }
+    return found
 
 
 def _reexports(imports: list[str], name: str) -> bool:

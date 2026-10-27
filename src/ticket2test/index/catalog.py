@@ -158,7 +158,15 @@ class SymbolCatalog(BaseModel):
         if target in self.classes:
             return target
         owner, _, last = target.rpartition(".")
-        if owner in self.module_names or owner in self.module_exports:
+        package = module.rpartition(".")[0]
+        known = owner in self.module_names or owner in self.module_exports
+        if package and owner and not known:  # a sibling module of a test outside a package
+            sibling = f"{package}.{owner}"
+            if f"{package}.{target}" in self.classes:
+                return f"{package}.{target}"
+            if sibling in self.module_names or sibling in self.module_exports:
+                return self.imported(sibling, last, depth + 1) or f"{package}.{target}"
+        if known:
             return self.imported(owner, last, depth + 1) or target
         return target
 

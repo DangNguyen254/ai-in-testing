@@ -162,3 +162,31 @@ def test_import_roots_name_modules_the_way_tests_import_them(tmp_path: Path) -> 
 
     assert len(import_errors([])) == 2  # without roots: both imports look unknown
     assert import_errors(["svc/test", "svc/test/tester"]) == []
+
+
+def test_sibling_modules_and_import_fallbacks(tmp_path: Path) -> None:
+    """Found on the real suite: tests import modules from their own folder (pytest puts it on
+    the import path), and legacy code imports a Python 2 name inside try/except ImportError."""
+    repo = tmp_path / "repo"
+    files = {
+        "tests/area/helper_base.py": "class AreaBase:\n   def helper(self):\n      pass\n",
+        "tests/area/test_a.py": (
+            "import helper_base\n"
+            "from helper_base import AreaBase\n"
+            "try:\n   import urlparse\n"
+            "except ImportError:\n   from urllib import parse as urlparse\n"
+            "\n\nclass TestA(AreaBase):\n   def test_a(self):\n      self.helper()\n"
+        ),
+    }
+    for path, text in files.items():
+        (repo / path).parent.mkdir(parents=True, exist_ok=True)
+        (repo / path).write_text(text, encoding="utf-8")
+    settings = Settings.model_validate({"paths": {"cache_dir": str(tmp_path / "cache")}})
+    index, _, _ = update_index(repo, settings)
+    found = index.catalog.class_named("AreaBase", "tests.area.test_a")
+    assert found is not None and found.qualname == "tests.area.helper_base.AreaBase"
+    generated = _generated(files["tests/area/test_a.py"]).model_copy(
+        update={"file_name": "tests/area/test_a.py"}
+    )
+    report = validate_generated(generated, index.catalog, settings, index=index)
+    assert [f.message for f in report.findings if f.check == "imports"] == []
