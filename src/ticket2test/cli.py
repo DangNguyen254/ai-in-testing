@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
@@ -10,6 +11,11 @@ import typer
 
 from ticket2test import __version__
 from ticket2test.config import Settings, load_settings
+
+# The tool parses the target suite's code with its own (newer) Python, which warns about things
+# the suite's Python accepts, e.g. "\d" in a plain string. Those warnings are about the suite,
+# not this tool, and would flood the output of index and check-suite.
+warnings.filterwarnings("ignore", category=SyntaxWarning)
 
 app = typer.Typer(
     name="ticket2test",

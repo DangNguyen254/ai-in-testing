@@ -478,3 +478,24 @@ def test_variant_rule_names_the_generated_classes() -> None:
         "TestX_b",
     ]
     assert variant_classes("TestX", ["data_driven"], rules) is None
+
+
+def test_suite_code_warnings_dont_flood_the_output(tmp_path: Path) -> None:
+    r"""Found on the first real-suite index: this tool's newer Python warned about every "\d" in
+    the suite's plain strings, which the suite's own Python accepts."""
+    import warnings
+
+    import ticket2test.cli
+
+    repo = tmp_path / "repo"
+    (repo / "tests").mkdir(parents=True)
+    (repo / "tests" / "test_w.py").write_text(
+        'import re\n\n\ndef test_a():\n   assert re.match("\\d+", "1")\n', encoding="utf-8"
+    )
+    settings = Settings.model_validate({"paths": {"cache_dir": str(tmp_path / "cache")}})
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.filterwarnings("ignore", category=SyntaxWarning)  # as the CLI sets it
+        update_index(repo, settings)
+    assert not [w for w in caught if issubclass(w.category, SyntaxWarning)]
+    source = Path(ticket2test.cli.__file__).read_text(encoding="utf-8")  # pytest resets filters
+    assert 'warnings.filterwarnings("ignore", category=SyntaxWarning)' in source
