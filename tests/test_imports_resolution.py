@@ -129,16 +129,16 @@ def test_import_roots_name_modules_the_way_tests_import_them(tmp_path: Path) -> 
     from ticket2test.index.extract import module_name
 
     assert module_name("svc/test/framework/pages/a.py", ["svc/test"]) == "framework.pages.a"
-    assert module_name("svc/test/tester/_globals.py", ["svc/test", "svc/test/tester"]) == "_globals"
+    assert module_name("svc/test/tester/_shared.py", ["svc/test", "svc/test/tester"]) == "_shared"
     assert module_name("svc/other.py", ["svc/test"]) == "svc.other"
     repo = tmp_path / "repo"
     files = {
         "svc/test/framework/__init__.py": "",
         "svc/test/framework/pages.py": "class Page:\n   def save(self):\n      pass\n",
-        "svc/test/tester/_globals.py": "VALUE = 1\n",
+        "svc/test/tester/_shared.py": "VALUE = 1\n",
         "svc/test/tester/area/test_a.py": (
-            "import _globals\nfrom framework.pages import Page\n\n\n"
-            "def test_a():\n   Page().save()\n   assert _globals.VALUE\n"
+            "import _shared\nfrom framework.pages import Page\n\n\n"
+            "def test_a():\n   Page().save()\n   assert _shared.VALUE\n"
         ),
     }
     for path, text in files.items():
