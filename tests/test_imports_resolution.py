@@ -190,3 +190,27 @@ def test_sibling_modules_and_import_fallbacks(tmp_path: Path) -> None:
     )
     report = validate_generated(generated, index.catalog, settings, index=index)
     assert [f.message for f in report.findings if f.check == "imports"] == []
+
+
+def test_a_function_local_import_decides_which_class_a_name_means(tmp_path: Path) -> None:
+    """Found on the real suite: several modules define the same page class name, and each
+    property imports the right one inside its body; the module-wide guess picked another."""
+    repo = tmp_path / "repo"
+    files = {
+        "pages/a.py": "class Page:\n   def save(self):\n      pass\n",
+        "pages/b.py": "class Page:\n   def publish(self):\n      pass\n",
+        "nav.py": (
+            "class Nav:\n   @property\n   def area(self):\n"
+            "      from pages.b import Page\n\n      return Page()\n"
+        ),
+    }
+    for path, text in files.items():
+        (repo / path).parent.mkdir(parents=True, exist_ok=True)
+        (repo / path).write_text(text, encoding="utf-8")
+    settings = Settings.model_validate({"paths": {"cache_dir": str(tmp_path / "cache")}})
+    index, _, _ = update_index(repo, settings)
+    catalog = index.catalog
+    _owner, member = catalog.members_of("nav.Nav")["area"]
+    assert member.type_text == "pages.b.Page"
+    page = catalog.resolve_type(member.type_text, "nav")
+    assert page is not None and page.qualname == "pages.b.Page"

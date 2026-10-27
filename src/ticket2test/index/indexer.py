@@ -30,10 +30,11 @@ from ticket2test.models.chunk import Chunk
 
 log = logging.getLogger(__name__)
 
-INDEX_VERSION = 10  # 2: syntax-tree refs; 3: array data files, returned calls; 4: imports;
+INDEX_VERSION = 11  # 2: syntax-tree refs; 3: array data files, returned calls; 4: imports;
 # 5: inherited tests and class variants; 6: defaults rows, per-function data files;
 # 7: page objects by type traversal, chains_truncated; 8: Python 3 parse check;
-# 9: return self-chains; 10: per-module import maps and star imports
+# 9: return self-chains; 10: per-module import maps and star imports;
+# 11: function-local imports
 INDEX_FILE = "index.json"
 
 

@@ -185,9 +185,12 @@ class SymbolCatalog(BaseModel):
         return names, known
 
     def resolve_type(self, type_text: str | None, module: str | None = None) -> ClassEntry | None:
-        """First identifier in an annotation that names a class in the repo."""
+        """First identifier in an annotation that names a class in the repo (a class's full
+        qualname, as a function-local import gives it, is taken as it is)."""
         if not type_text:
             return None
+        if type_text.strip() in self.classes:
+            return self.classes[type_text.strip()]
         for word in _IDENT.findall(type_text.replace("'", "").replace('"', "")):
             if word in _TYPING_WORDS:
                 continue
@@ -363,11 +366,21 @@ def _returns_self(fn: FunctionInfo, class_name: str) -> bool:
     )
 
 
-def _return_type(fn: FunctionInfo) -> str | None:
-    """The return annotation, else the callee when every ``return`` builds one thing."""
-    if fn.returns:
-        return fn.returns
-    return fn.returned_calls[0] if len(fn.returned_calls) == 1 else None
+def _return_type(fn: FunctionInfo, module: str = "") -> str | None:
+    """The return annotation, else the callee when every ``return`` builds one thing. A name
+    the function imports itself becomes the imported class's full name."""
+    found = fn.returns or (fn.returned_calls[0] if len(fn.returned_calls) == 1 else None)
+    return _locally_imported(found, fn, module)
+
+
+def _locally_imported(name: str | None, fn: FunctionInfo, module: str) -> str | None:
+    if not name or not fn.local_imports:
+        return name
+    head, _, rest = name.partition(".")
+    names, _stars = import_map(fn.local_imports, module)
+    if head not in names:
+        return name
+    return names[head] + (f".{rest}" if rest else "")
 
 
 def _assign_type(assign: Assign) -> str | None:
@@ -487,7 +500,7 @@ def _add_file(catalog: SymbolCatalog, info: FileInfo) -> None:
                 Member(
                     name=fn.name,
                     kind=member_kind,
-                    type_text=_return_type(fn),
+                    type_text=_return_type(fn, info.module),
                     returns_self=_returns_self(fn, cls.name),
                     line=fn.start_line,
                 ),
@@ -500,7 +513,7 @@ def _add_file(catalog: SymbolCatalog, info: FileInfo) -> None:
                     members[assign.name] = Member(
                         name=assign.name,
                         kind="attribute",
-                        type_text=_assign_type(assign),
+                        type_text=_locally_imported(_assign_type(assign), fn, info.module),
                         line=assign.line,
                     )
         for name, member in members.items():

@@ -55,6 +55,9 @@ class FunctionInfo(BaseModel):
     code: str
     self_assignments: list[Assign] = Field(default_factory=list)
     refs: Refs = Field(default_factory=Refs)
+    # Import statements inside the function (``from pages.x import Page`` in a property): they
+    # decide which class a name means there, before the module's own imports.
+    local_imports: list[str] = Field(default_factory=list)
 
 
 class ClassInfo(BaseModel):
@@ -379,7 +382,23 @@ def _function(definition: Node, outer: Node, decorators: list[str]) -> FunctionI
         code=_text(outer),
         self_assignments=_self_assignments(body),
         refs=_refs(_reference_roots(outer, body)),
+        local_imports=_local_imports(body),
     )
+
+
+def _local_imports(body: Node | None) -> list[str]:
+    """Import statements in this function's body (not in nested defs), as written."""
+    found: list[str] = []
+    stack = [body] if body is not None else []
+    while stack:
+        node = stack.pop()
+        if node.type in ("import_statement", "import_from_statement"):
+            found.append(_text(node))
+            continue
+        if node.type in ("function_definition", "class_definition", "lambda", "string"):
+            continue
+        stack.extend(reversed(node.children))
+    return found
 
 
 def _reference_roots(outer: Node, body: Node | None) -> list[Node]:
