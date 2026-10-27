@@ -237,7 +237,7 @@ class InvestigatorSettings(_Section):
     indexed suite with read-only tools. Replaces the follow-up rounds when enabled."""
 
     enabled: bool = False
-    prompt: str = "investigator_v2"
+    prompt: str = "investigator_v3"
     max_steps: int = Field(default=6, ge=1, le=20)  # LLM turns
     max_actions_per_step: int = Field(default=4, ge=1, le=6)
     max_tool_output_chars: int = Field(default=3000, ge=200)  # per tool call

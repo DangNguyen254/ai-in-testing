@@ -128,7 +128,7 @@ def test_done_stops_and_kept_chunks_reach_the_hits(index: IndexData, tmp_path: P
     assert inv.dropped_ids == ["made/up.py::Nope"]  # an id that doesn't exist is dropped
     assert inv.tool_calls[0].startswith("search('rules add')")
     assert result.followup_rounds == 0  # the investigator replaces the follow-up rounds
-    assert result.llm_calls == 3 and result.prompt_versions[-1] == "investigator_v2"
+    assert result.llm_calls == 3 and result.prompt_versions[-1] == "investigator_v3"
     hit = next(h for h in result.hits if h.chunk_id == ADD_BASIC)
     assert any(r.source == "investigator" and r.detail == "closest add test" for r in hit.reasons)
     # Turn 2 saw turn 1's tool output, inside the untrusted-data tags.
@@ -194,3 +194,81 @@ def test_grep_says_when_a_name_exists_but_is_used_too_often(
     out = tools.run(InvestigatorAction(tool="grep", arg="verify_targets"))
     assert out.startswith("'verify_targets' exists: it is used in")
     assert "framework/validations.py::ValidationMixin.verify_targets" in out
+
+
+# --- cheap first: outlines, one member, entry lists, the catalog's classes ----------------------
+
+LIST_PAGE = "framework/pages/exceptions.py::ExceptionListPage"
+
+
+def _run(tools: IndexTools, tool: str, arg: str) -> str:
+    return tools.run(InvestigatorAction(tool=tool, arg=arg))  # type: ignore[arg-type]
+
+
+def test_a_large_chunk_opens_as_an_outline(index: IndexData, tmp_path: Path) -> None:
+    tools = _tools(index, tmp_path, max_tool_output_chars=1500)
+    out = _run(tools, "open", LIST_PAGE)
+    assert "here is its outline" in out and "class ExceptionListPage(ExceptionsPageBase):" in out
+    assert (
+        "   property def search_text(self)" in out
+        and "   setter def search_text(self, text)" in out
+    )
+    assert "   def search(self)" in out and "self.click(" not in out  # members, not their code
+    small = _run(tools, "open", ADD_BASIC)
+    assert "rules" in small and "outline" not in small  # small chunks open in full
+
+
+def test_open_member_reads_one_member(index: IndexData, tmp_path: Path) -> None:
+    tools = _tools(index, tmp_path)
+    save = _run(tools, "open_member", "ExceptionEditorPage.save")
+    assert save.startswith("ExceptionEditorPage.save (method)") and "self.click(self.SAVE)" in save
+    inherited = _run(tools, "open_member", "ExceptionEditorPage.click")
+    assert inherited.startswith("BasePage.click (method)")  # where it is defined
+    prop = _run(tools, "open_member", "ExceptionEditorPage.name")
+    assert "@property" in prop and "@name.setter" in prop  # the getter and its setter
+    locator = _run(tools, "open_member", "ExceptionEditorPage.CLEAR_EXPIRY")
+    assert "CLEAR_EXPIRY = (By.ID" in locator
+    assert "list_members ExceptionEditorPage" in _run(
+        tools, "open_member", "ExceptionEditorPage.nope"
+    )
+    assert "no class 'Nope'" in _run(tools, "open_member", "Nope.x")
+
+
+def test_class_hierarchy_and_list_members(index: IndexData, tmp_path: Path) -> None:
+    tools = _tools(index, tmp_path, results_per_search=3)
+    up = _run(tools, "class_hierarchy", "ExceptionEditorPage")
+    assert "bases: ExceptionsPageBase -> BasePage" in up and "subclasses: (none)" in up
+    base = _run(tools, "class_hierarchy", "BaseTest")
+    assert "more subclasses" in base  # capped, and it says so
+    legacy = _run(tools, "class_hierarchy", "LegacyBrowserBase")
+    assert "outside the repo: unittest.TestCase" in legacy
+    members = _run(tools, "list_members", "ExceptionEditorPage").splitlines()
+    assert members[0].startswith("ExceptionEditorPage:") and "own first" in members[0]
+    assert "save (method): save(self)" in members
+    assert "click (method, from BasePage): click(self, locator)" in members
+    own = members.index("save (method): save(self)")
+    assert own < members.index("click (method, from BasePage): click(self, locator)")
+
+
+def test_data_lists_entries_first_and_data_entry_reads_one(
+    index: IndexData, tmp_path: Path
+) -> None:
+    tools = _tools(index, tmp_path, max_tool_output_chars=600)
+    chunk = max(
+        (c for c in index.chunks if c.kind == "test" and len(c.data_entries) > 1),
+        key=lambda c: len(json.dumps(c.data_entries)),
+    )
+    listing = _run(tools, "data", chunk.id)
+    first = next(iter(chunk.data_entries))
+    assert "entries" in listing and f"data_entry {chunk.id} <entry id>" in listing
+    assert f"{first}: keys" in listing
+    roomy = _tools(index, tmp_path, max_tool_output_chars=20000)  # one entry, uncut
+    one = json.loads(_run(roomy, "data_entry", f"{chunk.id} {first}"))
+    assert one == chunk.data_entries[first]
+    assert "has no entry" in _run(tools, "data_entry", f"{chunk.id} nope")
+
+
+def test_cut_lists_say_how_many_more_and_where(index: IndexData, tmp_path: Path) -> None:
+    tools = _tools(index, tmp_path, results_per_search=2)
+    out = _run(tools, "tests_using", "nav")
+    assert "more:" in out and " in tests/" in out and "narrow it" in out

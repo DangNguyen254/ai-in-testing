@@ -5,15 +5,25 @@ calls returned, then asks for a few more read-only tool calls, updates the list 
 new test needs, and says when it is done. Code runs the tools, enforces the budgets (turns,
 actions per turn, output size per tool, transcript size) and checks what comes back: kept ids
 that don't exist are dropped and recorded. The tools only read the index; nothing is executed.
+
+Cheap first: lists give chunk ids (and, when cut, how many more and where); a large chunk opens
+as an outline of its members, and ``open_member`` reads one member; a test's data opens as its
+entry ids and keys, and ``data_entry`` reads one entry. ``class_hierarchy`` and
+``list_members`` read the catalog, for any class (not only pages reached from the chain root).
 """
 
 from __future__ import annotations
 
+import ast
 import json
+import textwrap
+from collections import Counter
 from dataclasses import dataclass, field
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
 from ticket2test.config import InvestigatorSettings, Settings
+from ticket2test.index.catalog import ClassEntry
 from ticket2test.llm.base import LLMClient, LLMRequest, Message
 from ticket2test.llm.factory import model_name
 from ticket2test.llm.schema import strict_schema
@@ -110,8 +120,101 @@ class IndexTools:
                 first = next(iter(chunk.data_entries.values()))
                 keys = sorted(first) if isinstance(first, dict) else []
                 lines.append(f"data entries: {len(chunk.data_entries)}, keys: {', '.join(keys)}")
-        lines.append(chunk.code)
+        if len(chunk.code) <= self.cfg.max_tool_output_chars:
+            lines.append(chunk.code)
+            return "\n".join(lines)
+        outline = _outline(chunk.code)
+        lines.append(
+            f"(the code has {len(chunk.code)} characters, so here is its outline; "
+            "open_member <Class>.<member> reads one member)"
+        )
+        lines += outline or chunk.code.splitlines()[:40]
         return "\n".join(lines)
+
+    def _open_member(self, arg: str) -> str:
+        """The code of one member of a class (inherited ones too): ``Class.member``."""
+        class_name, _, member = arg.strip().rpartition(".")
+        entry = self.retriever.catalog.class_named(class_name) if class_name else None
+        if entry is None:
+            return f"no class {class_name!r} (use class_hierarchy or grep to find its name)"
+        found = self.retriever.catalog.member(entry.qualname, member)
+        if found is None:
+            return f"{entry.name} has no member {member!r} (list_members {entry.name} shows them)"
+        owner, info = found
+        record = self.retriever.index.files.get(owner.file_path)
+        cls = next(
+            (c for c in record.info.classes if c.name == owner.name),
+            None,
+        ) if record and record.info else None  # fmt: skip
+        head = f"{owner.name}.{member} ({info.kind}) in {owner.file_path}"
+        if cls is None:
+            return head
+        methods = [m.code for m in cls.methods if m.name == member]  # a property and its setter
+        if methods:
+            return "\n".join([head, *methods])
+        source = cls.code.splitlines()
+        offset = info.line - cls.start_line
+        line = source[offset].strip() if 0 <= offset < len(source) else ""
+        return f"{head}\n{line}" if line else head
+
+    def _class_hierarchy(self, name: str) -> str:
+        """Bases going up (repo classes, then outside ones) and subclasses going down."""
+        catalog = self.retriever.catalog
+        entry = catalog.class_named(name.strip())
+        if entry is None:
+            return f"no class {name.strip()!r} (use grep or search to find its name)"
+        up = [c.name for c in catalog.mro(entry.qualname)[1:]]
+        outside = catalog.external_bases(entry.qualname)
+        down = sorted(
+            c.qualname
+            for c in catalog.classes.values()
+            if c.qualname != entry.qualname
+            and any(b.qualname == entry.qualname for b in catalog.mro(c.qualname)[1:])
+        )
+        rows = [f"{entry.qualname} ({entry.file_path})"]
+        rows.append("bases: " + (" -> ".join(up) if up else "(none in the repo)"))
+        if outside:
+            rows.append(f"bases outside the repo: {', '.join(outside)}")
+        limit = self.cfg.results_per_search
+        shown = down[:limit]
+        rows.append("subclasses: " + (", ".join(shown) if shown else "(none)"))
+        if len(down) > limit:
+            rows.append(f"... and {len(down) - limit} more subclasses")
+        return "\n".join(rows)
+
+    def _list_members(self, name: str) -> str:
+        """Every member of a class, inherited ones included: kind, where it is defined, and a
+        method's signature."""
+        catalog = self.retriever.catalog
+        entry = catalog.class_named(name.strip())
+        if entry is None:
+            return f"no class {name.strip()!r} (use grep or search to find its name)"
+        rows: list[tuple[bool, str]] = []
+        for member, (owner, info) in sorted(catalog.members_of(entry.qualname).items()):
+            if member.startswith("__"):
+                continue
+            where = "" if owner.qualname == entry.qualname else f", from {owner.name}"
+            signature = self._signature(owner, member) if info.kind == "method" else ""
+            rows.append(
+                (owner.qualname == entry.qualname, f"{member} ({info.kind}{where}){signature}")
+            )
+        ordered = [r for own, r in rows if own] + [r for own, r in rows if not own]
+        head = f"{entry.name}: {len(ordered)} members (own first; open_member reads one)"
+        return "\n".join([head, *ordered]) if ordered else f"{entry.name} has no members"
+
+    def _signature(self, owner: ClassEntry, member: str) -> str:
+        record = self.retriever.index.files.get(owner.file_path)
+        if record is None or record.info is None:
+            return ""
+        cls = next((c for c in record.info.classes if c.name == owner.name), None)
+        method = next((m for m in cls.methods if m.name == member), None) if cls else None
+        if method is None:
+            return ""
+        first = next(
+            (line.strip() for line in method.code.splitlines() if line.strip().startswith("def ")),
+            "",
+        )
+        return f": {first.removeprefix('def ').rstrip(':')}" if first else ""
 
     def _callers(self, name: str) -> str:
         short = name.rsplit(".", 1)[-1]
@@ -148,7 +251,32 @@ class IndexTools:
             return self._unknown(chunk_id)
         if not chunk.data_entries:
             return f"{chunk.id} has no data entries"
-        return json.dumps(chunk.data_entries, indent=1, ensure_ascii=False)
+        text = json.dumps(chunk.data_entries, indent=1, ensure_ascii=False)
+        if len(text) <= self.cfg.max_tool_output_chars:
+            return text
+        rows = [
+            f"{key}: keys {', '.join(sorted(entry)) if isinstance(entry, dict) else '?'}"
+            for key, entry in chunk.data_entries.items()
+        ]
+        return "\n".join(
+            [
+                f"{len(rows)} entries ({len(text)} characters in all); "
+                f"data_entry {chunk.id} <entry id> shows one:",
+                *rows,
+            ]
+        )
+
+    def _data_entry(self, arg: str) -> str:
+        """One data entry: ``<test chunk id> <entry id>``."""
+        chunk_id, _, entry_id = arg.strip().partition(" ")
+        chunk = self._chunk(chunk_id)
+        if chunk is None:
+            return self._unknown(chunk_id)
+        entry = chunk.data_entries.get(entry_id.strip())
+        if entry is None:
+            known = ", ".join(list(chunk.data_entries)[: self.cfg.results_per_search])
+            return f"{chunk.id} has no entry {entry_id.strip()!r} (entries: {known or 'none'})"
+        return json.dumps(entry, indent=1, ensure_ascii=False)
 
     # --- helpers -------------------------------------------------------------------------
 
@@ -161,8 +289,15 @@ class IndexTools:
     def _list(self, chunks: list[Chunk]) -> str:
         limit = self.cfg.results_per_search
         rows = [f"{c.id} [{c.kind}]" for c in chunks[:limit]]
-        if len(chunks) > limit:
-            rows.append(f"... and {len(chunks) - limit} more")
+        rest = chunks[limit:]
+        if rest:
+            folders = Counter(str(PurePosixPath(c.file_path).parent) for c in rest)
+            where = ", ".join(f"{n} in {f}/" for f, n in folders.most_common(3))
+            more = f" (and {len(folders) - 3} more folders)" if len(folders) > 3 else ""
+            rows.append(
+                f"... and {len(rest)} more: {where}{more}. Add words or a more specific "
+                "name to narrow it"
+            )
         return "\n".join(rows)
 
 
@@ -237,6 +372,40 @@ def investigate(
         stopped=stopped,  # type: ignore[arg-type]
         llm_calls=llm_calls,
     )
+
+
+def _outline(code: str) -> list[str]:
+    """The members of a large chunk, one line each: classes with their methods (signature),
+    properties and attributes; module functions. Empty when the code doesn't parse."""
+    try:
+        tree = ast.parse(textwrap.dedent(code))
+    except SyntaxError:
+        return []
+    rows: list[str] = []
+
+    def signature(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
+        kind = "property " if any(_name(d).endswith("property") for d in fn.decorator_list) else ""
+        setter = any(_name(d).endswith(".setter") for d in fn.decorator_list)
+        return f"{'setter ' if setter else kind}def {fn.name}({ast.unparse(fn.args)})"
+
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef):
+            bases = ", ".join(ast.unparse(b) for b in node.bases)
+            rows.append(f"class {node.name}({bases}):")
+            for item in node.body:
+                if isinstance(item, ast.FunctionDef | ast.AsyncFunctionDef):
+                    rows.append(f"   {signature(item)}")
+                elif isinstance(item, ast.Assign | ast.AnnAssign):
+                    targets = item.targets if isinstance(item, ast.Assign) else [item.target]
+                    names = [t.id for t in targets if isinstance(t, ast.Name)]
+                    rows += [f"   {n} = ..." for n in names]
+        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            rows.append(signature(node))
+    return rows
+
+
+def _name(node: ast.expr) -> str:
+    return ast.unparse(node.func if isinstance(node, ast.Call) else node)
 
 
 def _render_kept(keep: list[KeptChunk]) -> str:

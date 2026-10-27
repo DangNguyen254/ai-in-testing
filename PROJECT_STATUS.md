@@ -994,6 +994,15 @@ doesn't need (kept on purpose: attempt pieces are how a hidden workaround is cau
 neighbour note about the star import in the template's file; four `claims` warnings on the
 docstring wording. STND-149 (legacy units): out of scope. Report `output/reports/v7-test/haiku/`.
 
+**Investigator: cheap-first tools (2026-10-27, `investigator_v3`, the default prompt):** a large
+chunk opens as an outline of its members, and `open_member Class.member` reads one member
+(inherited ones too, a property with its setter); a test's data opens as entry ids and keys
+when large, and `data_entry` reads one entry; cut lists give the count left and the folders
+it is in, with a hint to narrow; `class_hierarchy` (bases in and outside the repo, subclasses)
+and `list_members` (any class, own members first, with kind, owner and signature) read the
+catalog. The investigator is still off by default; whether it beats the fixed retrieval needs
+a Haiku run with it on. pytest 827 passed.
+
 **Decisions (the human, 2026-10-26):**
 - **Rules:** rules that protect correctness always hold; where the surrounding code does it differently, the reviewer gets a warning. Purely cosmetic rules follow the area's local style.
 - **Patching an existing file:** use that file's own style and never reformat existing lines. The correctness rules still apply and are flagged.

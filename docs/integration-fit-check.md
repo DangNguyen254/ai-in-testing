@@ -87,7 +87,7 @@ If the ticket lacks steps or an expected result, the result is **`insufficient_i
 - BM25 search and exact name lookups ("grep") run, and their results are merged.
 - The best hits are expanded through the code structure: callers, callees, tests using a helper, and pages a test reaches.
 - Results are re-ranked with at most 3 chunks per file.
-- Then either up to 2 follow-up searches, or an optional **investigator agent**: an LLM exploring the index with read-only tools, with step and size budgets.
+- Then either up to 2 follow-up searches, or an optional **investigator agent**: an LLM exploring the index with read-only tools (search, grep, open, open one member, callers, tests using a name, page chains, class hierarchy, list a class's members, data entries), with step and size budgets. Outputs are cheap first: large classes open as an outline, cut lists say how many more results exist and where.
 - It also returns the **nearest existing tests that have data entries** as templates, preferring the same component and the same test shape (add / edit / delete / other).
 
 ### 3.5 Domain and reuse decision (code only)

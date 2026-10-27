@@ -71,7 +71,19 @@ class FollowupRequest(BaseModel):
 # --- Result -------------------------------------------------------------------------------------
 
 
-InvestigatorTool = Literal["search", "grep", "open", "callers", "tests_using", "chain", "data"]
+InvestigatorTool = Literal[
+    "search",
+    "grep",
+    "open",
+    "open_member",
+    "callers",
+    "tests_using",
+    "chain",
+    "class_hierarchy",
+    "list_members",
+    "data",
+    "data_entry",
+]
 
 
 class InvestigatorAction(BaseModel):
