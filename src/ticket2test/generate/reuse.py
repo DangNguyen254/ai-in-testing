@@ -467,7 +467,7 @@ def _generic_words(settings: Settings) -> set[str]:
     words = {"self", "pytest", "mark", "parametrize", "check", "assert"}
     words |= set(settings.markers.required) | set(settings.index.chain_roots)
     words |= {a.rsplit(".", 1)[-1] for a in settings.data.access}
-    words |= {h.rsplit(".", 1)[-1] for h in settings.data.expectation_sections.values()}
+    words |= {h.rsplit(".", 1)[-1].strip("*_") for h in settings.data.helper_patterns()}
     words |= set(settings.validation.assertion_methods)
     return {norm(p) for w in words for p in split_identifier(w)} | {norm(w) for w in words}
 

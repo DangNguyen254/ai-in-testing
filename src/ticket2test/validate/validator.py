@@ -857,7 +857,7 @@ def check_data_keys(s: Subject) -> Iterator[Finding]:
         "id_field": d.id_field,
         "seed_sections": d.seed_sections,
         "per_entry_keys": d.per_entry_keys,
-        "expectation_sections": d.expectation_sections,
+        "expectation_sections": d.section_helpers(),
         "allowed_expectation_sets": d.allowed_expectation_sets,
     }
     defaults = s.defaults
@@ -1095,7 +1095,7 @@ def check_capability_gates(s: Subject) -> Iterator[Finding]:
 
 
 def check_claims(s: Subject) -> Iterator[Finding]:
-    sections = s.settings.data.expectation_sections
+    sections = s.settings.data.section_helpers()
     generic = {s.settings.index.test_function_prefix}
     ignore = frozenset(
         p.rsplit(".", 1)[-1]
@@ -1149,7 +1149,7 @@ def check_draft_outcome(s: Subject) -> Iterator[Finding]:
         [("expected outcome", s.draft.expected_outcome)],
         all_checks,
         s.entries,
-        s.settings.data.expectation_sections,
+        s.settings.data.section_helpers(),
         ignore,
     )
     for gap in gaps:
@@ -1395,7 +1395,7 @@ def _prepare(s: Subject) -> None:
     s.tests = test_functions(
         s.tree, s.settings.index.test_function_prefix, s.settings.index.test_class_prefix
     )
-    helpers = set(d.expectation_sections.values())
+    helpers = set(d.helper_patterns())
     module = s.module
     reuse = Resolver(s.tree, module, s.index, d.access, helpers)
     s.resolver = reuse

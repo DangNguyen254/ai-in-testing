@@ -6,7 +6,9 @@ Tree-sitter computes pytest ids; ``ast`` finds how tests use their data entry.
 from __future__ import annotations
 
 import ast
-from dataclasses import dataclass
+import fnmatch
+from collections.abc import Iterable
+from dataclasses import dataclass, field
 
 from ticket2test.index.extract import FunctionInfo, ParseError, extract_file
 from ticket2test.index.pytest_ids import compute_test_ids
@@ -52,8 +54,9 @@ class DataUse:
     """How one test function uses its data entry."""
 
     keys: frozenset[str]  # keys indexed directly: params["key"]
-    optional_keys: frozenset[str]  # params.get("key", ...)
+    optional_keys: frozenset[str]  # params.get("key", ...), or indexed only after a check
     helpers: frozenset[str]  # entry-reading helpers it calls
+    passes_whole: bool = False  # hands the whole entry to a call: which keys it reads is unknown
 
     @property
     def reads_data(self) -> bool:
@@ -72,35 +75,94 @@ def data_use(
         tree = ast.parse(code)
     except SyntaxError as exc:
         raise ValueError(f"the code does not parse: {exc}") from exc
-    roots, helper_names = set(access), set(helpers)
+    roots = set(access)
     found: dict[str, DataUse] = {}
     for node in ast.walk(tree):
         if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             continue
         if not node.name.startswith(test_prefix):
             continue
-        keys: set[str] = set()
-        optional: set[str] = set()
-        called: set[str] = set()
-        for inner in (n for statement in node.body for n in ast.walk(statement)):
-            if isinstance(inner, ast.Subscript) and _dotted(inner.value) in roots:
-                if isinstance(inner.slice, ast.Constant) and isinstance(inner.slice.value, str):
-                    keys.add(inner.slice.value)
-            elif isinstance(inner, ast.Call):
-                name = _dotted(inner.func)
-                if name in helper_names:
-                    called.add(name)
-                elif (
-                    isinstance(inner.func, ast.Attribute)
-                    and inner.func.attr == "get"
-                    and _dotted(inner.func.value) in roots
-                    and inner.args
-                    and isinstance(inner.args[0], ast.Constant)
-                    and isinstance(inner.args[0].value, str)
-                ):
-                    optional.add(inner.args[0].value)
-        found[node.name] = DataUse(frozenset(keys), frozenset(optional), frozenset(called))
+        reads = entry_reads(
+            (n for statement in node.body for n in ast.walk(statement)), roots, helpers
+        )
+        found[node.name] = reads.use()
     return found
+
+
+def helper_matches(name: str, patterns: Iterable[str]) -> bool:
+    """``name`` (a dotted call) is one of the helper names, or matches one with ``*``."""
+    return any(name == p or ("*" in p and fnmatch.fnmatchcase(name, p)) for p in patterns)
+
+
+@dataclass
+class EntryReads:
+    """What a function body does with the entry, before calls to other methods are followed."""
+
+    keys: set[str] = field(default_factory=set)
+    optional: set[str] = field(default_factory=set)
+    guarded: set[str] = field(default_factory=set)  # "key" in params / params.get("key")
+    helpers: set[str] = field(default_factory=set)
+    self_calls: set[str] = field(default_factory=set)
+    passes_whole: bool = False
+
+    def add(self, other: EntryReads) -> None:
+        self.keys |= other.keys
+        self.optional |= other.optional
+        self.guarded |= other.guarded
+        self.helpers |= other.helpers
+        self.passes_whole = self.passes_whole or other.passes_whole
+
+    def use(self) -> DataUse:
+        """Keys only indexed after a check on them are optional."""
+        soft = self.guarded | self.optional
+        return DataUse(
+            frozenset(self.keys - soft),
+            frozenset(self.optional | (self.keys & soft)),
+            frozenset(self.helpers),
+            self.passes_whole,
+        )
+
+
+def entry_reads(nodes: Iterable[ast.AST], roots: set[str], helpers: Iterable[str]) -> EntryReads:
+    patterns = list(helpers)
+    reads = EntryReads()
+    for node in nodes:
+        if isinstance(node, ast.Subscript) and _dotted(node.value) in roots:
+            if isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, str):
+                reads.keys.add(node.slice.value)
+        elif isinstance(node, ast.Compare) and _key_check(node, roots):
+            reads.guarded.add(node.left.value)  # type: ignore[attr-defined]
+        elif isinstance(node, ast.Call):
+            name = _dotted(node.func)
+            if helper_matches(name, patterns):
+                reads.helpers.add(name)
+            elif (
+                isinstance(node.func, ast.Attribute)
+                and node.func.attr == "get"
+                and _dotted(node.func.value) in roots
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and isinstance(node.args[0].value, str)
+            ):
+                reads.optional.add(node.args[0].value)
+            elif name.startswith("self.") and name.count(".") == 1:
+                reads.self_calls.add(name.removeprefix("self."))
+            if any(
+                _dotted(arg) in roots for arg in [*node.args, *(k.value for k in node.keywords)]
+            ):
+                reads.passes_whole = True  # e.g. runner.run(self.params)
+    return reads
+
+
+def _key_check(node: ast.Compare, roots: set[str]) -> bool:
+    """``"key" in params`` or ``"key" not in params``."""
+    return (
+        isinstance(node.left, ast.Constant)
+        and isinstance(node.left.value, str)
+        and len(node.ops) == 1
+        and isinstance(node.ops[0], ast.In | ast.NotIn)
+        and _dotted(node.comparators[0]) in roots
+    )
 
 
 def _dotted(node: ast.expr) -> str:

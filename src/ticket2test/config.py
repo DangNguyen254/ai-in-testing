@@ -158,6 +158,10 @@ class IndexSettings(_Section):
     )
 
 
+def _default_sections() -> dict[str, str | list[str]]:
+    return {"targets": "self.verify_targets", "interactions": "self.verify_interactions"}
+
+
 class DataSettings(_Section):
     """Shape of the target suite's per-test JSON data files.
 
@@ -176,14 +180,24 @@ class DataSettings(_Section):
     )
     # Expectation section -> the validation helper that reads it. An entry has at most one,
     # and only when the test calls its helper.
-    expectation_sections: dict[str, str] = Field(
-        default_factory=lambda: {
-            "targets": "self.verify_targets",
-            "interactions": "self.verify_interactions",
-        }
-    )
+    # A section may name several helpers, and names may be patterns (``*``): a suite where each
+    # class has its own validation method (``self.*validate_result``), a module function
+    # (``*.validate_api_response``), or a seeding call that checks its responses.
+    expectation_sections: dict[str, str | list[str]] = Field(default_factory=_default_sections)
     # Per-entry overrides that a new entry never inherits from its base entry.
     per_entry_keys: list[str] = Field(default_factory=lambda: ["priority", "skip"])
+
+    def section_helpers(self) -> dict[str, list[str]]:
+        """Expectation section -> the helper names or patterns that read it."""
+        return {
+            section: [helpers] if isinstance(helpers, str) else list(helpers)
+            for section, helpers in self.expectation_sections.items()
+        }
+
+    def helper_patterns(self) -> list[str]:
+        """Every expectation helper name or pattern."""
+        return [h for helpers in self.section_helpers().values() for h in helpers]
+
     # A first entry without the id field holds defaults for every entry in the file (array
     # layout); how the suite's loader combines them: top-level keys, or nested objects too.
     defaults_row: bool = True

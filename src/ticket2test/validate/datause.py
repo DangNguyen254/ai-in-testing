@@ -12,9 +12,9 @@ from __future__ import annotations
 import ast
 import textwrap
 from collections.abc import Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
-from ticket2test.generate.inspect import DataUse
+from ticket2test.generate.inspect import DataUse, EntryReads, entry_reads
 from ticket2test.index.catalog import ClassEntry, SymbolCatalog
 from ticket2test.index.extract import ClassInfo, FileInfo
 from ticket2test.index.indexer import IndexData
@@ -22,14 +22,6 @@ from ticket2test.index.pytest_ids import compute_test_ids
 from ticket2test.validate.code import dotted, is_assertion, is_check_helper
 
 _MAX_METHODS = 200  # bound on methods followed per test
-
-
-@dataclass
-class _Reads:
-    keys: set[str] = field(default_factory=set)
-    optional: set[str] = field(default_factory=set)
-    helpers: set[str] = field(default_factory=set)
-    self_calls: set[str] = field(default_factory=set)
 
 
 @dataclass(frozen=True)
@@ -128,7 +120,7 @@ class Resolver:
 
     def data_use(self, cls: ast.ClassDef, function: ast.FunctionDef) -> DataUse:
         """Keys and helpers the function uses, following ``self.<method>()`` calls."""
-        total = _Reads()
+        total = EntryReads()
         seen: set[str] = set()
         queue = [function]
         while queue and len(seen) < _MAX_METHODS:
@@ -137,14 +129,12 @@ class Resolver:
                 continue
             seen.add(current.name)
             reads = self._reads(current)
-            total.keys |= reads.keys
-            total.optional |= reads.optional
-            total.helpers |= reads.helpers
+            total.add(reads)
             for name in reads.self_calls - seen:
                 found = self.method(cls, name)
                 if found is not None:
                     queue.append(found)
-        return DataUse(frozenset(total.keys), frozenset(total.optional), frozenset(total.helpers))
+        return total.use()
 
     def checks_through_calls(
         self,
@@ -176,28 +166,8 @@ class Resolver:
             queue += list(reads.self_calls - seen)
         return False
 
-    def _reads(self, function: ast.FunctionDef) -> _Reads:
-        reads = _Reads()
-        for node in _walk(function):
-            if isinstance(node, ast.Subscript) and dotted(node.value) in self.access:
-                if isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, str):
-                    reads.keys.add(node.slice.value)
-            elif isinstance(node, ast.Call):
-                name = dotted(node.func)
-                if name in self.helpers:
-                    reads.helpers.add(name)
-                elif (
-                    isinstance(node.func, ast.Attribute)
-                    and node.func.attr == "get"
-                    and dotted(node.func.value) in self.access
-                    and node.args
-                    and isinstance(node.args[0], ast.Constant)
-                    and isinstance(node.args[0].value, str)
-                ):
-                    reads.optional.add(node.args[0].value)
-                elif name.startswith("self.") and name.count(".") == 1:
-                    reads.self_calls.add(name.removeprefix("self."))
-        return reads
+    def _reads(self, function: ast.FunctionDef) -> EntryReads:
+        return entry_reads(_walk(function), self.access, self.helpers)
 
 
 def _parse_class(cls: ClassInfo) -> ast.ClassDef | None:

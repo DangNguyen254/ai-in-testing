@@ -15,6 +15,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Literal
 
+from ticket2test.generate.inspect import helper_matches
 from ticket2test.index.catalog import ClassEntry, MemberKind, SymbolCatalog
 
 ChainStatus = Literal["ok", "missing", "unknown_type"]
@@ -340,7 +341,7 @@ def check_calls(
         if not isinstance(node, ast.Call):
             continue
         name = dotted(node.func)
-        if name in helpers or is_check_helper(name, check_helpers):
+        if helper_matches(name, helpers) or is_check_helper(name, check_helpers):
             found.append(CheckCall(name, True, node))
         elif is_assertion(name, assertion_object, self_asserts):
             found.append(CheckCall(name.rsplit(".", 1)[1], False, node))

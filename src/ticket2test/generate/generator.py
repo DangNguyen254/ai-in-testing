@@ -157,7 +157,7 @@ def prepare_generation(
             CTX_ID_FIELD: data.id_field,
             CTX_PER_ENTRY_KEYS: data.per_entry_keys,
             CTX_DATA_ACCESS: data.access,
-            CTX_EXPECTATIONS: data.expectation_sections,
+            CTX_EXPECTATIONS: data.section_helpers(),
             CTX_EXPECTATION_SETS: data.allowed_expectation_sets,
             CTX_SEED_SECTIONS: data.seed_sections,
             CTX_TICKET_ID: draft.ticket_id,
@@ -435,7 +435,7 @@ def with_inherited_entries(
         module,
         setup.index,
         data.access,
-        set(data.expectation_sections.values()),
+        set(data.helper_patterns()),
     )
     prefix = settings.index.test_class_prefix
     have = {str(e.get(data.id_field)) for e in entries}
@@ -538,7 +538,7 @@ def resolved_uses(code: str, setup: GenerationSetup) -> dict[str, Any]:
         module,
         setup.index,
         data.access,
-        set(data.expectation_sections.values()),
+        set(data.helper_patterns()),
     )
     prefix = settings.index.test_function_prefix
     for cls in resolver.classes():
@@ -558,7 +558,7 @@ def _uses(code: str, settings: Settings) -> dict[str, Any]:
         data_use(
             code,
             data.access,
-            list(data.expectation_sections.values()),
+            data.helper_patterns(),
             settings.index.test_function_prefix,
         )
     )

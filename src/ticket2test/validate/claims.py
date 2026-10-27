@@ -25,6 +25,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from ticket2test.generate.inspect import helper_matches
 from ticket2test.index.tokens import split_identifier
 from ticket2test.validate.code import CheckCall, dotted
 
@@ -113,7 +114,7 @@ def clauses(claim: str) -> list[str]:
 def evidence(
     check: CheckCall,
     entries: list[dict[str, Any]],
-    sections: dict[str, str],
+    sections: dict[str, list[str]],
     ignore: frozenset[str] = frozenset(),
 ) -> set[str]:
     """Words a check touches. ``ignore``: attribute names that carry no meaning (``params``)."""
@@ -132,8 +133,8 @@ def evidence(
                     if inner.value in entry:
                         words.update(_words(json.dumps(entry[inner.value])))
     if check.helper:
-        for section, helper in sections.items():
-            if helper == check.method:
+        for section, helpers in sections.items():
+            if helper_matches(check.method, helpers):
                 for entry in entries:
                     blocks = [entry, *(t for t in entry.get("tenants", []) if isinstance(t, dict))]
                     for block in blocks:
@@ -162,7 +163,7 @@ def find_gaps(
     claims: list[tuple[str, str]],
     checks: list[CheckCall],
     entries: list[dict[str, Any]],
-    sections: dict[str, str],
+    sections: dict[str, list[str]],
     ignore: frozenset[str] = frozenset(),
     actions: set[str] | None = None,
 ) -> list[Gap]:

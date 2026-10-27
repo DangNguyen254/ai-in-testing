@@ -135,7 +135,7 @@ class GenerationResponse(BaseModel):
         uses = data_use(
             self.code,
             ctx.get(CTX_DATA_ACCESS, ["self.params", "params"]),
-            list(ctx.get(CTX_EXPECTATIONS, {}).values()),
+            _helper_list(ctx.get(CTX_EXPECTATIONS, {})),
             test_prefix,
         )
         inherited = set(ctx.get(CTX_INHERITED_IDS, []))  # their entries are added in code
@@ -196,20 +196,25 @@ def unconsumed_keys(
     unread key can simply be removed; two expectation sections whose helpers are both called
     can't (which one is meant?).
     """
-    expectations: dict[str, str] = ctx.get(CTX_EXPECTATIONS, {})
+    from ticket2test.generate.inspect import helper_matches
+
+    expectations = {
+        section: [h] if isinstance(h, str) else list(h)
+        for section, h in ctx.get(CTX_EXPECTATIONS, {}).items()
+    }
     fixed = {ctx.get(CTX_ID_FIELD, "id"), *ctx.get(CTX_SEED_SECTIONS, [])}
     fixed |= set(ctx.get(CTX_PER_ENTRY_KEYS, []))
     read = (use.keys | use.optional_keys) if use else frozenset()
     helpers = use.helpers if use else frozenset()
+    whole = bool(getattr(use, "passes_whole", False))  # the entry goes to a call: any key
     unread: dict[str, str] = {}
     for key in entry:
-        if key in fixed or key in read:
+        if key in fixed or key in read or whole:
             continue
         if key in expectations:
-            if expectations[key] not in helpers:
-                unread[key] = (
-                    f"{key!r} is only read by {expectations[key]}(), which the test never calls"
-                )
+            if not any(helper_matches(h, expectations[key]) for h in helpers):
+                names = " or ".join(f"{p}()" for p in expectations[key])
+                unread[key] = f"{key!r} is only read by {names}, which the test never calls"
         else:
             unread[key] = f"custom key {key!r} is never read by the test"
     present = [k for k in expectations if k in entry and k not in unread]
@@ -217,6 +222,10 @@ def unconsumed_keys(
     together = len(present) > 1 and sorted(present) not in allowed
     conflict = f"an entry has one expectation section, not {present}" if together else ""
     return unread, conflict
+
+
+def _helper_list(sections: dict[str, Any]) -> list[str]:
+    return [h for v in sections.values() for h in ([v] if isinstance(v, str) else v)]
 
 
 def _unconsumed_keys(entry: dict[str, Any], use: Any, ctx: dict[str, Any]) -> str:

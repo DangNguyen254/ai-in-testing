@@ -409,3 +409,51 @@ def test_raw_driver_expressions_may_use_a_wildcard(setup: Any) -> None:
     assert _messages(_validate(setup, code=raw, settings=settings), "raw_driver")
     wrapper = GOOD_CODE.replace("rules.search()", "rules.search()\n      self.driver.get('x')", 1)
     assert not _messages(_validate(setup, code=wrapper, settings=settings), "raw_driver")
+
+
+# --- real-suite round 3: how tests read their data ----------------------------------------------
+
+
+def _use(body: str) -> Any:
+    from ticket2test.generate.inspect import data_use
+
+    code = "def test_x(self):\n" + "".join(f"    {line}\n" for line in body.splitlines())
+    return data_use(code, ["self.params"], ["self.*validate_result", "*.validate_api_response"])[
+        "test_x"
+    ]
+
+
+def test_expectation_helpers_may_be_patterns() -> None:
+    assert _use("self._area_validate_result()").helpers == {"self._area_validate_result"}
+    assert _use("pm.validate_api_response(x)").helpers == {"pm.validate_api_response"}
+    assert not _use("self.other()").helpers
+
+
+def test_a_test_passing_its_whole_entry_on_reads_any_key() -> None:
+    from ticket2test.models.generated import unconsumed_keys
+
+    use = _use("runner.run(self.params)")
+    assert use.passes_whole
+    ctx: dict[str, Any] = {"id_field": "test_id", "expectation_sections": {"targets": ["x"]}}
+    entry = {"test_id": "t", "note": 1, "targets": []}
+    assert unconsumed_keys(entry, use, ctx) == ({}, "")
+    assert unconsumed_keys(entry, _use("x = 1"), ctx)[0]  # without it: both unread
+
+
+def test_a_key_read_after_a_check_is_optional() -> None:
+    use = _use('if "mode" in self.params:\n    x = self.params["mode"]\ny = self.params["name"]')
+    assert use.keys == {"name"} and "mode" in use.optional_keys
+    use = _use('if self.params.get("mode"):\n    x = self.params["mode"]')
+    assert not use.keys and use.optional_keys == {"mode"}
+
+
+def test_sections_may_list_several_helpers(setup: Any) -> None:
+    settings = _with(
+        setup[0],
+        "data",
+        expectation_sections={"targets": ["self.verify_targets", "self.*_validate_result"]},
+    )
+    assert settings.data.section_helpers() == {
+        "targets": ["self.verify_targets", "self.*_validate_result"]
+    }
+    assert settings.data.helper_patterns() == ["self.verify_targets", "self.*_validate_result"]
