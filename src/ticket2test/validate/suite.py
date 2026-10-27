@@ -12,8 +12,9 @@ with the ids computed statically from the code (the generator relies on those).
 from __future__ import annotations
 
 import json
+import re
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Callable
 from datetime import UTC, datetime
 from fnmatch import fnmatch
@@ -55,6 +56,7 @@ CONFIG_HINTS: dict[str, str] = {
 }
 _NOT_STATIC = "parametrize values must be literals"
 _EXAMPLES = 3
+_PATTERNS = 5
 
 
 class Deviation(BaseModel):
@@ -78,6 +80,41 @@ class CheckSummary(BaseModel):
     files: int
     hint: str
     examples: list[str] = Field(default_factory=list)
+    # The most common messages with names masked (see mask_message): safe to share when the
+    # suite's names must stay private, and enough to tell which config key is wrong.
+    patterns: list[str] = Field(default_factory=list)
+
+
+_MASKS = [
+    (re.compile(r"'[^']*'|\"[^\"]*\""), "'...'"),
+    (re.compile(r"`[^`]*`"), "`...`"),
+    (re.compile(r"[^\s(),]*[/\\][^\s(),]+|[^\s(),]+\.(?:py|json)\b"), "<path>"),
+    (re.compile(r"\b\w+(?:\.\w+)+\b"), "<a.b>"),
+    (re.compile(r"\b[A-Z][a-z0-9]*[A-Z]\w*\b"), "<Name>"),
+    (re.compile(r"\b[a-z0-9]+(?:_[a-z0-9]+)+\b"), "<name>"),
+    (re.compile(r"\b\d+\b"), "N"),
+]
+# This tool's own names stay readable: pytest's markers, unittest, and config keys.
+_OURS = re.compile(
+    r"\b(?:pytest\.\w+(?:\.\w+)*|unittest\.\w+|"
+    r"(?:markers|data|validation|style|index|generate|sandbox|retrieval)\.\w+(?:\.\w+)*)"
+)
+
+
+def mask_message(message: str) -> str:
+    """A validator message with its names masked: quoted values, paths, dotted names,
+    CamelCase and snake_case identifiers, numbers. What stays is the shape of the problem."""
+    kept: list[str] = []
+
+    def keep(match: re.Match[str]) -> str:  # a private-use character: no mask matches it
+        kept.append(match.group(0))
+        return chr(0xE000 + len(kept) - 1)
+
+    message = _OURS.sub(keep, message)
+    for pattern, replacement in _MASKS:
+        message = pattern.sub(replacement, message)
+    message = re.sub("[-]", lambda m: kept[ord(m.group(0)) - 0xE000], message)
+    return re.sub(r"\s+", " ", message).strip()
 
 
 class IdComparison(BaseModel):
@@ -135,6 +172,7 @@ def check_suite(
     roots = first_party(index, settings)
     imports = module_imports(index)
     errors: dict[str, list[tuple[str, str]]] = defaultdict(list)  # check -> (file, message)
+    patterns: dict[str, Counter[str]] = defaultdict(Counter)  # check -> masked message -> count
     warnings: dict[str, int] = defaultdict(int)
 
     all_domains = domains(index, settings)
@@ -170,6 +208,7 @@ def check_suite(
                 report.not_static.append(path)  # suite tests may use computed parametrize
             else:
                 errors[finding.check].append((path, finding.render()))
+                patterns[finding.check][mask_message(finding.message)] += 1
                 file_errors += 1
         report.clean_files += int(file_errors == 0)
         took = time.monotonic() - file_started
@@ -193,6 +232,7 @@ def check_suite(
             files=len({f for f, _ in found}),
             hint=CONFIG_HINTS.get(check, ""),
             examples=[f"{f}: {m}" for f, m in found[:_EXAMPLES]],
+            patterns=[f"{n}x {p}" for p, n in patterns[check].most_common(_PATTERNS)],
         )
         for check, found in sorted(errors.items(), key=lambda kv: -len(kv[1]))
     ]
@@ -318,6 +358,9 @@ def render_markdown(report: SuiteReport) -> str:
             "|---|---|---|---|",
         ]
         lines += [f"| {s.check} | {s.errors} | {s.files} | {s.hint} |" for s in report.by_check]
+        lines += ["", "Message patterns (names masked; safe to share):", ""]
+        for s in report.by_check:
+            lines += [f"- {s.check}: {p}" for p in s.patterns]
         lines += ["", "Examples:"]
         for s in report.by_check:
             lines += [f"- {e}" for e in s.examples]

@@ -105,3 +105,26 @@ def test_the_json_report_says_whether_it_is_clean(tmp_path: Path) -> None:
     report = check_suite(STANDIN, _settings(tmp_path))
     data = json.loads(report.model_dump_json())
     assert data["ok"] is True and data["errors"] == 0
+
+
+def test_message_patterns_mask_the_suites_names(tmp_path: Path) -> None:
+    """Calibrating against a private suite: the patterns can be shared, the examples can't."""
+    from ticket2test.validate.suite import mask_message
+
+    assert mask_message("priority value 'P1' is not approved (known: p0, p1)") == (
+        "priority value '...' is not approved (known: p0, p1)"
+    )
+    assert mask_message("missing @pytest.mark.suite(...)") == "missing @pytest.mark.suite(...)"
+    assert mask_message("class TestFooBar must inherit one of BaseTest") == (
+        "class <Name> must inherit one of <Name>"
+    )
+    assert mask_message("acme.pages.cart has no name 'Cart' (tests/a/test_b.py, line 12)") == (
+        "<a.b> has no name '...' (<path>, line N)"
+    )
+    settings = _settings(tmp_path, markers={"priorities": ["P0", "P1", "P2", "P3"]})
+    report = check_suite(STANDIN, settings)
+    markers = next(s for s in report.by_check if s.check == "markers")
+    assert markers.patterns and markers.patterns[0].endswith(
+        "is not approved (known: P0, P1, P2, P3)"
+    )
+    assert "Message patterns (names masked" in render_markdown(report)

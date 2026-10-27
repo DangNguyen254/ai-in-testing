@@ -192,6 +192,7 @@ Complete each phase fully, with passing tests, before starting the next. At the 
 ## Working rules for Claude Code
 - Ask before adding a dependency, changing a data model already used by a completed phase, or changing any hard constraint.
 - Write unit tests alongside code. Mock the LLM in unit tests and never call a real API in `pytest` by default (mark live tests with `@pytest.mark.live`).
+- **Run only the tests a change touches** (the files for that module, plus anything it obviously affects). The full suite takes several minutes: run it before a push or when the human asks, and in the background, so other work can go on meanwhile.
 - Keep prompts in `prompts/` as versioned files, never inline in code.
 - Prefer simple and explicit over clever. No framework (LangChain, etc.) unless explicitly approved.
 - Type-hint everything in `src/`.
