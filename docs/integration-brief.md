@@ -57,6 +57,12 @@ when a search result needs context.
 
 Never fix a test to make the check pass: the suite is right, the config is wrong.
 
+**Deviations are not errors.** `deviations` in the report lists, per area, existing tests
+that break a correctness rule (driving the browser directly, page locators, pages built by
+constructors, star imports). Don't change config to make them go away; mention the areas in
+the report. If a whole area is older code, propose it for `generate.reuse.legacy_domains` (the
+human decides).
+
 **Stop and ask** when: the suite has no base class, page objects, or JSON data files; tests use
 bare `assert`; you need the allowed registry or base image; a needed package is private; you
 can't find the app's name length limit; or 10 rounds are used up.
@@ -133,9 +139,15 @@ requirements file, a ticket export). You are done when `ticket2test check-suite 
      "examples": ["tests/x/test_y.py: [markers] test_a: priority value 'P1' is not approved (known: p0, p1, p2, p3)"]}
   ],
   "warnings": 300, "warnings_by_check": {"claims": 280},   // heuristics: ignore for calibration
+  "legacy_files": 40,          // in generate.reuse.legacy_domains: not checked
+  "deviations": [              // older code breaking a correctness rule: not config errors
+    {"area": "reports", "check": "raw_driver", "files": 2, "tests": 3, "examples": ["..."]}
+  ],
   "not_static": ["tests/z/test_w.py"],                      // fine; see section 6
   "ids": {"ran": true, "exit_code": 0, "static": 940, "collected": 940,
-          "only_static": [], "only_collected": [], "not_computed_tests": [], "note": ""}
+          "only_static": [], "only_collected": [], "not_computed_tests": [], "note": "",
+          "ignored_files": 0,  // left out by sandbox.collect_ignore
+          "import_problems": [{"path": "tests/x/conftest.py", "error": "KeyError: 'APP_ROOT'"}]}
 }
 ```
 

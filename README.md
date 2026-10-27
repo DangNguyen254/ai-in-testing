@@ -4,7 +4,10 @@ Turns a bug ticket into **structured draft test cases**, then into **runnable te
 human QE to review. Generic and company-agnostic: ticket source, codebase, LLM endpoint, and
 conventions all sit behind adapters and config. Built and evaluated on public data only.
 
-> Status: Phases 0–8 done; refining reuse support on the stand-in (see `PROJECT_STATUS.md`).
+> Status: Phases 0–8 done, plus the real-suite fit plan (sandbox import settings, mixed and
+> legacy suites, import-aware names, risky-pattern warnings) and two bounded agents
+> (investigation, missing-piece proposals). Ready for integration with a real suite; see
+> `docs/project-overview.md` for the whole flow and `PROJECT_STATUS.md` for the log.
 
 ## Quick start
 
@@ -147,6 +150,14 @@ per file, at least 2 tests); each hit records its `rank_features`.
 Templates are existing tests whose JSON entries can seed new ones. The LLM may request extra
 searches (own search tools only) for at most `retrieval.max_followup_rounds` rounds.
 
+**Investigator** (opt, `retrieval.investigator.enabled: true`; replaces the follow-up rounds):
+a bounded agent that explores the index with read-only tools until it has enough context:
+`search`, `grep`, `open`, `open_member`, `callers`, `tests_using`, `chain`, `class_hierarchy`,
+`list_members`, `data`, `data_entry`. Outputs are cheap first (a large class opens as an outline
+of its members; cut lists say how many more results exist and in which folders), every output
+is capped, and the run is bounded by turns, calls per turn and transcript size. Kept chunk ids
+that don't exist are dropped; the pieces it reports as missing are checked by code.
+
 ### Generate a test (code + JSON data)
 
 ```bash
@@ -166,6 +177,8 @@ fits the suite, inside the ticket's domain (a folder from `generate.domain_globs
 
 - **covered**: an existing test already has the case (e.g. the draft names one of its
   parametrize values); nothing is generated and no LLM is called;
+- **out of scope**: the ticket's area is legacy (`generate.reuse.legacy_domains`); only
+  "covered" is decided there and nothing is generated;
 - **variant**: a new case of an existing parametrized test: the value is appended to its
   parametrize list and an entry cloned from the nearest case goes into its data file. Planned
   in code when the draft's inputs name the data keys they change; otherwise one small LLM
@@ -174,8 +187,10 @@ fits the suite, inside the ticket's domain (a folder from `generate.domain_globs
   then spliced in, with only the imports it needs);
 - **module**: a new test file, scaffolded from the domain's closest class.
 
-A variant that can't be patched falls back to a method, and a method that can't be spliced is
-kept as a new module. `decision.json` records the decision and every fallback. Patches are
+New methods never go into frozen classes (`generate.reuse.frozen_classes`), into classes gated
+to a narrower deployment than the draft, or, for UI tests, into classes that don't use page
+objects. A variant that can't be patched falls back to a method, and a method that can't be
+spliced is kept as a new module. `decision.json` records the decision and every fallback. Patches are
 written as `patched/<path>` copies plus `changes.patch` (never into the target repo), and are
 validated whole, reporting only findings the unpatched file doesn't already have.
 `--as variant|method|module` forces a kind.
@@ -185,7 +200,19 @@ More is done in code, around the one generation call: templates of the draft's *
 the component; a new module gets the template class's **shell** (imports, decorators, base
 class, setup/teardown) with only the generated test methods spliced in; data keys the test
 never reads are removed and a single mislabelled entry is re-keyed without a retry; and
-every variant the draft lists must become a case (validator `variants`).
+every variant the draft lists must become a case (validator `variants`). With
+`style.follow_local` (the default) cosmetic style follows the local file: code added to a file
+takes its indent and quotes, a new module its template's, and no existing line is reformatted
+(data entries are inserted as text in the file's own JSON style).
+
+**Missing pieces.** After generation, names the test needed that the suite lacks (in the final
+code, in any repair attempt, or among the investigator's hints) are checked against the
+catalog and written to `missing_pieces.json`; each real gap adds a reviewer-checklist note.
+With `proposals.enabled: true` (opt), the model writes each missing member of an existing
+page-object or helper class; code checks that nothing existing changed, the name and kind match
+the use, only existing names are used and (in the sandbox) the suite still loads, then keeps it
+as `proposal_<member>.diff` (never applied). With `proposals.regenerate` the test is generated
+again using the accepted members, and its checklist names the patch to apply first.
 
 ### Check the config against an existing suite
 
@@ -197,7 +224,10 @@ uv run ticket2test check-suite standin --collect       # + static ids vs. a sand
 The suite's own tests are known-good, so every validator error on them points at a config
 value that doesn't describe the suite. Errors are grouped by check with the config keys to look
 at (e.g. `markers` → `markers.priorities`, `style` → `style.python`). Run it first when
-pointing the tool at a new suite, and rerun until it reports "clean".
+pointing the tool at a new suite, and rerun until it reports "clean". Older code that breaks a
+correctness rule (`validation.deviation_checks`: raw driver, page locators, pages built by
+constructors, star imports) is listed per area as a **deviation**, not an error; legacy areas
+are skipped. With `--collect`, every module that fails to import is named with its error.
 
 ### Validate generated tests, and collect them in a sandbox
 
@@ -224,6 +254,13 @@ suite, point `sandbox.requirements` at the suite's own test requirements. Runs n
 image, and the runtime gets an empty credentials file, so your registry logins and credential
 helpers are never used (set `sandbox.registry_auth: true` if the base image's registry needs a
 login).
+
+Suites that do things at import time (read environment variables or host files, write files,
+need secrets) need private sandbox settings: `sandbox.env` (non-secret variables; names that
+look like secrets are refused), `sandbox.stub_dir` (stand-in modules copied into the staging
+folder; a small pytest plugin makes them win over the suite's own import path, for a top-level
+module or one module inside a real package), `sandbox.extra_paths` and `sandbox.collect_ignore`.
+Still only two mounts: the repo, read-only, and the staging folder.
 
 ### Record a real run's results
 
@@ -265,13 +302,18 @@ Markdown) goes to `output/reports/`:
 Pairs: public httpx issues with their fix PRs (ground truth: the PR's changed Python files,
 fetched from GitHub on first use and cached in `.t2t_cache/`), the stand-in's fake tickets with
 their linked tests, and pairs mined from git history by `mine` (commits that remove a skip
-citing a ticket id; read-only).
+citing a ticket id; read-only; `--from-skips` reads skips in the current tree when there is no
+history). A pair may expect another outcome than a test: a reported gap (`"expect": "gap"`), a
+vague ticket (`insufficient_info`) or a legacy area (`out_of_scope`); the report says whether
+each was met, and the dollar cost per ticket.
 
 ## Stand-in suite
 
 `standin/` is a synthetic target suite (invented names only) that mirrors the target test
 style: page objects, a base test class, markers, and a JSON data file per test file. See
 `standin/README.md`. `uv run pytest` checks it with `pytest --collect-only` (no browser needed).
+Since v7 it also has a mixed area with older code and a legacy area whose module needs runtime
+settings at import (`STANDIN_RUNTIME_ROOT`; the sandbox uses `standin/sandbox/stubs`).
 
 ## Configuration
 

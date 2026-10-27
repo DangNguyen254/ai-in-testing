@@ -5,10 +5,12 @@ depends on a real company environment sits behind adapters and config. This chec
 what to fill in, in the order it's usually needed. It contains no company data: every value
 below is a placeholder to replace inside the company environment.
 
-An AI assistant that can read the real suite can do sections 3–6 (the private config, the
-conventions doc, the sandbox requirements, the calibration loop): give it
-`docs/integration-brief.md`, which defines the files it writes, the reports it reads, and how to
-find every value.
+Before any of it, `docs/integration-fit-check.md` lets a model judge, from the real repo
+alone, whether the tool fits and what it will need. An AI assistant that can read the real
+suite can then do sections 3–6 (the private config, the conventions doc, the sandbox
+requirements, the calibration loop): give it `docs/integration-brief.md`, which defines the
+files it writes, the reports it reads, and how to find every value. For the conventions doc,
+`docs/real-suite-conventions-prompt.md` is the prompt to give it.
 
 ## 0. Approvals first
 
@@ -68,22 +70,41 @@ find every value.
       `generate.deployment_decorators`, `generate.scaffold_methods`,
       `generate.review_checklist_defaults`.
 - [ ] `context.max_tokens` for the chosen model.
+- [ ] `generate.reuse.legacy_domains` (areas where only "covered" is decided; **the team
+      confirms the list**), `generate.reuse.frozen_classes` (classes new methods never go
+      into), `generate.deployment_gate_patterns` if gates are written as conditions.
+- [ ] `style.follow_local` (keep `true` for a suite with mixed style).
+- [ ] Optional agents: `retrieval.investigator.enabled` (the search agent),
+      `proposals.enabled` / `proposals.regenerate` (missing-member proposals), and
+      `guides` (one strong-model call per area, within `guides.max_budget_usd`; run
+      `ticket2test guides <repo> --estimate` first). Measure each on real tickets before
+      leaving it on.
 
 ## 5. Validation and sandbox (`validation`, `repair`, `sandbox`)
 
 - [ ] `validation.base_classes` (every root base; there may be several), `assertion_object`, `assertion_methods`,
       `external_modules`, `naming` regexes, `unique_name_helper`.
-- [ ] `validation.name_max_length` (the app's name limit), `name_keys`.
+- [ ] `validation.name_max_length` (the app's name limit), `name_keys`, and
+      `unique_name_helpers` if different bases provide different unique-name helpers.
+- [ ] `validation.deviation_checks` (rules older tests may break; keep the default) and
+      `validation.raw_driver_access` (the expressions that reach the raw browser driver; not
+      the framework's own wrappers).
+- [ ] `data.defaults_merge` (how a defaults row combines with an entry) and
+      `data.allowed_expectation_sets` (expectation sections an entry may carry together).
 - [ ] `validation.capability_gates` (component → gates its features use),
       `capability_path`, `paging_actions`, `constant_properties`.
 - [ ] `sandbox.runtime` (Docker or Podman), `sandbox.base_image` (an approved image with
       Python), `sandbox.requirements` (the suite's test-time requirements file, pinned), and
       `sandbox.registry_auth` (true only if the base image's registry needs a login). Then
       `ticket2test sandbox --build`.
+- [ ] If importing the suite does things at import time: `sandbox.env` (non-secret
+      variables), `sandbox.stub_dir` (private stand-in modules), `sandbox.extra_paths`,
+      `sandbox.collect_ignore`. `check-suite --collect` names each module that fails to import.
 - [ ] **Calibrate:** `ticket2test check-suite <repo> --collect`, fix the config keys it names,
       and rerun until it reports "clean". The suite's own tests are known-good, so every error
       is a config value that doesn't describe the suite; `--collect` also compares the
-      statically computed test ids with a real collect in the sandbox.
+      statically computed test ids with a real collect in the sandbox. Deviations (older code
+      breaking a correctness rule) are listed per area and don't block "clean".
 - [ ] `repair.max_attempts`.
 - [ ] `results.link_pattern` (the runner's session links) and
       `results.test_problem_errors`; check with `ticket2test results <log> <generated>` on a
@@ -96,7 +117,8 @@ find every value.
 ## 6. Eval (`eval_data/`)
 
 - [ ] Mine ticket ↔ test pairs from the real repo's history: `ticket2test mine <repo> --out
-      eval_data/<name>.json` (read-only; commits that remove a ticket-id skip).
+      eval_data/<name>.json` (read-only; commits that remove a ticket-id skip). Without
+      history in the checkout: `--from-skips` (skips in the current tree citing a ticket).
 - [ ] Mark one linked-test set with `"generation": true` and its `conventions_doc`.
 - [ ] Run a deterministic baseline (`--no-llm`), then an LLM baseline; label a sample of the
       LLM-judge verdicts by hand before trusting them.

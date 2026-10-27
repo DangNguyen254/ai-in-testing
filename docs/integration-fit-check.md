@@ -115,7 +115,7 @@ If the ticket lacks steps or an expected result, the result is **`insufficient_i
   - **Unique names:** they use the suite's placeholder.
   - **Formatting:** code and JSON are formatted to the suite's style (indent, line length, quotes, import order, annotations stripped or kept, JSON indent and separators).
 
-### 3.7 Validation (24 code checks) and repair
+### 3.7 Validation (27 code checks) and repair
 | Check | What it enforces |
 |---|---|
 | syntax, imports | parses; every import resolves to the repo, the standard library or an allowed external module |
@@ -126,19 +126,24 @@ If the ticket lacks steps or an expected result, the result is **`insufficient_i
 | naming | module, class and test names match configurable regexes; no ticket numbers in names |
 | style, data_file | code and JSON are a fixed point of the suite's formatter settings |
 | ids | every data entry's id equals a computed test id, with one entry per parametrize variant |
-| data_keys, data_shape | every key the test reads exists in its entries; every seed or expectation key is read by the test or used by the framework or a helper it calls; never two expectation sections |
+| data_keys, data_shape | every key the test reads exists in its entries; every seed or expectation key is read by the test or used by the framework or a helper it calls; two expectation sections only where the suite allows that pair |
 | seeded_names | seeded object names use the unique-name placeholder and fit the app's name length limit |
 | capabilities | warns about feature/capability gates the component doesn't use |
 | claims | heuristic: the final checks touch what the test's name and docstring promise |
 | hooks | no setup/teardown hook that nothing will call (e.g. `setUp` in a class that isn't a `unittest.TestCase`) |
 | page_locators | tests use page actions and properties, never a page's locator constants |
 | raw_driver | UI tests never touch the raw browser driver (e.g. `self.driver`); missing actions are reported instead |
+| constructed_pages | a page built by its constructor (`LoginPage(driver)`) only where the existing class already builds that page, and always flagged |
+| star_imports | new code imports the names it uses (a copied star import is turned into explicit imports by code) |
+| risky (warnings) | a test calling another test, shared state, broad `except`, values that break hooks building code from them, entries copied unchanged from their template |
 | path_strings | dotted page path strings resolve to real pages |
 | draft_outcome, variants | the test checks the draft's expected outcome, and every variant the draft lists becomes a case |
 | constants | count checks after paging read the page size instead of assuming a number |
 | payloads, private | no unmasked injection payloads; no private terms or secrets in output |
 
 Errors go back to the LLM with the exact messages, at most 3 rounds. Then `pytest --collect-only` runs **in the sandbox**, so imports resolve and the collected ids match the data.
+
+Correctness rules always hold for new tests. Cosmetic rules (indent, quotes, JSON spacing) follow the local style: code added to a file takes that file's style, a new file takes its template's, and no existing line is reformatted. When neighbouring tests break a correctness rule the new test follows, the reviewer gets a note.
 
 ### 3.8 Missing pieces (gap report and proposal agent)
 - **Gap report:** names the test needed but the suite lacks are checked against the catalog. Some come from the final code, some from earlier repair attempts, some from the investigator's hints. Each gets a verdict: missing / exists / close match / owner unknown / not test-side code. A real gap adds a reviewer note: "this test may work around it".
@@ -157,10 +162,10 @@ Errors go back to the LLM with the exact messages, at most 3 rounds. Then `pytes
 - An LLM triage agent on top of this is planned, not built.
 
 ### 3.10 Suite-level tools
-- **`check-suite`:** runs every validator over the suite's **own** tests. Since those are known-good, every error points at a config value that doesn't describe the suite. With `--collect`, it compares the statically computed test ids with a real collect in the sandbox. This is the calibration loop for a new repo.
+- **`check-suite`:** runs every validator over the suite's **own** tests. Since those are known-good, every error points at a config value that doesn't describe the suite. Older code breaking a correctness rule (raw driver, locators, constructor-built pages, star imports) is listed per area as a deviation, not an error; legacy areas are skipped. With `--collect`, it compares the statically computed test ids with a real collect in the sandbox and names each module that fails to import. This is the calibration loop for a new repo.
 - **Suite map:** per-area summaries built from the index, without an LLM.
 - **Area guides:** one stronger-model call per area, under a budget, then reused by the cheap model.
-- **Mining:** ticket ↔ test pairs found in git history (a commit that removes a skip whose reason cites a ticket id), used for evaluation.
+- **Mining:** ticket ↔ test pairs found in git history (a commit that removes a skip whose reason cites a ticket id), or in the current tree's skips when there is no history; used for evaluation.
 - **Eval harness:** retrieval recall and MRR, validator and collect pass rates, and invented-name rate. It runs with each ticket's own test removed from the index (leave-one-out).
 
 ## Part 4. What the tool assumes about the target suite
@@ -176,20 +181,20 @@ This is the core of the fit check. "Strictness" means:
 | A2 | Test files match name patterns (default `test_*.py`, `*_test.py`); tests start with `test`, classes with `Test`. | Config | `index.test_file_globs`, prefixes |
 | A3 | The suite **collects with no network, no browser and no secrets**: importing the test modules and `conftest.py` must not connect anywhere or require secret env vars. | **Required** for the sandbox check | Handled by private sandbox settings: non-secret env vars, stand-in modules that replace modules with import-time side effects (they win over the suite's own import path), extra import paths, and paths left out of the collect. Modules that need real secrets or the network at import must be stubbed. |
 | A4 | Test classes inherit one or more **framework base classes** that provide setup, the page-object root and the assertion object. | Config (several roots allowed; discovered automatically) | `validation.base_classes` |
-| A5 | UI tests reach pages through **property chains from a root attribute** (e.g. `self.nav.<area>.<page>`), or through helpers that take a **dotted path string**, or helpers that `return self.<chain>`. | Config | `index.chain_roots`, `validation.path_string_helpers`. Pages created any other way (constructor calls such as `LoginPage(driver)`, factories, fixtures returning pages) are not typed, so their members **go unchecked** (no errors, but no protection against invented names either). |
+| A5 | UI tests reach pages through **property chains from a root attribute** (e.g. `self.nav.<area>.<page>`), or through helpers that take a **dotted path string**, or helpers that `return self.<chain>`. | Config | `index.chain_roots`, `validation.path_string_helpers`. Pages created any other way (constructor calls such as `LoginPage(driver)`, factories, fixtures returning pages) are not typed, so their members **go unchecked**. A new test may build a page with its constructor only where its existing class already does, and it is flagged. |
 | A6 | Page objects: **value fields are properties** (assign to set, read to get); **actions are methods**; no fluent chaining. | Config for the checks; the style is assumed | Suites with getter/setter methods or chaining still index, but the "property vs action" checks would need turning off. |
-| A7 | Page-object members are **defined statically** in class bodies (methods, properties, attributes). | Required for the name checks | Members created by `__getattr__`, metaclasses or runtime `setattr` can't be seen. Members inherited from a base **outside** the repo count as unknown, not missing. |
+| A7 | Page-object members are **defined statically** in class bodies (methods, properties, attributes). | Required for the name checks | Members created by `__getattr__`, metaclasses or runtime `setattr` can't be seen. Members inherited from a base **outside** the repo count as unknown, not missing. Star imports from repo modules are followed; from outside the repo, names they might bind become warnings. |
 | A8 | An **assertion object** (a `unittest.TestCase` instance, e.g. `self.check.assertEqual`), or `self.assert*` in TestCase-style classes. | Config | Suites using bare `assert` would need the assertions check turned off. |
 | A9 | Each test module has a **JSON data file** next to it (`test_x.py` → `test_x.json`), or a per-function file. | Config; optional per test | `index.data_file_suffix`. Tests that read no data need no entry. Data in YAML, CSV, Python modules or a database is **not** supported. |
-| A10 | Data file shape: a top-level **array** of entries with an id field, or an **object** keyed by test id. An optional **defaults entry** shallow-merged into every entry (one top-level key at a time). | Config | `data.format`, `data.id_field` |
+| A10 | Data file shape: a top-level **array** of entries with an id field, or an **object** keyed by test id. An optional **defaults entry** shallow-merged into every entry (one top-level key at a time). | Config | `data.format`, `data.id_field`, `data.defaults_merge` (also: an empty entry value keeps the default) |
 | A11 | Entry ids equal **pytest test ids** (incl. parametrize suffixes, stacked decorators bottom-first). | Required for the id checks | Ids built at runtime (computed parametrize values) are listed as "not static" and skipped. |
 | A12 | Tests read their entry as a **dict** (`self.params["key"]`, `params.get(...)`, nested keys); no attribute access. | Config | `data.access` |
-| A13 | Entries have **seed sections** (state applied before the test by the framework), at most **one expectation section** read by a validation helper that takes no arguments, per-entry keys (priority, skip), and custom keys the test reads. | Config | `data.seed_sections`, `data.expectation_sections`, `data.per_entry_keys` |
-| A14 | **Placeholders** in data: a unique-name placeholder derived from the test id with a length cap, plus a helper that returns the same name in code; optionally tenant / user placeholders; colon path placeholders. | Config; optional | `validation.unique_name_pattern`, `unique_name_helper`, `name_max_length` |
+| A13 | Entries have **seed sections** (state applied before the test by the framework), at most **one expectation section** read by a validation helper that takes no arguments, per-entry keys (priority, skip), and custom keys the test reads. | Config | `data.seed_sections`, `data.expectation_sections`, `data.per_entry_keys`, `data.allowed_expectation_sets` (pairs an entry may carry together) |
+| A14 | **Placeholders** in data: a unique-name placeholder derived from the test id with a length cap, plus a helper that returns the same name in code; optionally tenant / user placeholders; colon path placeholders. | Config; optional | `validation.unique_name_pattern`, `unique_name_helper` (or one per base class: `unique_name_helpers`), `name_max_length` |
 | A15 | **Markers** for priority, project, component and suite, with approved value sets. | Config (names and values) | `markers.*`; component values are learned from the suite |
-| A16 | A **decorator stack** on classes (platform, environment / deployment gating, data loading, markers) that new tests copy from neighbours. | Optional | Copied as found; deployment gate decorator names are configured. |
+| A16 | A **decorator stack** on classes (platform, environment / deployment gating, data loading, markers) that new tests copy from neighbours. | Optional | Copied as found; deployment gates are configured as decorator names, whole decorator expressions (a skip on a condition) or patterns. |
 | A17 | Tests are grouped in **feature-area folders** (one domain per folder). | Config | `generate.domain_globs` / `generate.domains` |
-| A18 | A consistent **code style** (indent, line length, quotes, annotations) and JSON style. | Config | `style.*`; checked by running the suite's own files through the formatter |
+| A18 | A consistent **code style** (indent, line length, quotes, annotations) and JSON style. | Config; mixed style is fine | `style.*`; with `style.follow_local` each file is judged in its own style and new code takes the local style |
 | A19 | **Ticket ids in skip reasons** and fix commits. | Optional | Only for mining evaluation pairs |
 | A20 | Tickets in **Jira** (exported JSON) or GitHub. | Config | A live Jira API needs a new adapter. |
 | A21 | Mostly **UI tests** with backend checks; API tests are also handled. | Optional | Pure API suites work; the page-object machinery is then unused. |
@@ -241,6 +246,12 @@ These came from describing real-suite patterns to the tool's authors. Don't coun
 - Very large page objects: shown to the LLM as an outline. Very large areas: split into sub-areas. Very many chains: page objects found by type traversal, not a capped list.
 - Prompt-injection text inside test data (for suites that test an AI agent): masked before the LLM sees it, restored by code.
 - Vague tickets: `insufficient_info` with questions, never a guessed test.
+- Import-time side effects (environment variables, host files, file writes): private sandbox stubs and settings, without touching the repo.
+- Mixed style across files (indent, quotes, JSON spacing): new code follows the file it goes into.
+- Older code breaking correctness rules (raw driver, locators, constructor-built pages, star imports): listed as deviations per area, not config errors; new tests follow the rules and never go into classes that drive the browser directly.
+- Legacy areas: out of scope for generation, "already covered" still detected.
+- Two classes with the same name in different modules: resolved through each module's imports.
+- Two expectation sections in one entry, a defaults row where an empty value keeps the default, one unique-name helper per base class, deployment gates written as conditions.
 
 ## Part 7. Known limits
 
