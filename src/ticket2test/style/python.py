@@ -7,6 +7,7 @@ never imports or runs it (Hard Constraint 3 is about execution).
 
 from __future__ import annotations
 
+import ast
 import subprocess
 
 import tree_sitter_python
@@ -23,6 +24,19 @@ class FormatError(RuntimeError):
     """Ruff could not format the code (usually a syntax error)."""
 
 
+def target_syntax_error(code: str, target: str | None) -> str | None:
+    """Why ``code`` doesn't parse with Python ``target``'s grammar ("3.8"), or None. Best effort:
+    Python's parser rejects most newer syntax for an older ``feature_version``, not all."""
+    if not target:
+        return None
+    major, minor = (int(part) for part in target.split("."))
+    try:
+        ast.parse(code, feature_version=(major, minor))
+    except SyntaxError as exc:
+        return f"line {exc.lineno}: {exc.msg}"
+    return None
+
+
 def format_python(code: str, style: PythonStyle, first_party: list[str]) -> str:
     """Strip annotations (if configured), sort imports, drop unused imports, then format."""
     if style.strip_annotations:
@@ -33,6 +47,7 @@ def format_python(code: str, style: PythonStyle, first_party: list[str]) -> str:
         f'format.line-ending = "{style.line_ending}"',
         f'format.quote-style = "{style.quote_style}"',
         f"lint.isort.known-first-party = {_toml_list(first_party)}",
+        *_target_option(style),
     ]
     fixed = _ruff(["check", "--select", "I,F401", "--fix", "--exit-zero"], options, code)
     formatted = _ruff(["format"], options, fixed)
@@ -48,8 +63,16 @@ def sort_imports(code: str, style: PythonStyle, first_party: list[str]) -> str:
         f"indent-width = {style.indent_width}",
         f"line-length = {style.line_length}",
         f"lint.isort.known-first-party = {_toml_list(first_party)}",
+        *_target_option(style),
     ]
     return _ruff(["check", "--select", "I", "--fix", "--exit-zero"], options, code)
+
+
+def _target_option(style: PythonStyle) -> list[str]:
+    """Ruff's ``target-version`` (e.g. "py38"), so formatting never needs newer syntax."""
+    if not style.target_version:
+        return []
+    return [f'target-version = "py{style.target_version.replace(".", "")}"']
 
 
 def _ruff(command: list[str], options: list[str], code: str) -> str:

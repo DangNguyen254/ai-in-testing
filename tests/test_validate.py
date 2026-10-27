@@ -850,3 +850,28 @@ def test_tests_never_use_the_raw_driver(setup: Any) -> None:
     messages = _messages(_validate(setup, code=code), "raw_driver")
     assert len(messages) == 1 and "uses the browser driver directly" in messages[0]
     assert _messages(_validate(setup), "raw_driver") == []
+
+
+def test_syntax_newer_than_the_suites_python_is_an_error(setup: Any) -> None:
+    settings = setup[0]
+    py38 = settings.model_copy(
+        update={
+            "style": settings.style.model_copy(
+                update={
+                    "python": settings.style.python.model_copy(update={"target_version": "3.8"})
+                }
+            )
+        }
+    )
+    code = GOOD_CODE.replace(
+        "      rules.search()\n",
+        "      rules.search()\n      match 1:\n         case 1:\n            pass\n",
+        1,
+    )
+    assert code != GOOD_CODE
+    assert any(
+        "newer than the suite's Python 3.8" in m
+        for m in _messages(_validate(setup, code=code, settings=py38), "syntax")
+    )
+    assert not _messages(_validate(setup, code=code), "syntax")  # no target: this tool's Python
+    assert not _messages(_validate(setup, settings=py38), "syntax")

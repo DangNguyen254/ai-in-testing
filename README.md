@@ -315,6 +315,23 @@ style: page objects, a base test class, markers, and a JSON data file per test f
 Since v7 it also has a mixed area with older code and a legacy area whose module needs runtime
 settings at import (`STANDIN_RUNTIME_ROOT`; the sandbox uses `standin/sandbox/stubs`).
 
+## Running it inside a container
+
+When the target suite lives in a container, copy this project's last commit into it and
+run the tool there (the copy replaces the previous one; only committed files go):
+
+```bash
+scripts	o-container.cmd <container>                      # Windows, from this folder
+python scripts/to_container.py <container> --target /root/work/ai-prj
+```
+
+The target folder must be named `ai-prj` (or `ai-prj-<something>`), so the removal can never
+hit another folder. Inside the container, keep the virtual environment, the uv cache and every
+output outside the copy (`UV_PROJECT_ENVIRONMENT`, `UV_CACHE_DIR`, and `paths.*` in the private
+config), and run the tool with `uv run --frozen ticket2test ...`. If the suite runs on an older
+Python, set `style.python.target_version` (e.g. `"3.8"`): generated code must then parse with
+that version's grammar, and the formatter targets it.
+
 ## Configuration
 
 Settings live in `config.yaml`. Any value can be overridden with an env var

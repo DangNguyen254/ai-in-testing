@@ -29,7 +29,12 @@ from ticket2test.security.masking import TOKEN
 from ticket2test.security.private import MARK, PrivateTerms
 from ticket2test.style import format_entries
 from ticket2test.style.local import detect_json_style, detect_python_style
-from ticket2test.style.python import FormatError, format_python, strip_annotations
+from ticket2test.style.python import (
+    FormatError,
+    format_python,
+    strip_annotations,
+    target_syntax_error,
+)
 from ticket2test.validate import claims
 from ticket2test.validate.code import (
     ChainResolver,
@@ -118,6 +123,15 @@ def check_syntax(s: Subject) -> Iterator[Finding]:
         s.tree = ast.parse(s.code)
     except SyntaxError as exc:
         yield _f("syntax", f"the code does not parse: {exc.msg}", line=exc.lineno)
+        return
+    target = s.settings.style.python.target_version
+    problem = target_syntax_error(s.code, target)
+    if problem:  # the tree stays: the other checks still run
+        yield _f(
+            "syntax",
+            f"the code uses syntax newer than the suite's Python {target} ({problem}); "
+            f"write it the way Python {target} accepts",
+        )
 
 
 def check_imports(s: Subject) -> Iterator[Finding]:

@@ -30,7 +30,7 @@ from ticket2test.prompts import PromptTemplate, load_prompt
 from ticket2test.proposals.check import check_patched, insert_member
 from ticket2test.sandbox.runner import SandboxError, collect_suite
 from ticket2test.security.scrubber import scrub_code
-from ticket2test.style.python import FormatError, format_python
+from ticket2test.style.python import FormatError, format_python, target_syntax_error
 
 _MAX_INHERITED = 60
 
@@ -170,6 +170,10 @@ def _check(
     findings = check_patched(
         before, after, class_name, proposal.member, kind, index.catalog, proposal.owner_class
     )
+    target = settings.style.python.target_version
+    problem = target_syntax_error(code, target)
+    if problem:
+        findings.append(f"the member uses syntax newer than Python {target} ({problem})")
     return findings, after
 
 

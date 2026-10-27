@@ -108,3 +108,17 @@ def test_format_entries_writes_array_or_object_layout() -> None:
     assert json.loads(array) == entries and '"x": 1' in array and array.endswith("\n")
     keyed = json.loads(format_entries(entries, DataSettings(), style, "object"))
     assert keyed == {"test_a[1]": {"x": 1}, "test_a[2]": {"x": 2}}
+
+
+def test_a_target_python_version_rejects_newer_syntax() -> None:
+    """The real suite runs on an older Python than this tool: generated code must parse with
+    that version's grammar, and the formatter must not introduce newer syntax."""
+    from ticket2test.style.python import target_syntax_error
+
+    match_code = "def f(x):\n   match x:\n      case 1:\n         return 1\n"
+    assert target_syntax_error(match_code, "3.8") is not None
+    assert target_syntax_error(match_code, "3.10") is None
+    assert target_syntax_error(match_code, None) is None
+    assert target_syntax_error("def f(a, /, b):\n   return (c := a)\n", "3.8") is None
+    style = Settings().style.python.model_copy(update={"target_version": "3.8"})
+    assert format_python("x = 1\n", style, FIRST_PARTY) == "x = 1\n"

@@ -197,6 +197,10 @@ class PythonStyle(_Section):
     final_newline: bool = True
     # First-party import roots for import sorting; empty: the target repo's top-level packages.
     first_party: list[str] = Field(default_factory=list)
+    # The suite's Python version ("3.8"): generated code is formatted for it and must parse
+    # with that version's grammar (syntax only; newer library calls are not detected).
+    # None: whatever this tool's Python accepts.
+    target_version: str | None = Field(default=None, pattern=r"^3\.\d{1,2}$")
 
 
 class JsonStyle(_Section):
