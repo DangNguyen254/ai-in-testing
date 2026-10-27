@@ -10,6 +10,7 @@ import ast
 import json
 import re
 import sys
+import textwrap
 from collections import Counter
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
@@ -49,6 +50,7 @@ from ticket2test.validate.code import (
     dotted,
     function_chains,
     markers,
+    pytestmark_nodes,
     test_classes,
     test_functions,
 )
@@ -705,15 +707,23 @@ def check_markers(s: Subject) -> Iterator[Finding]:
         "project": parts([m.project, *s.catalog.markers.get("project", [])]),
         "component": parts(s.catalog.markers.get("component", [])),
     }
+    assert s.tree is not None
+    module_marks = markers(pytestmark_nodes(s.tree.body))  # pytest applies these to every test
     for cls, fn in s.tests:
-        found = markers(cls.decorator_list if cls else [])
-        for name, values in markers(fn.decorator_list).items():
-            found.setdefault(name, []).extend(values)
+        found: dict[str, list[str]] = {k: list(v) for k, v in module_marks.items()}
+        sources = (
+            [*_inherited_marks(s, cls), cls.decorator_list, pytestmark_nodes(cls.body)]
+            if (cls)
+            else []
+        )
+        for nodes in [*sources, fn.decorator_list]:
+            for name, values in markers(nodes).items():
+                found.setdefault(name, []).extend(values)
         for name in m.required:
-            values = found.get(name, [])
-            if not values:
+            if name not in found:
                 yield _f("markers", f"missing @pytest.mark.{name}(...)", test=fn.name)
                 continue
+            values = found[name]  # empty: the value isn't a plain string; not judged
             known = allowed.get(name)
             for value in sorted(parts(values)) if name in ("project", "component") else values:
                 if known and value not in known:
@@ -723,6 +733,34 @@ def check_markers(s: Subject) -> Iterator[Finding]:
                         f"{', '.join(sorted(known))})",
                         test=fn.name,
                     )
+
+
+def _inherited_marks(s: Subject, cls: ast.ClassDef) -> list[list[ast.expr]]:
+    """Marks pytest gives a class's tests from its repo base classes: their decorators and
+    their ``pytestmark``, furthest base first."""
+    if s.resolver is None or s.index is None:
+        return []
+    found: list[list[ast.expr]] = []
+    for entry in reversed(s.resolver.repo_bases(cls)):
+        record = s.index.files.get(entry.file_path)
+        info = record.info if record else None
+        base = next((c for c in info.classes if c.name == entry.name), None) if info else None
+        if base is None:
+            continue
+        nodes: list[ast.expr] = []
+        for text in base.decorators:
+            try:
+                nodes.append(ast.parse(text.strip().lstrip("@"), mode="eval").body)
+            except SyntaxError:
+                continue
+        try:
+            tree = ast.parse(textwrap.dedent(base.code))
+        except SyntaxError:
+            tree = None
+        if tree is not None and tree.body and isinstance(tree.body[0], ast.ClassDef):
+            nodes += pytestmark_nodes(tree.body[0].body)
+        found.append(nodes)
+    return found
 
 
 def check_naming(s: Subject) -> Iterator[Finding]:

@@ -91,6 +91,9 @@ _MASKS = [
     (re.compile(r"[^\s(),]*[/\\][^\s(),]+|[^\s(),]+\.(?:py|json)\b"), "<path>"),
     (re.compile(r"\b\w+(?:\.\w+)+\b"), "<a.b>"),
     (re.compile(r"\b[A-Z][a-z0-9]*[A-Z]\w*\b"), "<Name>"),
+    (re.compile(r"\(([A-Z][a-z0-9]+)\)"), "(<Name>)"),  # a one-word class name: (Settings)
+    (re.compile(r"\b\w+(?= \(<Name>\))"), "<name>"),  # the attribute before it: rules (<Name>)
+    (re.compile(r"^_?\w+(?= is an? )"), "<name>"),  # a member: "save is an action method"
     (re.compile(r"\b[a-z0-9]+(?:_[a-z0-9]+)+\b"), "<name>"),
     (re.compile(r"\b\d+\b"), "N"),
 ]

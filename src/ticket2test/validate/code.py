@@ -66,6 +66,18 @@ def markers(decorators: list[ast.expr]) -> dict[str, list[str]]:
     return found
 
 
+def pytestmark_nodes(body: list[ast.stmt]) -> list[ast.expr]:
+    """The marks of ``pytestmark = ...`` in a module or class body (one mark or a list)."""
+    found: list[ast.expr] = []
+    for node in body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(t, ast.Name) and t.id == "pytestmark" for t in node.targets
+        ):
+            value = node.value
+            found += list(value.elts) if isinstance(value, ast.List | ast.Tuple) else [value]
+    return found
+
+
 def docstring(fn: ast.FunctionDef) -> str:
     return ast.get_docstring(fn) or ""
 

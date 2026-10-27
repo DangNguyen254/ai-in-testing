@@ -875,3 +875,52 @@ def test_syntax_newer_than_the_suites_python_is_an_error(setup: Any) -> None:
     )
     assert not _messages(_validate(setup, code=code), "syntax")  # no target: this tool's Python
     assert not _messages(_validate(setup, settings=py38), "syntax")
+
+
+def test_markers_from_module_class_body_and_constants_count(setup: Any) -> None:
+    """Found on the first real-suite check-suite: markers set with ``pytestmark`` (module or
+    class body) or with a non-literal value were reported missing on correct tests."""
+    no_method_marks = GOOD_CODE.replace('   @pytest.mark.priority("p2")\n', "", 1).replace(
+        '   @pytest.mark.suite("regression")\n', "", 1
+    )
+    assert any(
+        "missing @pytest.mark.priority" in m
+        for m in _messages(_validate(setup, code=no_method_marks), "markers")
+    )
+    module = no_method_marks.replace(
+        "\n\n@browsers", '\n\npytestmark = [pytest.mark.priority("p2")]\n\n\n@browsers', 1
+    ).replace(
+        "class TestRulesListFilter(BaseTest):\n",
+        "class TestRulesListFilter(BaseTest):\n   pytestmark = pytest.mark.suite(SUITE)\n",
+        1,
+    )
+    assert not _messages(_validate(setup, code=module), "markers")
+
+
+def test_markers_on_a_base_class_count_for_its_subclasses(tmp_path: Path) -> None:
+    from ticket2test.generate.generator import first_party
+
+    repo = tmp_path / "repo"
+    (repo / "framework").mkdir(parents=True)
+    (repo / "tests").mkdir()
+    (repo / "framework" / "base.py").write_text(
+        'import pytest\n\n\n@pytest.mark.project("example-project")\nclass AreaBase:\n'
+        '   pytestmark = [pytest.mark.suite("regression")]\n',
+        encoding="utf-8",
+    )
+    code = (
+        "import pytest\n\nfrom framework.base import AreaBase\n\n\n"
+        '@pytest.mark.component("rules")\nclass TestArea(AreaBase):\n'
+        '   @pytest.mark.priority("p2")\n   def test_area_one(self):\n      pass\n'
+    )
+    (repo / "tests" / "test_area.py").write_text(code, encoding="utf-8")
+    settings = Settings.model_validate({"paths": {"cache_dir": str(tmp_path / "cache")}})
+    index, _, _ = update_index(repo, settings)
+    report = _validate(
+        (settings, index, first_party(index, settings)),
+        code=code,
+        entries=[],
+        file_name="tests/test_area.py",
+        test_ids=["test_area_one"],
+    )
+    assert not _messages(report, "markers"), _messages(report, "markers")
