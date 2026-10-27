@@ -191,6 +191,8 @@ validation:                     # deterministic checks of generated tests (Phase
   path_string_helpers: []         # helpers taking a dotted page path string; checked like chains
   forbid_page_locators: true      # tests use page actions and properties, never locator constants
   raw_driver_access: [self.driver, self._driver]   # UI tests never use these (page objects only)
+  check_helpers: []               # the suite's own checking helpers that count as a check (e.g. verify_*)
+  relative_imports: false         # true when the suite uses relative imports
   discover_path_string_helpers: true   # also: functions that split on "." and call getattr
   assertion_methods: [assertEqual, assertNotEqual, assertTrue, assertFalse, assertIn,
                       assertNotIn, assertIsNone, assertIsNotNone, assertGreater, assertLess,

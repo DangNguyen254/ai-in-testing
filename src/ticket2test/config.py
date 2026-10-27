@@ -384,6 +384,11 @@ class ValidateSettings(_Section):
     forbid_page_locators: bool = True
     # Expressions that reach the raw browser driver; UI tests must not use them (page objects
     # only). Empty: the check is off.
+    # Calls that count as a check besides the assertion object and the validation helpers:
+    # name patterns of the suite's own checking helpers (``verify_*``, ``wait_for_log``).
+    check_helpers: list[str] = Field(default_factory=list)
+    # The suite uses relative imports (``from . import x``); off: a relative import is an error.
+    relative_imports: bool = False
     # Expressions that reach the raw browser driver (``*`` is a wildcard, e.g.
     # ``self.driver.find_element*`` when ``self.driver`` itself is the framework's wrapper).
     raw_driver_access: list[str] = Field(default_factory=lambda: ["self.driver", "self._driver"])

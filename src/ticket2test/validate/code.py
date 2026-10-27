@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ast
 import builtins
+import fnmatch
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Literal
@@ -325,20 +326,31 @@ class CheckCall:
 
 
 def check_calls(
-    fn: ast.FunctionDef, assertion_object: str, helpers: set[str], self_asserts: bool = False
+    fn: ast.FunctionDef,
+    assertion_object: str,
+    helpers: set[str],
+    self_asserts: bool = False,
+    check_helpers: list[str] | tuple[str, ...] = (),
 ) -> list[CheckCall]:
-    """Assertions on the assertion object, validation-helper calls, and (in a class that
-    inherits ``unittest.TestCase``) ``self.assert*`` / ``self.fail*``."""
+    """Assertions on the assertion object, validation-helper calls, calls whose name matches
+    ``check_helpers`` (the suite's own checking helpers, e.g. ``verify_*``), and (in a class
+    that inherits ``unittest.TestCase``) ``self.assert*`` / ``self.fail*``."""
     found: list[CheckCall] = []
     for node in _walk_in_order(fn):
         if not isinstance(node, ast.Call):
             continue
         name = dotted(node.func)
-        if name in helpers:
+        if name in helpers or is_check_helper(name, check_helpers):
             found.append(CheckCall(name, True, node))
         elif is_assertion(name, assertion_object, self_asserts):
             found.append(CheckCall(name.rsplit(".", 1)[1], False, node))
     return found
+
+
+def is_check_helper(name: str, patterns: list[str] | tuple[str, ...]) -> bool:
+    """The called name's last part matches one of the suite's check-helper patterns."""
+    last = name.rsplit(".", 1)[-1]
+    return bool(last) and any(fnmatch.fnmatchcase(last, p) for p in patterns)
 
 
 def is_assertion(name: str, assertion_object: str, self_asserts: bool) -> bool:

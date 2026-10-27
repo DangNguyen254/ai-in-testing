@@ -151,7 +151,10 @@ def check_imports(s: Subject) -> Iterator[Finding]:
                     yield _f("imports", f"unknown module {alias.name!r}", line=node.lineno)
         elif isinstance(node, ast.ImportFrom):
             if node.level:
-                yield _f("imports", "relative imports are not used in the suite", line=node.lineno)
+                if not s.settings.validation.relative_imports:
+                    yield _f(
+                        "imports", "relative imports are not used in the suite", line=node.lineno
+                    )
                 continue
             module = node.module or ""
             if module in modules:
@@ -1406,11 +1409,13 @@ def _prepare(s: Subject) -> None:
         resolver = ChainResolver(s.catalog, start, local, path_helpers)
         s.chains[fn.name] = function_chains(fn, resolver)
         self_asserts = cls is not None and _is_testcase(cls, bases, v.testcase_bases)
-        s.checks[fn.name] = check_calls(fn, v.assertion_object, helpers, self_asserts)
+        s.checks[fn.name] = check_calls(
+            fn, v.assertion_object, helpers, self_asserts, v.check_helpers
+        )
         if cls is not None:
             s.uses[fn.name] = reuse.data_use(cls, fn)
             s.deep_checks[fn.name] = reuse.checks_through_calls(
-                cls, fn, v.assertion_object, self_asserts
+                cls, fn, v.assertion_object, self_asserts, v.check_helpers
             )
     for cls in reuse.classes():
         if not cls.name.startswith(s.settings.index.test_class_prefix):

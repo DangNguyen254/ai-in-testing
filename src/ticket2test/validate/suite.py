@@ -57,6 +57,21 @@ CONFIG_HINTS: dict[str, str] = {
 _NOT_STATIC = "parametrize values must be literals"
 _EXAMPLES = 3
 _PATTERNS = 5
+_KEYS = 30
+_NEVER_READ = re.compile(r"custom key '([^']+)' is never read")
+_ONLY_READ = re.compile(r"'([^']+)' is only read by ([\w.]+)\(\)")
+_LACKS = re.compile(r"reads keys its entry lacks: \[([^\]]*)\]")
+
+
+def _key_reasons(message: str) -> list[str]:
+    """``"<key>: <what>"`` for each key a data_keys message names."""
+    found = [f"{k}: never read by the test" for k in _NEVER_READ.findall(message)]
+    found += [f"{k}: only read by {h}(), not called" for k, h in _ONLY_READ.findall(message)]
+    for listed in _LACKS.findall(message):
+        found += [
+            f"{k}: read, but missing from the entry" for k in re.findall(r"'([^']+)'", listed)
+        ]
+    return found
 
 
 class Deviation(BaseModel):
@@ -149,6 +164,10 @@ class SuiteReport(BaseModel):
     warnings_by_check: dict[str, int] = Field(default_factory=dict)
     not_static: list[str] = Field(default_factory=list)  # files with non-literal parametrize
     legacy_files: int = 0  # test files in generate.reuse.legacy_domains (not checked)
+    # data_keys errors by key: "<count>x <key>: <what>" (never read / only read by a helper
+    # the test doesn't call / missing from the entry), most common first. Key and helper names
+    # are the suite's: review before sharing.
+    data_keys_by_key: list[str] = Field(default_factory=list)
     deviations: list[Deviation] = Field(default_factory=list)  # not config errors
     ids: IdComparison = Field(default_factory=IdComparison)
     seconds: float = 0.0
@@ -176,6 +195,7 @@ def check_suite(
     imports = module_imports(index)
     errors: dict[str, list[tuple[str, str]]] = defaultdict(list)  # check -> (file, message)
     patterns: dict[str, Counter[str]] = defaultdict(Counter)  # check -> masked message -> count
+    by_key: Counter[str] = Counter()  # "<key>: <what>" over all data_keys errors
     warnings: dict[str, int] = defaultdict(int)
 
     all_domains = domains(index, settings)
@@ -212,6 +232,8 @@ def check_suite(
             else:
                 errors[finding.check].append((path, finding.render()))
                 patterns[finding.check][mask_message(finding.message)] += 1
+                if finding.check == "data_keys":
+                    by_key.update(_key_reasons(finding.message))
                 file_errors += 1
         report.clean_files += int(file_errors == 0)
         took = time.monotonic() - file_started
@@ -240,6 +262,7 @@ def check_suite(
         for check, found in sorted(errors.items(), key=lambda kv: -len(kv[1]))
     ]
     report.errors = sum(s.errors for s in report.by_check)
+    report.data_keys_by_key = [f"{n}x {what}" for what, n in by_key.most_common(_KEYS)]
     report.warnings_by_check = dict(sorted(warnings.items()))
     report.warnings = sum(warnings.values())
     if collect:
@@ -368,6 +391,13 @@ def render_markdown(report: SuiteReport) -> str:
         for s in report.by_check:
             lines += [f"- {e}" for e in s.examples]
         lines.append("")
+    if report.data_keys_by_key:
+        lines += [
+            "## data_keys by key (key and helper names are the suite's: review before sharing)",
+            "",
+            *(f"- {row}" for row in report.data_keys_by_key),
+            "",
+        ]
     if report.legacy_files:
         lines += [
             f"Legacy test files not checked (generate.reuse.legacy_domains): {report.legacy_files}",

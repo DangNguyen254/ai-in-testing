@@ -128,3 +128,20 @@ def test_message_patterns_mask_the_suites_names(tmp_path: Path) -> None:
         "is not approved (known: P0, P1, P2, P3)"
     )
     assert "Message patterns (names masked" in render_markdown(report)
+
+
+def test_data_keys_are_summed_by_key_and_reason() -> None:
+    from ticket2test.validate.suite import _key_reasons
+
+    message = (
+        "custom key 'note' is never read by the test; 'targets' is only read by "
+        "self.verify_targets(), which the test never calls. Remove it, or read it in the test."
+    )
+    assert _key_reasons(message) == [
+        "note: never read by the test",
+        "targets: only read by self.verify_targets(), not called",
+    ]
+    assert _key_reasons("reads keys its entry lacks: ['a', 'b']") == [
+        "a: read, but missing from the entry",
+        "b: read, but missing from the entry",
+    ]

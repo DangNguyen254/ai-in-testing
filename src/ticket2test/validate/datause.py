@@ -19,7 +19,7 @@ from ticket2test.index.catalog import ClassEntry, SymbolCatalog
 from ticket2test.index.extract import ClassInfo, FileInfo
 from ticket2test.index.indexer import IndexData
 from ticket2test.index.pytest_ids import compute_test_ids
-from ticket2test.validate.code import dotted, is_assertion
+from ticket2test.validate.code import dotted, is_assertion, is_check_helper
 
 _MAX_METHODS = 200  # bound on methods followed per test
 
@@ -152,6 +152,7 @@ class Resolver:
         function: ast.FunctionDef,
         assertion_object: str,
         self_asserts: bool = False,
+        check_helpers: list[str] | tuple[str, ...] = (),
     ) -> bool:
         """True if a method the function calls (transitively) asserts or validates."""
         seen = {function.name}
@@ -167,6 +168,7 @@ class Resolver:
             reads = self._reads(method)
             if reads.helpers or any(
                 is_assertion(dotted(n.func), assertion_object, self_asserts)
+                or is_check_helper(dotted(n.func), check_helpers)
                 for n in _walk(method)
                 if isinstance(n, ast.Call)
             ):

@@ -924,3 +924,17 @@ def test_markers_on_a_base_class_count_for_its_subclasses(tmp_path: Path) -> Non
         test_ids=["test_area_one"],
     )
     assert not _messages(report, "markers"), _messages(report, "markers")
+
+
+def test_the_suites_own_check_helpers_count_as_checks() -> None:
+    """A real suite checks through its own helpers (``verify_*``, log waits): with
+    ``validation.check_helpers`` those calls count, so such a test isn't "checking nothing"."""
+    import ast
+
+    from ticket2test.validate.code import check_calls
+
+    fn = ast.parse("def test_x(self):\n    self.page.verify_shown()\n").body[0]
+    assert isinstance(fn, ast.FunctionDef)
+    assert not check_calls(fn, "self.check", set())
+    assert check_calls(fn, "self.check", set(), check_helpers=["verify_*"])
+    assert not check_calls(fn, "self.check", set(), check_helpers=["wait_for_*"])
