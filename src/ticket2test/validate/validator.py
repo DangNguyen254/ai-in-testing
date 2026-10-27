@@ -24,6 +24,7 @@ from ticket2test.generate.inspect import DataUse, computed_test_ids, data_use
 from ticket2test.index.catalog import ClassEntry, SymbolCatalog, import_map
 from ticket2test.index.chunks import is_test_file
 from ticket2test.index.datafile import merged, split_defaults
+from ticket2test.index.extract import module_name
 from ticket2test.index.indexer import IndexData
 from ticket2test.index.tokens import split_identifier
 from ticket2test.models.chunk import Chunk
@@ -88,7 +89,7 @@ class Subject:
     @property
     def module(self) -> str:
         """The module name the file has in the repo."""
-        return PurePosixPath(self.generated.file_name).with_suffix("").as_posix().replace("/", ".")
+        return module_name(self.generated.file_name, self.settings.index.import_roots)
 
     @property
     def entries(self) -> list[dict[str, Any]]:
@@ -1392,7 +1393,7 @@ def _prepare(s: Subject) -> None:
         s.tree, s.settings.index.test_function_prefix, s.settings.index.test_class_prefix
     )
     helpers = set(d.expectation_sections.values())
-    module = PurePosixPath(s.generated.file_name).with_suffix("").as_posix().replace("/", ".")
+    module = s.module
     reuse = Resolver(s.tree, module, s.index, d.access, helpers)
     s.resolver = reuse
     prefix = s.settings.index.test_function_prefix

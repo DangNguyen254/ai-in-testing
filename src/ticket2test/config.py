@@ -132,6 +132,10 @@ class IndexSettings(_Section):
     )  # fmt: skip
     max_file_bytes: int = Field(default=1_000_000, ge=1)
     test_file_globs: list[str] = Field(default_factory=lambda: ["test_*.py", "*_test.py"])
+    # Repo-relative folders the suite puts on Python's import path (by its pytest config or a
+    # conftest), e.g. the folder holding its framework package. A file's module name is its
+    # path from the deepest such folder, the way tests import it. The repo root always counts.
+    import_roots: list[str] = Field(default_factory=list)
     # Repo-relative folders where tests live. Empty: tests anywhere. Files outside them are
     # still indexed (framework code, page objects, helpers) but never count as tests.
     test_paths: list[str] = Field(default_factory=list)

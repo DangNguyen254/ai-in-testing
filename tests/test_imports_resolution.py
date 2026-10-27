@@ -121,3 +121,44 @@ def test_a_copied_star_import_becomes_the_names_the_code_uses(
     assert fixed.startswith("from helpers import make_thing\nfrom os import *\n")
     unused = explicit_star_imports("from helpers import *\n\n\ndef test_a():\n   pass\n", catalog)
     assert "import" not in unused
+
+
+def test_import_roots_name_modules_the_way_tests_import_them(tmp_path: Path) -> None:
+    """Found on the real suite: its framework lives in a folder the suite puts on the import
+    path, so `from framework.x import Y` was an unknown module to the tool."""
+    from ticket2test.index.extract import module_name
+
+    assert module_name("svc/test/framework/pages/a.py", ["svc/test"]) == "framework.pages.a"
+    assert module_name("svc/test/tester/_globals.py", ["svc/test", "svc/test/tester"]) == "_globals"
+    assert module_name("svc/other.py", ["svc/test"]) == "svc.other"
+    repo = tmp_path / "repo"
+    files = {
+        "svc/test/framework/__init__.py": "",
+        "svc/test/framework/pages.py": "class Page:\n   def save(self):\n      pass\n",
+        "svc/test/tester/_globals.py": "VALUE = 1\n",
+        "svc/test/tester/area/test_a.py": (
+            "import _globals\nfrom framework.pages import Page\n\n\n"
+            "def test_a():\n   Page().save()\n   assert _globals.VALUE\n"
+        ),
+    }
+    for path, text in files.items():
+        (repo / path).parent.mkdir(parents=True, exist_ok=True)
+        (repo / path).write_text(text, encoding="utf-8")
+
+    def import_errors(roots: list[str]) -> list[str]:
+        settings = Settings.model_validate(
+            {
+                "paths": {"cache_dir": str(tmp_path / f"cache{len(roots)}")},
+                "index": {"import_roots": roots},
+            }
+        )
+        index, _, _ = update_index(repo, settings)
+        code = files["svc/test/tester/area/test_a.py"]
+        generated = _generated(code).model_copy(
+            update={"file_name": "svc/test/tester/area/test_a.py"}
+        )
+        report = validate_generated(generated, index.catalog, settings, index=index)
+        return [f.message for f in report.findings if f.check == "imports"]
+
+    assert len(import_errors([])) == 2  # without roots: both imports look unknown
+    assert import_errors(["svc/test", "svc/test/tester"]) == []

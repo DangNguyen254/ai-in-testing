@@ -26,6 +26,7 @@ from ticket2test.generate.entries import build_entry, function_of
 from ticket2test.generate.inspect import data_use
 from ticket2test.index.catalog import SymbolCatalog
 from ticket2test.index.datafile import function_data_path, layout_of, module_data_path
+from ticket2test.index.extract import module_name
 from ticket2test.index.indexer import IndexData
 from ticket2test.llm.base import LLMClient, LLMError, LLMRequest, Message
 from ticket2test.llm.factory import model_name
@@ -428,10 +429,10 @@ def with_inherited_entries(
         tree = ast.parse(code)
     except SyntaxError:
         return entries, [], []
-    module = PurePosixPath(setup.template_chunk.file_path).with_suffix("").as_posix()
+    module = module_name(setup.template_chunk.file_path, settings.index.import_roots)
     resolver = Resolver(
         tree,
-        module.replace("/", "."),
+        module,
         setup.index,
         data.access,
         set(data.expectation_sections.values()),
@@ -531,10 +532,10 @@ def resolved_uses(code: str, setup: GenerationSetup) -> dict[str, Any]:
     except SyntaxError:
         return {}
     uses = dict(_uses(code, settings))  # module-level tests and the plain reading
-    module = PurePosixPath(setup.template_chunk.file_path).with_suffix("").as_posix()
+    module = module_name(setup.template_chunk.file_path, settings.index.import_roots)
     resolver = Resolver(
         tree,
-        module.replace("/", "."),
+        module,
         setup.index,
         data.access,
         set(data.expectation_sections.values()),

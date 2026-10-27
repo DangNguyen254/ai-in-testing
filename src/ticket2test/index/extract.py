@@ -95,14 +95,19 @@ def sha256_of(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def module_name(path: str) -> str:
-    parts = path.removesuffix(".py").split("/")
+def module_name(path: str, roots: list[str] | tuple[str, ...] = ()) -> str:
+    """The module name a file is imported by: its path from the deepest import root holding
+    it (``index.import_roots``: folders the suite puts on the import path), else from the
+    repo root."""
+    clean = [r.strip("/") for r in roots if r.strip("/")]
+    root = max((r for r in clean if path.startswith(r + "/")), key=len, default="")
+    parts = path[len(root) + 1 if root else 0 :].removesuffix(".py").split("/")
     if parts[-1] == "__init__":
         parts = parts[:-1]
     return ".".join(parts) or "__init__"
 
 
-def extract_file(path: str, source: bytes) -> FileInfo:
+def extract_file(path: str, source: bytes, roots: list[str] | tuple[str, ...] = ()) -> FileInfo:
     tree = _parser().parse(source)
     root = tree.root_node
     if root.has_error:
@@ -126,7 +131,7 @@ def extract_file(path: str, source: bytes) -> FileInfo:
             assignments.extend(_assignments_in(node))
     return FileInfo(
         path=path,
-        module=module_name(path),
+        module=module_name(path, roots),
         sha256=sha256_of(source),
         functions=functions,
         classes=classes,

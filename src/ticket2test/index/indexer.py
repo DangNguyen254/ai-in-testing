@@ -158,7 +158,9 @@ def build_index(
             if legacy is not None:  # tree-sitter would accept it; Python 3 can't run it
                 records[path] = _skip(stats, path, digest, f"{path}: {legacy}")
                 continue
-            records[path] = FileRecord(sha256=digest, info=extract_file(path, source))
+            records[path] = FileRecord(
+                sha256=digest, info=extract_file(path, source, settings.index.import_roots)
+            )
         except UnicodeDecodeError:
             records[path] = _skip(stats, path, digest, f"{path}: not valid UTF-8")
         except ParseError as exc:
