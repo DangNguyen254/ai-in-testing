@@ -10,10 +10,11 @@ import ast
 import json
 import re
 import sys
+from collections import Counter
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
-from typing import Any
+from typing import Any, TypeVar
 
 from ticket2test.config import Settings
 from ticket2test.generate.entries import function_of
@@ -23,6 +24,7 @@ from ticket2test.index.chunks import is_test_file
 from ticket2test.index.datafile import merged, split_defaults
 from ticket2test.index.indexer import IndexData
 from ticket2test.index.tokens import split_identifier
+from ticket2test.models.chunk import Chunk
 from ticket2test.models.draft import TestCaseDraft
 from ticket2test.models.generated import GeneratedTest, _name_problems, _unconsumed_keys
 from ticket2test.security.masking import TOKEN
@@ -401,19 +403,38 @@ def check_base_class(s: Subject) -> Iterator[Finding]:
 _SPLIT_ON_DOT = re.compile(r"""\.split\(\s*["']\.["']\s*\)""")
 
 
+T = TypeVar("T")
+_PER_INDEX: dict[Any, tuple[object, Any]] = {}
+
+
+def _per_index(index: IndexData, key: Any, build: Callable[[], T]) -> T:
+    """``build()`` once per index (and key), not once per file: check-suite validates every
+    file of a large suite against the same index. A new index (another list of chunks) rebuilds."""
+    hit = _PER_INDEX.get(key)
+    if hit is not None and hit[0] is index.chunks:
+        return hit[1]  # type: ignore[no-any-return]
+    value = build()
+    _PER_INDEX[key] = (index.chunks, value)
+    return value
+
+
 def path_string_helpers(index: IndexData | None, settings: Settings) -> set[str]:
     """Helper names that resolve a dotted page-object path string with getattr."""
     v = settings.validation
     found = set(v.path_string_helpers)
     if v.discover_path_string_helpers and index is not None:
-        for chunk in index.chunks:
-            if (
-                chunk.kind == "function"
-                and "getattr(" in chunk.code
-                and _SPLIT_ON_DOT.search(chunk.code)
-            ):
-                found.add(chunk.symbol_name)
+        found |= _per_index(index, "path_string_helpers", lambda: _discovered_helpers(index))
     return found
+
+
+def _discovered_helpers(index: IndexData) -> set[str]:
+    return {
+        chunk.symbol_name
+        for chunk in index.chunks
+        if chunk.kind == "function"
+        and "getattr(" in chunk.code
+        and _SPLIT_ON_DOT.search(chunk.code)
+    }
 
 
 def check_path_strings(s: Subject) -> Iterator[Finding]:
@@ -825,15 +846,23 @@ def check_data_shape(s: Subject) -> Iterator[Finding]:
     sections are skipped: a response's shape depends on its endpoint."""
     if s.index is None:
         return
-    skip = set(s.settings.data.expectation_sections)
-    known: dict[str, set[str]] = {}
+    skip = frozenset(s.settings.data.expectation_sections)
+    index = s.index
+    counts = _per_index(index, ("shapes", skip), lambda: _shape_counts(index.chunks, skip))
     own = {str(e.get(s.settings.data.id_field, "")) for e in s.entries}
-    for chunk in s.index.chunks:
+    mine: dict[str, Counter[str]] = {}  # the entries being judged, as the suite has them now
+    for chunk in index.chunks:
+        if chunk.file_path != s.generated.file_name:
+            continue
         for test_id, entry in chunk.data_entries.items():
-            if test_id in own and chunk.file_path == s.generated.file_name:
-                continue  # the entries being judged
-            for path, shape in _shapes(entry, skip=skip):
-                known.setdefault(path, set()).add(shape)
+            if test_id in own:
+                for path, shape in set(_shapes(entry, skip=skip)):
+                    mine.setdefault(path, Counter())[shape] += 1
+    known: dict[str, set[str]] = {}
+    for path, shapes in counts.items():
+        left = {shape for shape, n in shapes.items() if n - mine.get(path, Counter())[shape] > 0}
+        if left:
+            known[path] = left
     reported: set[tuple[str, str]] = set()
     for entry in s.entries:
         test_id = str(entry.get(s.settings.data.id_field, ""))
@@ -855,6 +884,16 @@ def check_data_shape(s: Subject) -> Iterator[Finding]:
 
 _A = {"object": "an object", "list": "a list", "text": "text", "number": "a number",
       "bool": "true/false", "null": "null"}  # fmt: skip
+
+
+def _shape_counts(chunks: list[Chunk], skip: frozenset[str]) -> dict[str, Counter[str]]:
+    """Key path -> shape -> how many entries of the suite have it."""
+    counts: dict[str, Counter[str]] = {}
+    for chunk in chunks:
+        for entry in chunk.data_entries.values():
+            for path, shape in set(_shapes(entry, skip=skip)):
+                counts.setdefault(path, Counter())[shape] += 1
+    return counts
 
 
 def _shapes(
@@ -1144,14 +1183,21 @@ def _known_texts(s: Subject) -> list[str]:
     """Texts a payload may legitimately come from: the suite's data entries and the draft."""
     known: list[str] = []
     if s.index is not None:
-        for chunk in s.index.chunks:
-            if chunk.data_entries:
-                known.append(json.dumps(chunk.data_entries, ensure_ascii=False))
-                known.extend(_strings(chunk.data_entries))
+        index = s.index
+        known += _per_index(index, "known_texts", lambda: _suite_texts(index))
     if s.draft is not None:
         known.append(s.draft.model_dump_json())
         known.extend(_strings(s.draft.model_dump()))
     return known
+
+
+def _suite_texts(index: IndexData) -> list[str]:
+    texts: list[str] = []
+    for chunk in index.chunks:
+        if chunk.data_entries:
+            texts.append(json.dumps(chunk.data_entries, ensure_ascii=False))
+            texts.extend(_strings(chunk.data_entries))
+    return texts
 
 
 def _code_strings(tree: ast.Module | None) -> set[str]:

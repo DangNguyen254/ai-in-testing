@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import time
 from collections import defaultdict
+from collections.abc import Callable
 from datetime import UTC, datetime
 from fnmatch import fnmatch
 from pathlib import Path, PurePosixPath
@@ -119,8 +120,16 @@ class SuiteReport(BaseModel):
         return self.errors == 0 and (not self.ids.ran or (self.ids.exit_code == 0 and no_id_gaps))
 
 
-def check_suite(repo: Path, settings: Settings, collect: bool = False) -> SuiteReport:
+def check_suite(
+    repo: Path,
+    settings: Settings,
+    collect: bool = False,
+    progress: Callable[[str], None] | None = None,
+) -> SuiteReport:
+    """``progress`` gets a line every few files (how far, how long, the slowest file so far)."""
     started = time.monotonic()
+    if progress:
+        progress("indexing (only changed files are read again)...")
     index, _, _ = update_index(repo, settings)
     report = SuiteReport(repo=str(repo), created_at=datetime.now(UTC))
     roots = first_party(index, settings)
@@ -132,7 +141,17 @@ def check_suite(repo: Path, settings: Settings, collect: bool = False) -> SuiteR
     legacy = settings.generate.reuse.legacy_domains
     local = local_checks(settings)
     found: dict[tuple[str, str], list[tuple[str, str, str]]] = defaultdict(list)
-    for path in _test_files(index, settings):
+    files = _test_files(index, settings)
+    if progress:
+        progress(f"checking {len(files)} test files...")
+    slowest = ("", 0.0)
+    for done, path in enumerate(files, start=1):
+        if progress and done > 1 and (done - 1) % 10 == 0:
+            progress(
+                f"  {done - 1}/{len(files)} files, {time.monotonic() - started:.0f} s; "
+                f"slowest so far: {slowest[0]} ({slowest[1]:.1f} s)"
+            )
+        file_started = time.monotonic()
         domain = domain_of(path, all_domains)
         if domain is not None and is_legacy(domain, legacy):
             report.legacy_files += 1
@@ -153,6 +172,9 @@ def check_suite(repo: Path, settings: Settings, collect: bool = False) -> SuiteR
                 errors[finding.check].append((path, finding.render()))
                 file_errors += 1
         report.clean_files += int(file_errors == 0)
+        took = time.monotonic() - file_started
+        if took > slowest[1]:
+            slowest = (path, took)
 
     report.deviations = [
         Deviation(
@@ -178,6 +200,8 @@ def check_suite(repo: Path, settings: Settings, collect: bool = False) -> SuiteR
     report.warnings_by_check = dict(sorted(warnings.items()))
     report.warnings = sum(warnings.values())
     if collect:
+        if progress:
+            progress("collecting the suite in the sandbox...")
         report.ids = compare_ids(repo, index, settings)
     report.seconds = round(time.monotonic() - started, 1)
     return report

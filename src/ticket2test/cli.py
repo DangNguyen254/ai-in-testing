@@ -890,7 +890,9 @@ def check_suite_cmd(
         typer.echo(f"Error: repo not found: {repo}", err=True)
         raise typer.Exit(code=2)
     try:
-        report = check_suite(repo, state.settings, collect=collect)
+        report = check_suite(
+            repo, state.settings, collect=collect, progress=lambda line: typer.echo(line, err=True)
+        )
     except SandboxError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=2) from exc
