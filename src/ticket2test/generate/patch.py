@@ -61,7 +61,7 @@ from ticket2test.prompts import load_prompt
 from ticket2test.security import scrub_text
 from ticket2test.style import format_entries
 from ticket2test.style.local import detect_json_style, detect_python_style, insert_entries
-from ticket2test.style.python import format_python
+from ticket2test.style.python import format_python, sort_imports
 from ticket2test.validate.claims import norm
 from ticket2test.validate.report import Finding, ValidationReport
 from ticket2test.validate.suite import read_suite_data, static_ids
@@ -762,6 +762,8 @@ def method_patch(
         local = detect_python_style(source, style)
         code = format_python(generated.code, local, first_party(index, settings))
         after_code, added = splice_methods(source, class_name, code, settings)
+        if _imports(after_code) != _imports(source):  # an import was added: sort that block only
+            after_code = sort_imports(after_code, local, first_party(index, settings))
     else:
         spliced, added = splice_methods(source, class_name, generated.code, settings)
         after_code = format_python(spliced, style, first_party(index, settings))
@@ -803,6 +805,10 @@ def method_patch(
             "patches": [p.record() for p in patches],
         }
     )
+
+
+def _imports(code: str) -> list[str]:
+    return [ast.dump(n) for n in ast.parse(code).body if isinstance(n, ast.Import | ast.ImportFrom)]
 
 
 def _function_layout(index: IndexData, class_name: str, file_path: str, settings: Settings) -> bool:

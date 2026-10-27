@@ -356,3 +356,45 @@ def test_pairs_come_from_skips_in_the_current_tree(setup: Any, tmp_path: Path) -
     assert [(m.ticket, m.test, m.kind) for m in found] == [
         ("ABC-12", "tests/test_a.py::TestA::test_one", "code_skip")
     ]
+
+
+def test_an_import_a_new_method_needs_is_merged_into_the_files_imports(setup: Any) -> None:
+    """Found on the investigator run (v6 STND-135): a new method's decorator needed a name the
+    file didn't import, and the splice added a second, unsorted import of the same module, so
+    the style check failed where no repair could fix it. Only the import block is sorted."""
+    from ticket2test.generate.patch import validate_patch
+
+    settings, index, _ = setup
+    path = "tests/files/test_files_archives.py"
+    code = GENERATED_CLASS.replace(
+        "from framework.base_test import BaseTest\n",
+        "from framework.base_test import BaseTest\n"
+        "from framework.decorators import browsers, cloud_only, data_driven, environments\n",
+    ).replace(
+        '   @pytest.mark.suite("regression")\n',
+        '   @pytest.mark.suite("regression")\n   @cloud_only\n',
+    )
+    base = next(
+        e
+        for c in index.chunks
+        if c.symbol_name == "test_files_archive_view_members"
+        for e in c.data_entries.values()
+    )
+    kept = {k: v for k, v in base.items() if k not in ("decision", "targets")}
+    entry = {**kept, "test_id": "test_files_archive_encrypted_members", "members": ["a.txt"]}
+    generated = method_patch(
+        _generated(code, [entry]),
+        _decision("method", "TestFilesArchives", path),
+        index,
+        settings,
+        STANDIN,
+    )
+    imports = [line for line in generated.code.splitlines() if "framework.decorators" in line]
+    assert imports == [
+        "from framework.decorators import browsers, cloud_only, data_driven, environments"
+    ]
+    source = (STANDIN / path).read_text(encoding="utf-8")
+    body = source.split("\n\n\n", 1)[1]  # everything after the imports is kept as it was
+    assert body.rstrip("\n") in generated.code
+    report = validate_patch(generated, index, settings, STANDIN)
+    assert not [f for f in report.errors if f.check == "style"], [f.render() for f in report.errors]

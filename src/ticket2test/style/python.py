@@ -41,6 +41,17 @@ def format_python(code: str, style: PythonStyle, first_party: list[str]) -> str:
     return formatted
 
 
+def sort_imports(code: str, style: PythonStyle, first_party: list[str]) -> str:
+    """Only the import block sorted and merged (statements from the same module combined);
+    every other line stays as it is."""
+    options = [
+        f"indent-width = {style.indent_width}",
+        f"line-length = {style.line_length}",
+        f"lint.isort.known-first-party = {_toml_list(first_party)}",
+    ]
+    return _ruff(["check", "--select", "I", "--fix", "--exit-zero"], options, code)
+
+
 def _ruff(command: list[str], options: list[str], code: str) -> str:
     args = [find_ruff_bin(), *command, "--isolated", "--no-cache"]
     for option in options:

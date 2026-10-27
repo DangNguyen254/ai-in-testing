@@ -1003,6 +1003,18 @@ and `list_members` (any class, own members first, with kind, owner and signature
 catalog. The investigator is still off by default; whether it beats the fixed retrieval needs
 a Haiku run with it on. pytest 827 passed.
 
+**Haiku 5.5 with the investigator on (2026-10-27; v6 dev + v7 dev, one run, $0.17):** v6 dev:
+8 generated, 7/8 pass after repair (5/8 first attempt), 8/8 collect, 0 invented names, **gaps
+2/2** (STND-145 met for the first time: the investigator found `ExceptionsPageBase.browser_title`
+as a close match; every investigator-off run missed it), vague 1/1; 73 LLM calls vs 27, $0.15
+vs $0.06, similar wall time. v7 dev: both met. The one failure was a tool bug from Phase 2, not
+the investigator: a new method's decorator needed a name the file didn't import, the splice
+added a second, unsorted import of the same module, and with the file no longer reformatted
+the style check failed where no repair could fix it (now only the import block is sorted and
+merged). The first-attempt rate isn't comparable with the last investigator-off run, which
+predates Phase 2. Verdict: the investigator finds more gaps at about 2.5x the calls and cost;
+keep it optional and measure it on real tickets.
+
 **Decisions (the human, 2026-10-26):**
 - **Rules:** rules that protect correctness always hold; where the surrounding code does it differently, the reviewer gets a warning. Purely cosmetic rules follow the area's local style.
 - **Patching an existing file:** use that file's own style and never reformat existing lines. The correctness rules still apply and are flagged.
