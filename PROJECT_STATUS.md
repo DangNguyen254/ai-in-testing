@@ -981,7 +981,18 @@ called the removed test (gaps now count only the new tests of a patch), and the 
 file-level reviewer note. Run 3: STND-146 a new method in `TestReportsList` (the class that
 uses page objects), first attempt clean, in the file's own style (4-space indent, single
 quotes), collect ok; STND-147 out of scope. Reports `output/reports/v7-dev/haiku{,-r2,-r3}/`.
-The held-out v7 set has not been run. pytest 822 passed.
+pytest 822 passed.
+
+**Haiku 5.5 on the v7 held-out set (2026-10-27, one run, $0.02, nothing tuned on it):** both
+expectations met. STND-148 (a report view drops its last row): a new module
+`tests/reports/test_reports_view_rows.py`, scaffolded from `TestReportsList`; it reaches the
+view through `self.nav.reports.view` (not the constructor its neighbours use) and checks
+`row_count` against 3, so it tests the ticket. First attempt used the page's `ROWS` locator
+(`page_locators`), fixed in repair; validators and sandbox collect pass. Reviewer noise: a gap
+note for `ReportViewPage.row_texts`, a name an earlier attempt invented that the final test
+doesn't need (kept on purpose: attempt pieces are how a hidden workaround is caught); a
+neighbour note about the star import in the template's file; four `claims` warnings on the
+docstring wording. STND-149 (legacy units): out of scope. Report `output/reports/v7-test/haiku/`.
 
 **Decisions (the human, 2026-10-26):**
 - **Rules:** rules that protect correctness always hold; where the surrounding code does it differently, the reviewer gets a warning. Purely cosmetic rules follow the area's local style.
