@@ -128,3 +128,78 @@ def test_new_ticket_then_normalize_from_the_command_line(tmp_path: Path) -> None
     done = runner.invoke(app, ["normalize", "DEMO-7", "--paste", str(folder), "--out", str(out)])
     assert done.exit_code == 0, done.output
     assert json.loads(out.read_text("utf-8"))["expected"] == "An error says the name is required."
+
+
+def test_run_drafts_a_pasted_ticket_then_stops_for_review(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ticket2test.llm import FakeLLMClient
+
+    draft = {
+        "kind": "primary",
+        "intent": "Saving a rule with an empty name is blocked with an error.",
+        "markers": {"priority": "p2", "component": "rules", "suite": "regression"},
+        "test_kind": "ui",
+        "deployment_type": "both",
+        "preconditions": [],
+        "steps": ["Open the rules page", "Add a rule with an empty name", "Click save"],
+        "expected_outcome": "An error says the name is required.",
+        "variants": [],
+    }
+    reply = json.dumps({"status": "ok", "missing_info": [], "reason": "r", "drafts": [draft]})
+    monkeypatch.setattr(
+        "ticket2test.llm.factory.create_llm_client", lambda *a, **k: FakeLLMClient([reply])
+    )
+    monkeypatch.setenv("T2T_PATHS__OUTPUT_DIR", str(tmp_path / "out"))
+    monkeypatch.setenv("T2T_DRAFT__SKELETON", "never")
+    folder = tmp_path / "tickets"
+    folder.mkdir()
+    (folder / "DEMO-7.md").write_text(FILLED, encoding="utf-8")
+    runner = CliRunner()
+
+    first = runner.invoke(app, ["run", "DEMO-7", "--paste", str(folder)])
+    assert first.exit_code == 0, first.output
+    assert "ticket2test run DEMO-7 --continue" in first.output
+    assert "DEMO-7.drafts.md" in first.output
+    assert (tmp_path / "out" / "drafts" / "DEMO-7.drafts.md").is_file()
+
+    no_repo = runner.invoke(app, ["run", "DEMO-7", "--continue"])
+    assert no_repo.exit_code == 2 and "paths.repo" in no_repo.output
+    other = runner.invoke(app, ["run", "DEMO-8", "--continue", "--repo", str(tmp_path)])
+    assert other.exit_code == 2 and "no draft for DEMO-8" in other.output
+    missing = runner.invoke(app, ["run", "DEMO-7"])
+    assert missing.exit_code == 2 and "--paste" in missing.output
+
+
+def test_run_continue_hands_the_draft_to_retrieve_and_generate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import ticket2test.cli as cli
+
+    out = tmp_path / "out"
+    monkeypatch.setenv("T2T_PATHS__OUTPUT_DIR", str(out))
+    monkeypatch.setenv("T2T_PATHS__REPO", str(tmp_path / "repo"))
+    (out / "tickets").mkdir(parents=True)
+    (out / "drafts").mkdir()
+    (out / "tickets" / "DEMO-7.json").write_text("{}", encoding="utf-8")
+    drafts = {
+        "ticket_id": "DEMO-7",
+        "status": "ok",
+        "drafts": [],
+        "prompt_version": "v",
+        "provider": "fake",
+        "model": "m",
+        "attempts": 1,
+    }
+    (out / "drafts" / "DEMO-7.drafts.json").write_text(json.dumps(drafts), encoding="utf-8")
+    calls: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(cli, "retrieve", lambda ctx, **kw: calls.append(("retrieve", kw)))
+    monkeypatch.setattr(cli, "generate", lambda ctx, **kw: calls.append(("generate", kw)))
+
+    result = CliRunner().invoke(app, ["run", "DEMO-7", "--continue"])
+    assert result.exit_code == 0, result.output
+    assert [name for name, _ in calls] == ["retrieve", "generate"]
+    assert calls[0][1]["repo"] == tmp_path / "repo"
+    assert calls[0][1]["draft"] == out / "drafts" / "DEMO-7.drafts.json"
+    assert calls[1][1]["retrieval_file"] == out / "retrieval" / "DEMO-7.retrieval.json"
+    assert calls[1][1]["reuse_as"] == "auto"

@@ -161,6 +161,92 @@ def _safe_name(ticket_id: str) -> str:
 
 
 @app.command()
+def run(
+    ctx: typer.Context,
+    key: Annotated[str, typer.Argument(help="The ticket id, e.g. TEST-095.")],
+    paste: Annotated[
+        Path | None, typer.Option(help="Read the ticket from <PASTE>/<KEY>.md (pasted by hand).")
+    ] = None,
+    jira_export: Annotated[
+        Path | None, typer.Option(help="Read the ticket from this exported Jira JSON file.")
+    ] = None,
+    proceed: Annotated[
+        bool,
+        typer.Option(
+            "--continue", help="After reviewing the draft: retrieve, generate and validate."
+        ),
+    ] = False,
+    repo: Annotated[
+        Path | None, typer.Option(help="Target repo (default: paths.repo in the config).")
+    ] = None,
+) -> None:
+    """One ticket end to end, in two halves with a review between them.
+
+    First: normalize the ticket and write its draft, then stop so a person can read the draft.
+    Then, with --continue: retrieve, generate (validators and repair included) and write the
+    test. Each half calls the same steps as the separate commands.
+    """
+    from ticket2test.models import DraftResult
+
+    state: AppState = ctx.obj
+    out = state.settings.paths.output_dir
+    stem = _safe_name(key)
+    ticket_path = out / "tickets" / f"{stem}.json"
+    drafts_path = out / "drafts" / f"{stem}.drafts.json"
+
+    if not proceed:
+        if paste is None and jira_export is None:
+            typer.echo(
+                "Error: say where the ticket is: --paste DIR or --jira-export FILE.", err=True
+            )
+            raise typer.Exit(code=2)
+        normalize(ctx, ref=key, jira_export=jira_export, paste=paste, out=None, raw_out=None)
+        if not ticket_path.is_file():
+            typer.echo(
+                f"Error: the ticket's id isn't {key!r}: its first line names another key.",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+        draft(ctx, ticket_file=ticket_path, out=None)
+        drafts = DraftResult.model_validate_json(drafts_path.read_text(encoding="utf-8"))
+        if drafts.status != "ok":
+            typer.echo("Stopped: the ticket doesn't say enough. See the questions above.")
+            return
+        typer.echo(
+            f"\nReview {drafts_path.parent / f'{stem}.drafts.md'}, then run:\n"
+            f"  ticket2test run {key} --continue"
+        )
+        return
+
+    repo_root = repo or state.settings.paths.repo
+    if repo_root is None:
+        typer.echo("Error: give --repo or set paths.repo in the config.", err=True)
+        raise typer.Exit(code=2)
+    if not drafts_path.is_file() or not ticket_path.is_file():
+        typer.echo(
+            f"Error: no draft for {key} yet: run `ticket2test run {key} --paste DIR`.", err=True
+        )
+        raise typer.Exit(code=2)
+    drafts = DraftResult.model_validate_json(drafts_path.read_text(encoding="utf-8"))
+    if drafts.status != "ok":
+        typer.echo(f"Error: {key} has no draft to generate from ({drafts.status}).", err=True)
+        raise typer.Exit(code=2)
+    retrieve(
+        ctx, ticket_file=ticket_path, repo=repo_root, draft=drafts_path, no_llm=False, out=None
+    )
+    retrieval_path = out / "retrieval" / f"{stem}.retrieval.json"
+    generate(
+        ctx,
+        draft_file=drafts_path,
+        retrieval_file=retrieval_path,
+        draft_id=None,
+        conventions=None,
+        out=None,
+        reuse_as="auto",
+    )
+
+
+@app.command()
 def draft(
     ctx: typer.Context,
     ticket_file: Annotated[Path, typer.Argument(help="Normalized ticket JSON (from `normalize`).")],

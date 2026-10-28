@@ -699,6 +699,8 @@ class ProposalSettings(_Section):
 
 class PathSettings(_Section):
     output_dir: Path = Path("output")
+    # The target suite's checkout, for `run` (other commands take it as an argument).
+    repo: Path | None = None
     cache_dir: Path = Path(".t2t_cache")
     debug_log_dir: Path = Path("debug_logs")
     # Versioned prompt templates. Default: the repo's prompts/ directory.

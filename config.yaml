@@ -316,5 +316,6 @@ proposals:                       # agent 2: propose a missing member as a separa
 paths:
   output_dir: output
   cache_dir: .t2t_cache
+  repo: null                       # the target suite's checkout, for `run`
   debug_log_dir: debug_logs
   prompts_dir: null          # default: the repo's prompts/ directory

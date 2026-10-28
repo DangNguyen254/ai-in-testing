@@ -75,6 +75,18 @@ Attachments are local files listed one per line; `.md`, `.txt` and `.csv` are re
 listed. Links are recorded, never opened. Keep the folder private: real tickets never go in the
 repo.
 
+### One ticket end to end
+
+```bash
+# 1. normalize + draft, then stop so a person reviews the draft (output/drafts/<id>.drafts.md)
+uv run ticket2test run DEMO-101 --paste <private folder>/tickets
+# 2. after the review: retrieve, generate (validators and repair included), write the test
+uv run ticket2test run DEMO-101 --continue --repo <target repo>
+```
+
+`--repo` can be left out once `paths.repo` is set in the config. Each half runs the same steps as
+the separate commands below and writes the same files.
+
 Without `--out`, the ticket is written to `output/tickets/<id>.json`. `--raw-out FILE` also saves
 the raw source payload. Steps, expected, and actual are extracted by rules (section headings
 such as "Steps to reproduce", "Expected behavior", "Actual:"). If a section is missing, the
