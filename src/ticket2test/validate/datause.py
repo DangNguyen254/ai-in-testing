@@ -10,6 +10,7 @@ key the test really reads.
 from __future__ import annotations
 
 import ast
+import fnmatch
 import textwrap
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, replace
@@ -206,20 +207,25 @@ class Resolver:
         self_asserts: bool = False,
         check_helpers: list[str] | tuple[str, ...] = (),
         hooks: Iterable[str] = (),
+        waits: WaitChecks | None = None,
     ) -> bool:
-        """True if a method the function calls (transitively) asserts or validates, or a
-        teardown of the class does (checks that run after every test)."""
-        seen = {function.name}
-        after = [h for h in hooks if "teardown" in h.lower()]
-        queue = [*after, *self._reads(function).self_calls]
-        while queue and len(seen) < _MAX_METHODS:
-            name = queue.pop()
-            if name in seen:
+        """True if a method the function calls (transitively, also into its bases) asserts or
+        validates, or a teardown of the class does (checks that run after every test). With
+        ``waits``: also a wait on a condition, a raised failure, or a call of a page-object
+        method that does either (the function itself counts for these)."""
+        if waits is not None and fails_itself(function, waits, self_receiver=False):
+            return True
+        visited = {id(function)}
+        after = [self.method(cls, h) for h in hooks if "teardown" in h.lower()]
+        first = self._reads(function)
+        queue = [m for m in after if m is not None]
+        queue += [m for n in first.self_calls for m in [self.method(cls, n)] if m is not None]
+        queue += [m for o, n in first.base_calls for m in [self.base_method(cls, o, n)] if m]
+        while queue and len(visited) < _MAX_METHODS:
+            method = queue.pop()
+            if id(method) in visited:
                 continue
-            seen.add(name)
-            method = self.method(cls, name)
-            if method is None:
-                continue
+            visited.add(id(method))
             reads = self._reads(method)
             if reads.helpers or any(
                 is_assertion(dotted(n.func), assertion_object, self_asserts)
@@ -228,13 +234,54 @@ class Resolver:
                 if isinstance(n, ast.Call)
             ):
                 return True
-            queue += list(reads.self_calls - seen)
+            if waits is not None and fails_itself(method, waits, self_receiver=False):
+                return True
+            queue += [m for n in reads.self_calls for m in [self.method(cls, n)] if m]
+            queue += [m for o, n in reads.base_calls for m in [self.base_method(cls, o, n)] if m]
         return False
+
+    def checking_page_methods(self, patterns: tuple[str, ...]) -> frozenset[str]:
+        """Names of page-object methods that wait on a condition or raise a failure, directly
+        or through ``self.<method>()`` calls (by name, across page classes)."""
+        if self.catalog is None:
+            return frozenset()
+        direct: set[str] = set()
+        calls: dict[str, set[str]] = {}
+        probe = WaitChecks(patterns, frozenset())
+        for qualname in self.catalog.page_objects:
+            entry = self.catalog.classes.get(qualname)
+            if entry is None:
+                continue
+            _, info = self._class_info(entry)
+            key = (entry.file_path, entry.name)
+            if info is not None and key not in self._parsed:
+                self._parsed[key] = _parse_class(info)
+            parsed = self._parsed.get(key)
+            for method in parsed.body if parsed else []:
+                if not isinstance(method, ast.FunctionDef):
+                    continue
+                if fails_itself(method, probe, self_receiver=True):
+                    direct.add(method.name)
+                calls.setdefault(method.name, set()).update(
+                    dotted(n.func).removeprefix("self.")
+                    for n in _walk(method)
+                    if isinstance(n, ast.Call)
+                    and dotted(n.func).count(".") == 1
+                    and dotted(n.func).startswith("self.")
+                )
+        found = set(direct)
+        for _ in range(8):  # bounded fixed point: helpers of helpers
+            more = {name for name, called in calls.items() if called & found} - found
+            if not more:
+                break
+            found |= more
+        return frozenset(found)
 
     def autouse_fixtures(self, cls: ast.ClassDef) -> list[str]:
         """Methods of the class or its repo bases that are autouse pytest fixtures: they run
-        around every test, like setup/teardown."""
-        found = [
+        around every test, like setup/teardown. Also the class's methods that a fixture named
+        in ``@pytest.mark.usefixtures(...)`` calls through ``request.node.instance``."""
+        found = self._instance_calls(cls) + [
             n.name
             for n in cls.body
             if isinstance(n, ast.FunctionDef)
@@ -245,6 +292,30 @@ class Resolver:
             for method in base_cls.methods if base_cls else []:
                 if any(_is_autouse(d) for d in method.decorators) and method.name not in found:
                     found.append(method.name)
+        return found
+
+    def _instance_calls(self, cls: ast.ClassDef) -> list[str]:
+        names = [
+            arg.value
+            for d in cls.decorator_list
+            if isinstance(d, ast.Call) and dotted(d.func).endswith("mark.usefixtures")
+            for arg in d.args
+            if isinstance(arg, ast.Constant) and isinstance(arg.value, str)
+        ]
+        if not names or self.catalog is None:
+            return []
+        if self._functions is None:
+            self._module_function("")  # fills the map
+        found: list[str] = []
+        for fn in (self._functions or {}).values():
+            if fn.name not in names:
+                continue
+            tree = _parse_function(fn)
+            for n in _walk(tree) if tree is not None else []:
+                if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute):
+                    owner = dotted(n.func.value)
+                    if owner.endswith(".instance") and n.func.attr not in found:
+                        found.append(n.func.attr)  # request.node.instance.load(params)
         return found
 
     def _reads(self, function: ast.FunctionDef) -> EntryReads:
@@ -304,9 +375,51 @@ class Resolver:
                 for info in self.infos.values()
                 for fn in info.functions
             }
+        if not callee:
+            return None
         head, _, rest = callee.partition(".")
         target = self.catalog.imported(self.module, head) or f"{self.module}.{head}"
         return self._functions.get(f"{target}.{rest}" if rest else target)
+
+
+@dataclass(frozen=True)
+class WaitChecks:
+    """How a suite checks by waiting (``validation.wait_checks``): wait-call name patterns,
+    and the page-object methods found to wait on a condition or raise a failure."""
+
+    patterns: tuple[str, ...]
+    page_methods: frozenset[str]
+
+
+_FAILURE_WORDS = ("Assert", "Fail", "Timeout")
+
+
+def fails_itself(node: ast.AST, waits: WaitChecks, self_receiver: bool) -> bool:
+    """The body raises a failure, calls ``pytest.fail``, waits on a condition, or (with a
+    receiver other than ``self``) calls a page-object method that does."""
+    for n in _walk(node):
+        if isinstance(n, ast.Raise) and n.exc is not None:
+            exc = n.exc.func if isinstance(n.exc, ast.Call) else n.exc
+            if any(w in dotted(exc).rsplit(".", 1)[-1] for w in _FAILURE_WORDS):
+                return True
+        if not isinstance(n, ast.Call):
+            continue
+        name = dotted(n.func)
+        last = name.rsplit(".", 1)[-1]
+        if name.endswith("pytest.fail"):
+            return True
+        if any(fnmatch.fnmatchcase(last, p) for p in waits.patterns) and _has_condition(n):
+            return True
+        on_other = "." in name and not (name.startswith("self.") and name.count(".") == 1)
+        if not self_receiver and on_other and last in waits.page_methods:
+            return True
+    return False
+
+
+def _has_condition(call: ast.Call) -> bool:
+    """An argument holds a comparison (``lambda d: count(d) == 1``): a wait on a state."""
+    args = [*call.args, *(k.value for k in call.keywords)]
+    return any(isinstance(n, ast.Compare) for arg in args for n in ast.walk(arg))
 
 
 def _is_autouse(decorator: str) -> bool:

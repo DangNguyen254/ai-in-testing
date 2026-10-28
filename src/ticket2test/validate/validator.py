@@ -56,7 +56,7 @@ from ticket2test.validate.code import (
     test_classes,
     test_functions,
 )
-from ticket2test.validate.datause import Resolver
+from ticket2test.validate.datause import Resolver, WaitChecks, fails_itself
 from ticket2test.validate.report import Finding, Severity, ValidationReport
 
 
@@ -903,6 +903,21 @@ def check_ids_and_entries(s: Subject) -> Iterator[Finding]:
         yield _f("ids", f"recorded test ids {s.generated.test_ids} differ from the code's {ids}")
 
 
+def repo_testcases(index: IndexData | None) -> list[str]:
+    """Names bound at module level to a ``TestCase`` instance anywhere in the repo."""
+    if index is None:
+        return []
+    return sorted(
+        {
+            a.name
+            for record in index.files.values()
+            if record.info is not None
+            for a in record.info.assignments
+            if a.call and a.call.rsplit(".", 1)[-1] == "TestCase"
+        }
+    )
+
+
 def module_testcases(tree: ast.Module) -> list[str]:
     """Module-level names bound to a ``unittest.TestCase`` instance (``tc = TestCase(...)``):
     the file's own assertion object, used next to (or instead of) the suite's."""
@@ -1497,6 +1512,17 @@ def _prepare(s: Subject) -> None:
     path_helpers = path_string_helpers(s.index, s.settings)
     hooks = s.settings.generate.scaffold_methods  # setup/teardown: run for every test
     objects = [v.assertion_object, *v.extra_assertion_objects, *module_testcases(s.tree)]
+    if s.index is not None:  # x = unittest.TestCase(...) in any module (imported helpers)
+        objects += _per_index(s.index, "testcases", lambda: repo_testcases(s.index))
+    waits = None
+    if v.wait_checks:
+        patterns = tuple(v.wait_patterns)
+        pages = (
+            _per_index(s.index, ("pages", patterns), lambda: reuse.checking_page_methods(patterns))
+            if s.index
+            else frozenset()
+        )
+        waits = WaitChecks(patterns, pages)
     for cls, fn in s.tests:
         local = class_local_members(cls) if cls else set()
         bases = reuse.repo_bases(cls) if cls else []
@@ -1520,7 +1546,10 @@ def _prepare(s: Subject) -> None:
                 self_asserts,
                 v.check_helpers,
                 hooks,
+                waits,
             )
+        elif waits is not None:  # a module-level test
+            s.deep_checks[fn.name] = fails_itself(fn, waits, self_receiver=False)
     for cls in reuse.classes():
         if not cls.name.startswith(s.settings.index.test_class_prefix):
             continue

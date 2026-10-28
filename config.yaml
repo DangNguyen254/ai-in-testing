@@ -191,6 +191,8 @@ validation:                     # deterministic checks of generated tests (Phase
   assertion_object: self.check    # a unittest.TestCase instance
   extra_assertion_objects: []     # others existing tests assert on (e.g. a module-level check)
   baseless_classes: false         # test classes with no base at all pass the base-class check
+  wait_checks: false              # a wait on a condition / raised failure counts as a check
+  wait_patterns: ["*wait*", "*until*"]
   testcase_bases: [unittest.TestCase, TestCase]   # classes inheriting these may also use self.assert*
   path_string_helpers: []         # helpers taking a dotted page path string; checked like chains
   forbid_page_locators: true      # tests use page actions and properties, never locator constants

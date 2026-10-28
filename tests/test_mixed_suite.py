@@ -724,3 +724,48 @@ def test_a_name_rebound_from_a_call_given_the_entry_is_read_not_required(tmp_pat
     }
     found = _suite_findings(tmp_path, files, {"data": {"access": ["params"]}})
     assert not [f.message for f in found if f.check == "data_keys" and "lacks" in f.message]
+
+
+def test_waits_raises_shared_testcases_and_fixture_loaders_count(tmp_path: Path) -> None:
+    """Found on the real suite (calibration round 6): page-object methods that wait until a
+    state holds, a base method that raises AssertionError, a TestCase object in a helper
+    module, and a usefixtures loader that calls the class's own method with the entry."""
+    files = {
+        "framework/__init__.py": "",
+        "framework/checks.py": "import unittest\n\ntc = unittest.TestCase('__init__')\n",
+        "framework/base.py": (
+            "class Base:\n   @property\n   def nav(self):\n      return Nav()\n\n"
+            "   def _run_all(self, cmd):\n      if cmd not in 'out':\n"
+            "         raise AssertionError('missing')\n"
+        ),
+        "framework/pages.py": (
+            "class Page:\n   def toggle(self, on):\n      self._wait_count(1 if on else 0)\n\n"
+            "   def _wait_count(self, n):\n      self.driver.wait(lambda d: d.count == n)\n\n"
+            "   def click(self):\n      pass\n\n\n"
+            "class Nav:\n   @property\n   def page(self):\n      return Page()\n"
+        ),
+        "conftest.py": (
+            "import pytest\n\n\n@pytest.fixture\ndef loader(request):\n"
+            "   params = {}\n   request.node.instance.load(params)\n"
+        ),
+        "tests/test_a.py": (
+            "import pytest\nfrom framework.base import Base\nfrom framework.checks import tc\n\n\n"
+            "class TestA(Base):\n"
+            "   def test_wait(self):\n      page = self.nav.page\n      page.toggle(False)\n\n"
+            "   def test_raise(self):\n      self._run_all('x')\n\n"
+            "   def test_shared(self):\n      tc.assertTrue(True)\n\n"
+            "   def test_nothing(self):\n      page = self.nav.page\n      page.click()\n\n\n"
+            "@pytest.mark.usefixtures('loader')\nclass TestB(Base):\n"
+            "   def load(self, params):\n      self.cmds = params.get('a', [])\n\n"
+            "   def test_load(self):\n      self._run_all('x')\n"
+        ),
+        "tests/test_a.json": json.dumps([{"test_id": "test_load", "a": []}]),
+    }
+    config = {
+        "data": {"access": ["self.params", "params"], "seed_sections": []},
+        "validation": {"wait_checks": True},
+    }
+    found = _suite_findings(tmp_path, files, config)
+    nothing = sorted(f.test for f in found if f.check == "assertions" and "nothing" in f.message)
+    assert nothing == ["test_nothing"]
+    assert not [f.message for f in found if f.check == "data_keys"]

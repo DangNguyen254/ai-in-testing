@@ -403,6 +403,11 @@ class ValidateSettings(_Section):
     # Test classes with no base at all (``class TestX:``) pass the base-class check: some
     # suites keep plain API tests that way.
     baseless_classes: bool = False
+    # Existing tests check by waiting: a wait call (name matching ``wait_patterns``) on a
+    # condition, a raised failure (``AssertionError``, ``*Timeout*``, ``pytest.fail``), or a
+    # page-object method that does either, counts as the test's check.
+    wait_checks: bool = False
+    wait_patterns: list[str] = Field(default_factory=lambda: ["*wait*", "*until*"])
     # Classes that inherit one of these (anywhere up the lineage) may also assert on ``self``
     # (``self.assertEqual``): real suites mix both styles. Only assert*/fail* methods count.
     testcase_bases: list[str] = Field(default_factory=lambda: ["unittest.TestCase", "TestCase"])
