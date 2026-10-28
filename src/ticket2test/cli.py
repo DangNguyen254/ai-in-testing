@@ -108,6 +108,10 @@ def normalize(
         source = JiraExportSource(jira_export)
     elif is_github_ref(ref):
         source = GitHubIssueSource(state.settings.tickets.github)
+    elif state.settings.paths.tickets_dir is not None:  # a pasted ticket, by its id
+        source = PastedTicketSource(
+            state.settings.paths.tickets_dir, state.settings.normalize.max_attachment_chars
+        )
     else:
         typer.echo(
             f"Error: {ref!r} is not a GitHub issue reference. "
@@ -136,17 +140,25 @@ def normalize(
 
 @app.command(name="new-ticket")
 def new_ticket(
-    key: Annotated[str, typer.Argument(help="The ticket key, e.g. KEY-123.")],
+    ctx: typer.Context,
+    key: Annotated[str, typer.Argument(help="The ticket id, e.g. TEST-095.")],
     folder: Annotated[
-        Path,
+        Path | None,
         typer.Option(
-            "--dir", help="Where pasted tickets are kept: a private folder, never the repo."
+            "--dir",
+            help="Where pasted tickets are kept: a private folder, never the repo "
+            "(default: paths.tickets_dir).",
         ),
-    ],
+    ] = None,
 ) -> None:
-    """Write an empty pasted-ticket file to fill in by hand (then `normalize KEY --paste DIR`)."""
+    """Write an empty pasted-ticket file to fill in by hand (then `run KEY`)."""
     from ticket2test.adapters.tickets.paste import TEMPLATE
 
+    state: AppState = ctx.obj
+    folder = folder or state.settings.paths.tickets_dir
+    if folder is None:
+        typer.echo("Error: give --dir or set paths.tickets_dir in the config.", err=True)
+        raise typer.Exit(code=2)
     target = folder / f"{_safe_name(key)}.md"
     if target.exists():
         typer.echo(f"Error: {target} already exists", err=True)
@@ -165,7 +177,11 @@ def run(
     ctx: typer.Context,
     key: Annotated[str, typer.Argument(help="The ticket id, e.g. TEST-095.")],
     paste: Annotated[
-        Path | None, typer.Option(help="Read the ticket from <PASTE>/<KEY>.md (pasted by hand).")
+        Path | None,
+        typer.Option(
+            help="Read the ticket from <PASTE>/<KEY>.md, pasted by hand "
+            "(default: paths.tickets_dir)."
+        ),
     ] = None,
     jira_export: Annotated[
         Path | None, typer.Option(help="Read the ticket from this exported Jira JSON file.")
@@ -196,8 +212,12 @@ def run(
 
     if not proceed:
         if paste is None and jira_export is None:
+            paste = state.settings.paths.tickets_dir
+        if paste is None and jira_export is None:
             typer.echo(
-                "Error: say where the ticket is: --paste DIR or --jira-export FILE.", err=True
+                "Error: say where the ticket is: --paste DIR, --jira-export FILE, "
+                "or set paths.tickets_dir in the config.",
+                err=True,
             )
             raise typer.Exit(code=2)
         normalize(ctx, ref=key, jira_export=jira_export, paste=paste, out=None, raw_out=None)

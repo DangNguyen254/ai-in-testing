@@ -203,3 +203,27 @@ def test_run_continue_hands_the_draft_to_retrieve_and_generate(
     assert calls[0][1]["draft"] == out / "drafts" / "DEMO-7.drafts.json"
     assert calls[1][1]["retrieval_file"] == out / "retrieval" / "DEMO-7.retrieval.json"
     assert calls[1][1]["reuse_as"] == "auto"
+
+
+def test_the_tickets_folder_can_come_from_the_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    folder = tmp_path / "tickets"
+    monkeypatch.setenv("T2T_PATHS__TICKETS_DIR", str(folder))
+    monkeypatch.setenv("T2T_PATHS__OUTPUT_DIR", str(tmp_path / "out"))
+    runner = CliRunner()
+    made = runner.invoke(app, ["new-ticket", "TEST-095"])
+    assert made.exit_code == 0, made.output
+    assert (folder / "TEST-095.md").is_file()
+    (folder / "TEST-095.md").write_text(FILLED.replace("DEMO-7", "TEST-095"), encoding="utf-8")
+    done = runner.invoke(app, ["normalize", "TEST-095"])
+    assert done.exit_code == 0, done.output
+    assert (tmp_path / "out" / "tickets" / "TEST-095.json").is_file()
+
+
+def test_without_a_folder_new_ticket_says_how_to_give_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("T2T_PATHS__TICKETS_DIR", raising=False)
+    result = CliRunner().invoke(app, ["new-ticket", "TEST-095"])
+    assert result.exit_code == 2 and "paths.tickets_dir" in result.output

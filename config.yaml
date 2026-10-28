@@ -317,5 +317,6 @@ paths:
   output_dir: output
   cache_dir: .t2t_cache
   repo: null                       # the target suite's checkout, for `run`
+  tickets_dir: null                # pasted tickets (private): default for --dir / --paste
   debug_log_dir: debug_logs
   prompts_dir: null          # default: the repo's prompts/ directory

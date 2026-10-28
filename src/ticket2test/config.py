@@ -701,6 +701,9 @@ class PathSettings(_Section):
     output_dir: Path = Path("output")
     # The target suite's checkout, for `run` (other commands take it as an argument).
     repo: Path | None = None
+    # Where pasted tickets are kept (a private folder): the default for `new-ticket --dir`,
+    # `run --paste` and `normalize --paste`.
+    tickets_dir: Path | None = None
     cache_dir: Path = Path(".t2t_cache")
     debug_log_dir: Path = Path("debug_logs")
     # Versioned prompt templates. Default: the repo's prompts/ directory.
