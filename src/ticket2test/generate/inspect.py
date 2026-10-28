@@ -136,12 +136,14 @@ def entry_reads(nodes: Iterable[ast.AST], roots: set[str], helpers: Iterable[str
     patterns = list(helpers)
     reads = EntryReads()
     nodes = list(nodes)
+    aliases = _aliases(nodes, roots)
     rebound = _rebound(nodes, roots)
     tried = _in_key_error_try(nodes)
     all_roots = roots
     for node in nodes:
         line = getattr(node, "lineno", 0)  # after a rebinding line the name is something else
         roots = all_roots - {r for r, at in rebound.items() if line > at}
+        roots = roots | {a for a, at in aliases.items() if line > at}
         if isinstance(node, ast.Subscript) and _dotted(node.value) in roots:
             if isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, str):
                 reads.keys.add(node.slice.value)
@@ -221,6 +223,8 @@ def _rebound(nodes: list[ast.AST], roots: set[str]) -> dict[str, int]:
     found: dict[str, int] = {}
     for node in nodes:
         targets = node.targets if isinstance(node, ast.Assign) else []
+        if isinstance(node, ast.Assign) and _copies_entry(node.value, roots):
+            continue  # params = dict(params): still the entry (see _aliases)
         if isinstance(node, ast.AnnAssign | ast.AugAssign):
             targets = [node.target]
         if isinstance(node, ast.For):
@@ -229,6 +233,28 @@ def _rebound(nodes: list[ast.AST], roots: set[str]) -> dict[str, int]:
             if isinstance(target, ast.Name) and target.id in roots:
                 found[target.id] = min(found.get(target.id, target.lineno), target.lineno)
     return found
+
+
+def _aliases(nodes: list[ast.AST], roots: set[str]) -> dict[str, int]:
+    """Local names that hold the entry, or a copy of it, from the line that assigns them:
+    ``data = self.params``, ``row = dict(params)``, ``row = resolve(env, params)``."""
+    found: dict[str, int] = {}
+    for node in nodes:
+        if not isinstance(node, ast.Assign) or not _copies_entry(node.value, roots):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name) and target.id not in roots:
+                found[target.id] = min(found.get(target.id, target.lineno), target.lineno)
+    return found
+
+
+def _copies_entry(value: ast.expr, roots: set[str]) -> bool:
+    """The entry itself, or a call given the entry (a copy or a resolved version of it)."""
+    if _dotted(value) in roots:
+        return True
+    return isinstance(value, ast.Call) and any(
+        _dotted(arg) in roots for arg in [*value.args, *(k.value for k in value.keywords)]
+    )
 
 
 def _key_check(node: ast.Compare, roots: set[str]) -> bool:

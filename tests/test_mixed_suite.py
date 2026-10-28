@@ -687,3 +687,27 @@ def test_retired_tests_and_a_function_named_like_its_module(tmp_path: Path) -> N
     }
     found = _suite_findings(tmp_path, files, config)
     assert not [f.message for f in found if f.check in ("ids", "data_keys")]
+
+
+def test_a_module_level_testcase_and_an_entry_copied_in_a_helper(tmp_path: Path) -> None:
+    """Found on the real suite: a file's own ``tc = unittest.TestCase(...)`` does the checks;
+    a helper builds a new dict from the entry and reads the keys from it."""
+    files = {
+        "framework/run.py": (
+            "def resolve(env, params):\n   return dict(params)\n\n\n"
+            "def run_helper(env, params):\n   row = resolve(env, params)\n"
+            "   spec = row.get('a', {})\n   for step in row.get('b', []):\n      pass\n"
+        ),
+        "tests/test_a.py": (
+            "import unittest\nfrom framework.run import run_helper\n\n"
+            "tc = unittest.TestCase('__init__')\n\n\n"
+            "class TestA:\n   def test_one(self, params, env):\n"
+            "      run_helper(env, params)\n      tc.assertTrue(True)\n"
+        ),
+        "tests/test_a.json": json.dumps([{"test_id": "test_one", "a": {}, "b": [], "c": 1}]),
+    }
+    config = {"data": {"access": ["self.params", "params"], "seed_sections": []}}
+    found = _suite_findings(tmp_path, files, config)
+    assert not [f for f in found if f.check == "assertions"]
+    messages = [f.message for f in found if f.check == "data_keys"]
+    assert len(messages) == 1 and "'c'" in messages[0] and "'a'" not in messages[0]

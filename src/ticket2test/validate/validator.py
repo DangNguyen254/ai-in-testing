@@ -903,6 +903,20 @@ def check_ids_and_entries(s: Subject) -> Iterator[Finding]:
         yield _f("ids", f"recorded test ids {s.generated.test_ids} differ from the code's {ids}")
 
 
+def module_testcases(tree: ast.Module) -> list[str]:
+    """Module-level names bound to a ``unittest.TestCase`` instance (``tc = TestCase(...)``):
+    the file's own assertion object, used next to (or instead of) the suite's."""
+    found: list[str] = []
+    for node in tree.body:
+        if (
+            isinstance(node, ast.Assign)
+            and isinstance(node.value, ast.Call)
+            and dotted(node.value.func).rsplit(".", 1)[-1] == "TestCase"
+        ):
+            found += [t.id for t in node.targets if isinstance(t, ast.Name)]
+    return found
+
+
 def retired_tests(s: Subject) -> set[str]:
     """Tests switched off for good: ``@pytest.mark.skip`` or ``skipif(True, ...)`` on the test
     or its class."""
@@ -1482,6 +1496,7 @@ def _prepare(s: Subject) -> None:
     s.uses = dict(data_use(s.code, d.access, list(helpers), prefix))  # module-level tests
     path_helpers = path_string_helpers(s.index, s.settings)
     hooks = s.settings.generate.scaffold_methods  # setup/teardown: run for every test
+    objects = [v.assertion_object, *v.extra_assertion_objects, *module_testcases(s.tree)]
     for cls, fn in s.tests:
         local = class_local_members(cls) if cls else set()
         bases = reuse.repo_bases(cls) if cls else []
@@ -1491,7 +1506,7 @@ def _prepare(s: Subject) -> None:
         self_asserts = cls is not None and _is_testcase(cls, bases, v.testcase_bases)
         s.checks[fn.name] = check_calls(
             fn,
-            [v.assertion_object, *v.extra_assertion_objects],
+            objects,
             helpers,
             self_asserts,
             v.check_helpers,
@@ -1501,7 +1516,7 @@ def _prepare(s: Subject) -> None:
             s.deep_checks[fn.name] = reuse.checks_through_calls(
                 cls,
                 fn,
-                [v.assertion_object, *v.extra_assertion_objects],
+                objects,
                 self_asserts,
                 v.check_helpers,
                 hooks,
