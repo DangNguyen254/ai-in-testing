@@ -75,6 +75,7 @@ index:
   test_class_prefix: Test
   data_file_suffix: .json        # test_x.py -> test_x.json
   function_file_cases: false     # a function's own data file holds its cases: ids function[<entry id>]
+  function_data_prefix: false    # function data files found by prefix (<function>*.json), merged
   chain_roots: [nav]             # page-object chains start here: nav.<area>.<page>
   max_chain_depth: 4
   max_chain_entries: 50000        # the chain list only; page objects don't depend on it

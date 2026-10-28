@@ -5,11 +5,12 @@ from __future__ import annotations
 import ast
 import fnmatch
 from collections.abc import Callable, Mapping
+from pathlib import PurePosixPath
 from typing import Any, NamedTuple
 
 from ticket2test.config import IndexSettings
 from ticket2test.index.catalog import SymbolCatalog
-from ticket2test.index.datafile import function_data_path
+from ticket2test.index.datafile import function_data_matches, function_data_path
 from ticket2test.index.extract import ClassInfo, FileInfo, FunctionInfo
 from ticket2test.index.inheritance import inherited_tests, variant_classes
 from ticket2test.index.pytest_ids import compute_test_ids, is_parametrize
@@ -45,17 +46,29 @@ def _data_of(
     module_data: tuple[DataFile | None, str],
     read_data: DataReader,
     settings: IndexSettings,
+    folder_files: Callable[[str], list[str]] | None = None,
 ) -> tuple[DataFile | None, str]:
-    """A per-function data file when the suite has one for this test, else the module's."""
-    if settings.function_data_files:
-        path = function_data_path(info.path, function, settings)
-        if path != module_data[1]:
-            found = read_data(path)
-            if found is not None:
-                if settings.function_file_cases:  # entries name cases: function[case]
-                    found = found._replace(entries=case_entries(function, found.entries))
-                return found, path
-    return module_data
+    """A per-function data file when the suite has one for this test, else the module's. With
+    ``index.function_data_prefix``, every ``<function>*`` file, merged (the first names the
+    chunk's data file; an entry id seen twice keeps its first entry)."""
+    if not settings.function_data_files:
+        return module_data
+    if settings.function_data_prefix and folder_files is not None:
+        folder = str(PurePosixPath(info.path).parent)
+        paths = function_data_matches(info.path, function, folder_files(folder), settings)
+    else:
+        paths = [function_data_path(info.path, function, settings)]
+    files = [(p, f) for p in paths if p != module_data[1] for f in [read_data(p)] if f is not None]
+    if not files:
+        return module_data
+    path, found = files[0]
+    entries: dict[str, Any] = {}
+    for _, more in files:
+        for key, entry in more.entries.items():
+            entries.setdefault(key, entry)
+    if settings.function_file_cases:  # entries name cases: function[case]
+        entries = case_entries(function, entries)
+    return found._replace(entries=entries), path
 
 
 def case_entries(function: str, entries: dict[str, Any]) -> dict[str, Any]:
@@ -94,6 +107,7 @@ def build_chunks(
     read_data: DataReader,
     custom_id_hook: bool = False,
     infos: Mapping[str, FileInfo] | None = None,
+    folder_files: Callable[[str], list[str]] | None = None,
 ) -> list[Chunk]:
     """Chunks of one file. ``infos`` (every file, by path) lets test classes collect the tests
     they inherit from bases in other files."""
@@ -108,7 +122,9 @@ def build_chunks(
     chunks: list[Chunk] = []
     for fn in info.functions:
         if test_file and fn.name.startswith(settings.test_function_prefix):
-            own, own_path = _data_of(info, fn.name, (data, data_path), read_data, settings)
+            own, own_path = _data_of(
+                info, fn.name, (data, data_path), read_data, settings, folder_files
+            )
             chunks.append(
                 _test_chunk(info, fn, None, own, own_path, parametrized_fixtures, custom_id_hook)
             )
@@ -129,7 +145,9 @@ def build_chunks(
         ) or []
         for method in cls.methods:
             if is_test_class and method.name.startswith(settings.test_function_prefix):
-                own, own_path = _data_of(info, method.name, (data, data_path), read_data, settings)
+                own, own_path = _data_of(
+                    info, method.name, (data, data_path), read_data, settings, folder_files
+                )
                 chunk = _test_chunk(
                     info, method, cls, own, own_path, parametrized_fixtures, custom_id_hook
                 )

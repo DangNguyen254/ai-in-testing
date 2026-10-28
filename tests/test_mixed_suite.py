@@ -486,3 +486,38 @@ def test_a_functions_own_data_file_may_hold_its_cases(tmp_path: Path) -> None:
 
     report = file_findings(repo, "tests/area/test_a.py", index, settings)
     assert [f.message for f in report.findings if f.check == "ids"] == []
+
+
+def test_a_suites_loader_may_find_function_data_files_by_prefix(tmp_path: Path) -> None:
+    """Found on the real suite: the loader takes every ``<function>*.json`` next to the module,
+    merges their entries, and uses the module's file only when none matches."""
+    repo = tmp_path / "repo"
+    (repo / "tests").mkdir(parents=True)
+    (repo / "tests" / "test_a.py").write_text(
+        "from framework.base import Base\n\n\nclass TestA(Base):\n"
+        '   def test_one(self):\n      self.check.assertEqual(1, self.params["k"])\n\n'
+        '   def test_two(self):\n      self.check.assertEqual(1, self.params["k"])\n',
+        encoding="utf-8",
+    )
+    files = {
+        "test_one_small.json": [{"test_id": "small", "k": 1}],
+        "test_one_large.json": [{"test_id": "large", "k": 2}],
+        "test_a.json": [{"test_id": "test_two", "k": 3}],
+    }
+    for name, rows in files.items():
+        (repo / "tests" / name).write_text(json.dumps(rows), encoding="utf-8")
+    settings = Settings.model_validate(
+        {
+            "paths": {"cache_dir": str(tmp_path / "cache")},
+            "index": {"function_file_cases": True, "function_data_prefix": True},
+            "validation": {"base_classes": []},
+        }
+    )
+    index, _, _ = update_index(repo, settings)
+    by_name = {c.symbol_name: c for c in index.chunks if c.kind == "test"}
+    assert by_name["test_one"].test_ids == ["test_one[large]", "test_one[small]"]
+    assert by_name["test_two"].test_ids == ["test_two"]  # no match: the module's file
+    from ticket2test.validate.suite import file_findings
+
+    report = file_findings(repo, "tests/test_a.py", index, settings)
+    assert [f.message for f in report.findings if f.check == "ids"] == []

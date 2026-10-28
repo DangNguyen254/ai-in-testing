@@ -148,6 +148,10 @@ class IndexSettings(_Section):
     # A function's own data file holds its cases: the framework runs the test once per entry,
     # with the pytest id ``<function>[<entry id>]`` (entries name only the case).
     function_file_cases: bool = False
+    # The suite's loader finds a function's data files by name prefix (``<function>*.json`` next
+    # to the module) and runs every entry of all of them; the module's file is used only when
+    # none matches.
+    function_data_prefix: bool = False
     chain_roots: list[str] = Field(default_factory=lambda: ["nav"])
     max_chain_depth: int = Field(default=4, ge=1)
     # The chain list (for search, guides and context); page objects and validation don't

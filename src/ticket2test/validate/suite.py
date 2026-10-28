@@ -26,7 +26,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field
 from ticket2test.config import Settings
 from ticket2test.generate.domain import domain_of, domains, is_legacy
 from ticket2test.generate.generator import first_party
-from ticket2test.index.datafile import layout_of, split_defaults
+from ticket2test.index.datafile import function_data_matches, layout_of, split_defaults
 from ticket2test.index.indexer import IndexData, update_index
 from ticket2test.models.generated import GeneratedTest
 from ticket2test.sandbox.runner import ImportProblem, collect_suite
@@ -478,20 +478,26 @@ def static_ids(index: IndexData, path: str) -> list[str]:
 def _function_file_entries(
     repo: Path, path: str, index: IndexData, settings: Settings
 ) -> list[dict[str, Any]]:
-    """Entries of the module's tests that keep their data in a file of their own."""
+    """Entries of the module's tests that keep their data in a file of their own (with
+    ``index.function_data_prefix``, every ``<function>*`` file)."""
     found: list[dict[str, Any]] = []
-    seen: set[str] = set()
+    seen: set[tuple[str, str]] = set()
+    folder = (repo / path).parent
     for chunk in index.chunks:
         if chunk.kind != "test" or chunk.file_path != path or not chunk.data_file:
             continue
-        if chunk.data_file in seen:
-            continue
         own = layout_of(chunk.file_path, chunk.symbol_name, chunk.data_file, settings.index)
-        if own != "function":
+        if own != "function" or (chunk.symbol_name, chunk.data_file) in seen:
             continue
-        seen.add(chunk.data_file)
-        rows, _, _ = read_suite_data(repo, path, settings, chunk.data_file)
-        rows = split_defaults(rows, settings.data)[1]
+        seen.add((chunk.symbol_name, chunk.data_file))
+        files = [chunk.data_file]
+        if settings.index.function_data_prefix:
+            names = [p.name for p in folder.iterdir() if p.is_file()]
+            files = function_data_matches(path, chunk.symbol_name, names, settings.index)
+        rows: list[dict[str, Any]] = []
+        for data_file in files:
+            more, _, _ = read_suite_data(repo, path, settings, data_file)
+            rows += split_defaults(more, settings.data)[1]
         if settings.index.function_file_cases:  # each entry is a case of the function
             id_field, name = settings.data.id_field, chunk.symbol_name
             rows = [

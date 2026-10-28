@@ -182,6 +182,10 @@ def build_index(
     )
 
     infos_by_path = {info.path: info for info in infos}
+    data_names: dict[str, list[str]] = {}  # folder -> data file names (function_data_prefix)
+    if index_settings.function_data_prefix:
+        for rel in repo.list_files((index_settings.data_file_suffix,)):
+            data_names.setdefault(str(rel.parent), []).append(rel.name)
     chunks: list[Chunk] = []
     for info in infos:
         chunks.extend(
@@ -192,6 +196,7 @@ def build_index(
                 lambda p: _read_data_file(repo, p, settings.data),
                 custom_id_hook,
                 infos_by_path,
+                lambda folder: data_names.get(folder, []),
             )
         )
 
