@@ -61,7 +61,19 @@ uv run ticket2test normalize https://github.com/encode/httpx/issues/1498
 
 # Jira: read one issue from an exported JSON file (no network)
 uv run ticket2test normalize DEMO-101 --jira-export export.json --out ticket.json
+
+# Pasted by hand (when the tracker's API can't be used): write the template, fill it in, read it
+uv run ticket2test new-ticket DEMO-101 --dir <private folder>/tickets
+uv run ticket2test normalize DEMO-101 --paste <private folder>/tickets --out ticket.json
 ```
+
+A pasted ticket is one Markdown file with fixed `##` sections (components, labels, description,
+steps to reproduce, expected, actual, test plan, attachments, comments, links). When the steps or
+expected result live in a linked test plan, paste that part under `## Test plan`: steps and
+expected come from their own sections first, then from the description, then from the test plan.
+Attachments are local files listed one per line; `.md`, `.txt` and `.csv` are read, others only
+listed. Links are recorded, never opened. Keep the folder private: real tickets never go in the
+repo.
 
 Without `--out`, the ticket is written to `output/tickets/<id>.json`. `--raw-out FILE` also saves
 the raw source payload. Steps, expected, and actual are extracted by rules (section headings

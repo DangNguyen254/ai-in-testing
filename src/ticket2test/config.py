@@ -566,6 +566,7 @@ class NormalizeSettings(_Section):
     # Long threads keep the first and the most recent comments, up to this many in total.
     max_comments: int = Field(default=50, ge=0)
     max_comment_chars: int = Field(default=4000, ge=100)
+    max_attachment_chars: int = Field(default=20000, ge=100)  # per readable attachment
 
 
 class MaskingSettings(_Section):

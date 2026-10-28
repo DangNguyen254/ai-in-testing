@@ -36,6 +36,13 @@ def normalize(raw: RawTicket, settings: Settings | None = None) -> Ticket:
         return normalize_github(raw, settings)
     if raw.source == "jira":
         return normalize_jira(raw, settings)
+    if raw.source == "paste":
+        from ticket2test.normalize.paste import PasteError, normalize_paste
+
+        try:
+            return normalize_paste(raw, settings)
+        except PasteError as exc:
+            raise NormalizationError(str(exc)) from exc
     raise NormalizationError(f"Unknown ticket source: {raw.source!r}")
 
 

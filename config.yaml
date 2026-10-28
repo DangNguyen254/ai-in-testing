@@ -62,6 +62,7 @@ tickets:
 normalize:
   max_comments: 50                 # long threads keep the first + most recent comments
   max_comment_chars: 4000
+  max_attachment_chars: 20000      # pasted tickets: per readable attachment (.md, .txt, .csv)
 
 index:
   ignore: [.git, .hg, .svn, .venv, venv, env, __pycache__, node_modules, .tox, .nox,

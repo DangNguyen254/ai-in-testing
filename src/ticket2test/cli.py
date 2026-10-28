@@ -70,12 +70,17 @@ def normalize(
     ref: Annotated[
         str,
         typer.Argument(
-            help="GitHub 'owner/repo#123' or issue URL; or a Jira key with --jira-export."
+            help="GitHub 'owner/repo#123' or issue URL; a Jira key with --jira-export; "
+            "a ticket key or .md file with --paste."
         ),
     ],
     jira_export: Annotated[
         Path | None,
         typer.Option(help="Read the Jira issue REF from this exported JSON file (no network)."),
+    ] = None,
+    paste: Annotated[
+        Path | None,
+        typer.Option(help="Read REF from a pasted ticket file: <PASTE>/<REF>.md (no network)."),
     ] = None,
     out: Annotated[
         Path | None,
@@ -91,19 +96,23 @@ def normalize(
     from ticket2test.adapters.tickets.base import TicketSource, TicketSourceError
     from ticket2test.adapters.tickets.github import GitHubIssueSource, is_github_ref
     from ticket2test.adapters.tickets.jira import JiraExportSource
+    from ticket2test.adapters.tickets.paste import PastedTicketSource
     from ticket2test.normalize import NormalizationError
     from ticket2test.normalize import normalize as normalize_ticket
 
     state: AppState = ctx.obj
     source: TicketSource
-    if jira_export is not None:
+    if paste is not None:
+        source = PastedTicketSource(paste, state.settings.normalize.max_attachment_chars)
+    elif jira_export is not None:
         source = JiraExportSource(jira_export)
     elif is_github_ref(ref):
         source = GitHubIssueSource(state.settings.tickets.github)
     else:
         typer.echo(
             f"Error: {ref!r} is not a GitHub issue reference. "
-            "For Jira, pass the issue key with --jira-export FILE.",
+            "For Jira, pass the issue key with --jira-export FILE, "
+            "or a pasted ticket with --paste DIR.",
             err=True,
         )
         raise typer.Exit(code=2)
@@ -122,6 +131,28 @@ def normalize(
     target = out or state.settings.paths.output_dir / "tickets" / f"{_safe_name(ticket.id)}.json"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(ticket.model_dump_json(indent=2), encoding="utf-8")
+    typer.echo(f"Wrote {target}")
+
+
+@app.command(name="new-ticket")
+def new_ticket(
+    key: Annotated[str, typer.Argument(help="The ticket key, e.g. KEY-123.")],
+    folder: Annotated[
+        Path,
+        typer.Option(
+            "--dir", help="Where pasted tickets are kept: a private folder, never the repo."
+        ),
+    ],
+) -> None:
+    """Write an empty pasted-ticket file to fill in by hand (then `normalize KEY --paste DIR`)."""
+    from ticket2test.adapters.tickets.paste import TEMPLATE
+
+    target = folder / f"{_safe_name(key)}.md"
+    if target.exists():
+        typer.echo(f"Error: {target} already exists", err=True)
+        raise typer.Exit(code=1)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(TEMPLATE.format(key=key), encoding="utf-8")
     typer.echo(f"Wrote {target}")
 
 
