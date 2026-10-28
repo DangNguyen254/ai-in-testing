@@ -639,3 +639,51 @@ def test_checks_in_teardown_and_autouse_fixtures_count(tmp_path: Path) -> None:
     config = {"data": {"seed_sections": [], "expectation_sections": {"policy": "self.apply_*"}}}
     found = _suite_findings(tmp_path, files, config)
     assert not [f.message for f in found if f.check in ("assertions", "data_keys")]
+
+
+def test_a_base_setup_called_by_name_reads_for_every_test(tmp_path: Path) -> None:
+    """Found on the real suite: ``Base.setup(self)`` (or ``super().setup()``) in the class's
+    setup, and the base's setup reads a key behind a presence check."""
+    files = {
+        "framework/mock.py": (
+            "class BaseMock:\n   def setup(self):\n"
+            "      if 'body' in self.params:\n         self.payload = self.params['body']\n"
+        ),
+        "tests/test_a.py": (
+            "from framework.mock import BaseMock\n\n\nclass TestA(BaseMock):\n"
+            "   def setup(self):\n      BaseMock.setup(self)\n\n"
+            "   def test_one(self):\n      self.check.assertTrue(True)\n\n\n"
+            "class TestB(BaseMock):\n   def setup(self):\n      super().setup()\n\n"
+            "   def test_two(self):\n      self.check.assertTrue(True)\n"
+        ),
+        "tests/test_a.json": json.dumps(
+            [{"test_id": "test_one", "body": {}}, {"test_id": "test_two", "body": {}}]
+        ),
+    }
+    found = _suite_findings(tmp_path, files, {"data": {"seed_sections": []}})
+    assert not [f.message for f in found if f.check == "data_keys"]
+
+
+def test_retired_tests_and_a_function_named_like_its_module(tmp_path: Path) -> None:
+    """Found on the real suite: a test switched off with ``skipif(True, ...)`` keeps old data;
+    ``test_x.py::test_x`` keeps its cases in ``test_x.json``, the module's own file."""
+    files = {
+        "tests/test_a.py": (
+            "import pytest\n\n\nclass TestA:\n"
+            "   @pytest.mark.skipif(True, reason='X-1')\n"
+            "   def test_old(self):\n      pass\n\n"
+            "   def test_a(self, params):\n"
+            "      try:\n         if params['skip']:\n            pytest.skip()\n"
+            "      except KeyError:\n         pass\n"
+            "      self.check.assertEqual(1, params['k'])\n"
+        ),
+        "tests/test_a.json": json.dumps(
+            [{"test_id": "case_a", "k": 1}, {"test_id": "case_b", "k": 2}]
+        ),
+    }
+    config = {
+        "index": {"function_file_cases": True},
+        "data": {"access": ["self.params", "params"]},
+    }
+    found = _suite_findings(tmp_path, files, config)
+    assert not [f.message for f in found if f.check in ("ids", "data_keys")]

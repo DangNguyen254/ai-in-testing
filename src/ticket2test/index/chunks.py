@@ -58,7 +58,14 @@ def _data_of(
         paths = function_data_matches(info.path, function, folder_files(folder), settings)
     else:
         paths = [function_data_path(info.path, function, settings)]
-    files = [(p, f) for p in paths if p != module_data[1] for f in [read_data(p)] if f is not None]
+    own_is_module = settings.function_file_cases  # test_x.py::test_x: cases in test_x.json
+    files = [
+        (p, f)
+        for p in paths
+        if p != module_data[1] or own_is_module
+        for f in [read_data(p)]
+        if f is not None
+    ]
     if not files:
         return module_data
     path, found = files[0]

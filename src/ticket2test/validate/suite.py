@@ -319,6 +319,9 @@ def file_findings(
     entries, layout, data_text = read_suite_data(repo, path, settings)
     extra = _function_file_entries(repo, path, index, settings)
     if extra:  # tests with their own data file: judge them with their entries
+        if _module_holds_cases(path, index, settings):  # test_x.py::test_x: rows are cases
+            ids = set(static_ids(index, path))  # keep the rows other tests read by full id
+            entries = [e for e in entries if e.get(settings.data.id_field) in ids]
         entries, data_text = [*entries, *extra], None  # formatting is per file: not here
     generated = GeneratedTest(
         code=code,
@@ -498,6 +501,20 @@ def static_ids(index: IndexData, path: str) -> list[str]:
     ]
 
 
+def _module_holds_cases(path: str, index: IndexData, settings: Settings) -> bool:
+    """A test named like its module keeps its cases in the module's own data file."""
+    if not settings.index.function_file_cases:
+        return False
+    module_file = module_data_path(path, settings.index)
+    return any(
+        c.kind == "test"
+        and c.file_path == path
+        and c.data_file == module_file
+        and c.symbol_name == PurePosixPath(path).stem
+        for c in index.chunks
+    )
+
+
 def _function_file_entries(
     repo: Path, path: str, index: IndexData, settings: Settings
 ) -> list[dict[str, Any]]:
@@ -512,7 +529,10 @@ def _function_file_entries(
         own = layout_of(chunk.file_path, chunk.symbol_name, chunk.data_file, settings.index)
         if own != "function" or (chunk.symbol_name, chunk.data_file) in seen:
             continue
-        if chunk.data_file == module_data_path(path, settings.index):
+        if (
+            chunk.data_file == module_data_path(path, settings.index)
+            and not settings.index.function_file_cases
+        ):
             continue  # test_x.py::test_x: its file is the module's, already read
         seen.add((chunk.symbol_name, chunk.data_file))
         files = [chunk.data_file]

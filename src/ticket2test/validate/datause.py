@@ -118,6 +118,31 @@ class Resolver:
                 )
         return None
 
+    def base_method(self, cls: ast.ClassDef, owner: str, name: str) -> ast.FunctionDef | None:
+        """``super().<name>`` or ``<owner>.<name>(self)``: the method in the class's repo bases
+        (for ``super``) or in ``owner`` and its bases."""
+        if owner == "super":
+            entries = self.repo_bases(cls)
+        elif self.catalog is not None:
+            entry = self.catalog.resolve_type(owner, self.module)
+            entries = self.catalog.mro(entry.qualname) if entry is not None else []
+        else:
+            entries = []
+        for base in entries:
+            _, base_cls = self._class_info(base)
+            if base_cls is None or not any(m.name == name for m in base_cls.methods):
+                continue
+            key = (base.file_path, base.name)
+            if key not in self._parsed:
+                self._parsed[key] = _parse_class(base_cls)
+            parsed = self._parsed[key]
+            if parsed is not None:
+                return next(
+                    (n for n in parsed.body if isinstance(n, ast.FunctionDef) and n.name == name),
+                    None,
+                )
+        return None
+
     def _class_info(self, entry: ClassEntry) -> tuple[FileInfo | None, ClassInfo | None]:
         info = self.infos.get(entry.file_path)
         if info is None:
@@ -155,16 +180,22 @@ class Resolver:
     ) -> None:
         """Adds what the methods (and the ``self.<method>()`` calls they make) read to
         ``total``."""
-        while queue and len(seen) < _MAX_METHODS:
+        visited: set[int] = set()  # by node: a base's setup has the class's setup's name
+        while queue and len(visited) < _MAX_METHODS:
             current = queue.pop()
-            if current.name in seen:
+            if id(current) in visited:
                 continue
+            visited.add(id(current))
             seen.add(current.name)
             reads = self._reads(current)
             total.add(reads)
-            for name in reads.self_calls - seen:
+            for name in reads.self_calls:
                 found = self.method(cls, name)
-                if found is not None:
+                if found is not None and id(found) not in visited:
+                    queue.append(found)
+            for owner, name in reads.base_calls:
+                found = self.base_method(cls, owner, name)
+                if found is not None and id(found) not in visited:
                     queue.append(found)
 
     def checks_through_calls(

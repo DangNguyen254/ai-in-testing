@@ -80,7 +80,10 @@ def function_data_matches(
             n for n in names if n != own and n.startswith(function) and n.endswith(suffix)
         )
     folder = PurePosixPath(test_file).parent
-    return [str(folder / n) for n in found if n != module]
+    # test_x.py::test_x: the module's file is also the function's own; a loader that holds
+    # cases there (index.function_file_cases) reads it as the function's
+    keep_own = settings.function_file_cases
+    return [str(folder / n) for n in found if n != module or (keep_own and n == own)]
 
 
 def layout_of(

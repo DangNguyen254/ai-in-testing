@@ -881,7 +881,14 @@ def check_ids_and_entries(s: Subject) -> Iterator[Finding]:
     ids = list(dict.fromkeys([*own, *s.inherited_ids]))
     if any(not isinstance(k, str) for k in keys):
         yield _f("ids", f"every entry needs a string {d.id_field!r}")
-    duplicates = sorted({k for k in keys if isinstance(k, str) and keys.count(k) > 1})
+    retired = retired_tests(s)
+    duplicates = sorted(
+        {
+            k
+            for k in keys
+            if isinstance(k, str) and keys.count(k) > 1 and function_of(k) not in retired
+        }
+    )
     if duplicates:
         yield _f("ids", f"duplicate entries: {duplicates}")
     orphans = [k for k in keys if isinstance(k, str) and k not in ids]
@@ -896,6 +903,28 @@ def check_ids_and_entries(s: Subject) -> Iterator[Finding]:
         yield _f("ids", f"recorded test ids {s.generated.test_ids} differ from the code's {ids}")
 
 
+def retired_tests(s: Subject) -> set[str]:
+    """Tests switched off for good: ``@pytest.mark.skip`` or ``skipif(True, ...)`` on the test
+    or its class."""
+    found: set[str] = set()
+    for cls, fn in s.tests:
+        decorators = [*fn.decorator_list, *(cls.decorator_list if cls else [])]
+        if any(_always_skips(d) for d in decorators):
+            found.add(fn.name)
+    return found
+
+
+def _always_skips(decorator: ast.expr) -> bool:
+    call = decorator if isinstance(decorator, ast.Call) else None
+    name = dotted(call.func if call else decorator)
+    if name.endswith("mark.skip"):
+        return True
+    if name.endswith("mark.skipif") and call is not None and call.args:
+        first = call.args[0]
+        return isinstance(first, ast.Constant) and first.value is True
+    return False
+
+
 def check_data_keys(s: Subject) -> Iterator[Finding]:
     """Keys the test reads exist in each entry; every key is read or consumed (rule 1)."""
     d = s.settings.data
@@ -908,8 +937,11 @@ def check_data_keys(s: Subject) -> Iterator[Finding]:
         "allowed_expectation_sets": d.allowed_expectation_sets,
     }
     defaults = s.defaults
+    retired = retired_tests(s)
     for entry in s.entries:
         test_id = str(entry.get(d.id_field, ""))
+        if function_of(test_id) in retired:
+            continue  # a test that never runs: its leftover data isn't a config problem
         use = uses.get(function_of(test_id))
         seen = merged(entry, defaults, d)  # keys may come from the file's defaults row
         absent = sorted(use.keys - set(seen)) if use else []

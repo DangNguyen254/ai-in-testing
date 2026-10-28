@@ -111,6 +111,8 @@ class EntryReads:
     # Calls that hand the entry or ``self`` to another function: (callee, argument position or
     # keyword, the root or "self"). The resolver follows those it finds in the repo.
     passed: list[tuple[str, int | str, str]] = field(default_factory=list)
+    # ``Base.setup(self)`` and ``super().setup()``: (the class named, or "super"; the method)
+    base_calls: set[tuple[str, str]] = field(default_factory=set)
 
     def add(self, other: EntryReads) -> None:
         self.keys |= other.keys
@@ -135,6 +137,7 @@ def entry_reads(nodes: Iterable[ast.AST], roots: set[str], helpers: Iterable[str
     reads = EntryReads()
     nodes = list(nodes)
     rebound = _rebound(nodes, roots)
+    tried = _in_key_error_try(nodes)
     all_roots = roots
     for node in nodes:
         line = getattr(node, "lineno", 0)  # after a rebinding line the name is something else
@@ -142,6 +145,8 @@ def entry_reads(nodes: Iterable[ast.AST], roots: set[str], helpers: Iterable[str
         if isinstance(node, ast.Subscript) and _dotted(node.value) in roots:
             if isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, str):
                 reads.keys.add(node.slice.value)
+                if id(node) in tried:  # try: params["k"] ... except KeyError: a missing key
+                    reads.guarded.add(node.slice.value)
         elif isinstance(node, ast.Compare) and _key_check(node, roots):
             reads.guarded.add(node.left.value)  # type: ignore[attr-defined]
         elif isinstance(node, ast.Call):
@@ -159,6 +164,15 @@ def entry_reads(nodes: Iterable[ast.AST], roots: set[str], helpers: Iterable[str
                 reads.optional.add(node.args[0].value)
             elif name.startswith("self.") and name.count(".") == 1:
                 reads.self_calls.add(name.removeprefix("self."))
+            elif _is_super_call(node.func):
+                reads.base_calls.add(("super", node.func.attr))  # type: ignore[attr-defined]
+            elif (
+                isinstance(node.func, ast.Attribute)
+                and node.args
+                and _dotted(node.args[0]) == "self"
+                and _dotted(node.func.value)
+            ):
+                reads.base_calls.add((_dotted(node.func.value), node.func.attr))
             given: list[tuple[int | str, ast.expr]] = [
                 *enumerate(node.args),
                 *((k.arg, k.value) for k in node.keywords if k.arg),
@@ -171,6 +185,34 @@ def entry_reads(nodes: Iterable[ast.AST], roots: set[str], helpers: Iterable[str
                 elif passed == "self" and name and not name.startswith("self."):
                     reads.passed.append((name, where, "self"))  # e.g. check_policy(self)
     return reads
+
+
+def _is_super_call(func: ast.expr) -> bool:
+    return (
+        isinstance(func, ast.Attribute)
+        and isinstance(func.value, ast.Call)
+        and isinstance(func.value.func, ast.Name)
+        and func.value.func.id == "super"
+    )
+
+
+_KEY_ERRORS = {"KeyError", "LookupError", "Exception", "BaseException"}
+
+
+def _in_key_error_try(nodes: list[ast.AST]) -> set[int]:
+    """Ids of the nodes in the body of a ``try`` whose handlers catch a missing key."""
+    found: set[int] = set()
+    for node in nodes:
+        if not isinstance(node, ast.Try):
+            continue
+        caught: set[str] = set()
+        for handler in node.handlers:
+            kinds = handler.type
+            items = kinds.elts if isinstance(kinds, ast.Tuple) else [kinds]
+            caught |= {"Exception"} if kinds is None else {_dotted(k) for k in items if k}
+        if caught & _KEY_ERRORS:
+            found |= {id(n) for statement in node.body for n in ast.walk(statement)}
+    return found
 
 
 def _rebound(nodes: list[ast.AST], roots: set[str]) -> dict[str, int]:
