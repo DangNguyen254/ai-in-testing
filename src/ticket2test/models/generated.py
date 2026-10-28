@@ -206,6 +206,8 @@ def unconsumed_keys(
     fixed |= set(ctx.get(CTX_PER_ENTRY_KEYS, []))
     read = (use.keys | use.optional_keys) if use else frozenset()
     helpers = use.helpers if use else frozenset()
+    read |= getattr(use, "hook_keys", frozenset())  # read or called by setup/teardown
+    helpers |= getattr(use, "hook_helpers", frozenset())
     whole = bool(getattr(use, "passes_whole", False))  # the entry goes to a call: any key
     unread: dict[str, str] = {}
     for key in entry:

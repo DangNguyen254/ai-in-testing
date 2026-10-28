@@ -544,11 +544,11 @@ def resolved_uses(code: str, setup: GenerationSetup) -> dict[str, Any]:
     for cls in resolver.classes():
         for fn in cls.body:
             if isinstance(fn, ast.FunctionDef) and fn.name.startswith(prefix):
-                uses[fn.name] = resolver.data_use(cls, fn)
+                uses[fn.name] = resolver.data_use(cls, fn, settings.generate.scaffold_methods)
         for test in resolver.inherited_tests(cls, prefix):
             method = resolver.method(cls, test.name)
             if method is not None:
-                uses[test.name] = resolver.data_use(cls, method)
+                uses[test.name] = resolver.data_use(cls, method, settings.generate.scaffold_methods)
     return uses
 
 

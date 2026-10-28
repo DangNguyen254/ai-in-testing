@@ -521,3 +521,31 @@ def test_a_suites_loader_may_find_function_data_files_by_prefix(tmp_path: Path) 
 
     report = file_findings(repo, "tests/test_a.py", index, settings)
     assert [f.message for f in report.findings if f.check == "ids"] == []
+
+
+def test_what_setup_reads_or_calls_counts_for_every_test(tmp_path: Path) -> None:
+    """Found on the real suite: a class's setup calls the helper that applies a section, so
+    the tests never call it themselves."""
+    repo = tmp_path / "repo"
+    (repo / "tests").mkdir(parents=True)
+    (repo / "tests" / "test_a.py").write_text(
+        "from framework.base import Base\n\n\nclass TestA(Base):\n"
+        "   def setup(self):\n      self.apply_policy()\n\n"
+        "   def apply_policy(self):\n      pass\n\n"
+        '   def test_one(self):\n      self.check.assertEqual(1, self.params["k"])\n',
+        encoding="utf-8",
+    )
+    rows = [{"test_id": "test_one", "k": 1, "policy": {}}]
+    (repo / "tests" / "test_a.json").write_text(json.dumps(rows), encoding="utf-8")
+    settings = Settings.model_validate(
+        {
+            "paths": {"cache_dir": str(tmp_path / "cache")},
+            "data": {"seed_sections": [], "expectation_sections": {"policy": "self.apply_*"}},
+            "validation": {"base_classes": []},
+        }
+    )
+    index, _, _ = update_index(repo, settings)
+    from ticket2test.validate.suite import file_findings
+
+    report = file_findings(repo, "tests/test_a.py", index, settings)
+    assert [f.message for f in report.findings if f.check == "data_keys"] == []

@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import ast
 import textwrap
-from collections.abc import Iterator
-from dataclasses import dataclass
+from collections.abc import Iterable, Iterator
+from dataclasses import dataclass, replace
 
 from ticket2test.generate.inspect import DataUse, EntryReads, entry_reads
 from ticket2test.index.catalog import ClassEntry, SymbolCatalog
@@ -118,11 +118,31 @@ class Resolver:
 
     # --- data use ---------------------------------------------------------------------
 
-    def data_use(self, cls: ast.ClassDef, function: ast.FunctionDef) -> DataUse:
-        """Keys and helpers the function uses, following ``self.<method>()`` calls."""
+    def data_use(
+        self, cls: ast.ClassDef, function: ast.FunctionDef, hooks: Iterable[str] = ()
+    ) -> DataUse:
+        """Keys and helpers the function uses, following ``self.<method>()`` calls. ``hooks``:
+        the class's setup/teardown methods (its own or inherited), which run for every test,
+        so the keys they read and the helpers they call count as consumed (``hook_keys``,
+        ``hook_helpers``). Their passing the whole entry on doesn't: a base setup that hands it
+        to seeding would make every key look consumed."""
         total = EntryReads()
         seen: set[str] = set()
-        queue = [function]
+        self._follow(cls, [function], seen, total)
+        hooked = EntryReads()
+        found = [self.method(cls, name) for name in hooks]
+        self._follow(cls, [f for f in found if f is not None], seen, hooked)
+        return replace(
+            total.use(),
+            hook_keys=frozenset(hooked.keys | hooked.optional),
+            hook_helpers=frozenset(hooked.helpers),
+        )
+
+    def _follow(
+        self, cls: ast.ClassDef, queue: list[ast.FunctionDef], seen: set[str], total: EntryReads
+    ) -> None:
+        """Adds what the methods (and the ``self.<method>()`` calls they make) read to
+        ``total``."""
         while queue and len(seen) < _MAX_METHODS:
             current = queue.pop()
             if current.name in seen:
@@ -134,7 +154,6 @@ class Resolver:
                 found = self.method(cls, name)
                 if found is not None:
                     queue.append(found)
-        return total.use()
 
     def checks_through_calls(
         self,

@@ -1447,6 +1447,7 @@ def _prepare(s: Subject) -> None:
     prefix = s.settings.index.test_function_prefix
     s.uses = dict(data_use(s.code, d.access, list(helpers), prefix))  # module-level tests
     path_helpers = path_string_helpers(s.index, s.settings)
+    hooks = s.settings.generate.scaffold_methods  # setup/teardown: run for every test
     for cls, fn in s.tests:
         local = class_local_members(cls) if cls else set()
         bases = reuse.repo_bases(cls) if cls else []
@@ -1458,7 +1459,7 @@ def _prepare(s: Subject) -> None:
             fn, v.assertion_object, helpers, self_asserts, v.check_helpers
         )
         if cls is not None:
-            s.uses[fn.name] = reuse.data_use(cls, fn)
+            s.uses[fn.name] = reuse.data_use(cls, fn, hooks)
             s.deep_checks[fn.name] = reuse.checks_through_calls(
                 cls, fn, v.assertion_object, self_asserts, v.check_helpers
             )
@@ -1469,7 +1470,7 @@ def _prepare(s: Subject) -> None:
             s.inherited_ids += test.ids
             method = reuse.method(cls, test.name)
             if method is not None:
-                s.uses[test.name] = reuse.data_use(cls, method)
+                s.uses[test.name] = reuse.data_use(cls, method, hooks)
 
 
 def _strings(value: Any) -> set[str]:

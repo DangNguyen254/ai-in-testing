@@ -118,6 +118,15 @@ def test_message_patterns_mask_the_suites_names(tmp_path: Path) -> None:
     assert mask_message("class TestFooBar must inherit one of BaseTest") == (
         "class <Name> must inherit one of <Name>"
     )
+    assert mask_message("class Test_Some_Area must inherit one of Base") == (
+        "class <Name> must inherit one of <Name>"
+    )
+    assert mask_message("class Settings must inherit one of Base") == (
+        "class <Name> must inherit one of <Name>"
+    )
+    assert mask_message("entries for ids the code doesn't define: ['a', 'b[c]']") == (
+        "entries for ids the code doesn't define: [...]"
+    )
     assert mask_message("acme.pages.cart has no name 'Cart' (tests/a/test_b.py, line 12)") == (
         "<a.b> has no name '...' (<path>, line N)"
     )

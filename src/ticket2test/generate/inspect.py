@@ -57,6 +57,10 @@ class DataUse:
     optional_keys: frozenset[str]  # params.get("key", ...), or indexed only after a check
     helpers: frozenset[str]  # entry-reading helpers it calls
     passes_whole: bool = False  # hands the whole entry to a call: which keys it reads is unknown
+    # What the class's setup/teardown read and call: consumed for the test, never required,
+    # and not a sign that the test itself reads its entry.
+    hook_keys: frozenset[str] = frozenset()
+    hook_helpers: frozenset[str] = frozenset()
 
     @property
     def reads_data(self) -> bool:
