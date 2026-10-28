@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 import time
 from collections import Counter, defaultdict
 from collections.abc import Callable
@@ -184,6 +185,16 @@ class SuiteReport(BaseModel):
         return self.errors == 0 and (not self.ids.ran or (self.ids.exit_code == 0 and no_id_gaps))
 
 
+def _memory() -> str:
+    """The process's peak memory so far, where the platform reports it (not on Windows)."""
+    if sys.platform == "win32":
+        return ""
+    import resource
+
+    peak_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss  # KB on Linux
+    return f"; peak memory {peak_kb // 1024} MB"
+
+
 def check_suite(
     repo: Path,
     settings: Settings,
@@ -195,6 +206,8 @@ def check_suite(
     if progress:
         progress("indexing (only changed files are read again)...")
     index, _, _ = update_index(repo, settings)
+    if progress:
+        progress(f"index ready: {len(index.chunks)} chunks{_memory()}")
     report = SuiteReport(repo=str(repo), created_at=datetime.now(UTC))
     roots = first_party(index, settings)
     imports = module_imports(index)
@@ -212,10 +225,10 @@ def check_suite(
         progress(f"checking {len(files)} test files...")
     slowest = ("", 0.0)
     for done, path in enumerate(files, start=1):
-        if progress and done > 1 and (done - 1) % 10 == 0:
+        if progress and done > 1 and ((done - 1) % 10 == 0 or done <= 10):
             progress(
                 f"  {done - 1}/{len(files)} files, {time.monotonic() - started:.0f} s; "
-                f"slowest so far: {slowest[0]} ({slowest[1]:.1f} s)"
+                f"slowest so far: {slowest[0]} ({slowest[1]:.1f} s){_memory()}"
             )
         file_started = time.monotonic()
         domain = domain_of(path, all_domains)
