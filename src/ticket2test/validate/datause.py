@@ -16,12 +16,13 @@ from dataclasses import dataclass, replace
 
 from ticket2test.generate.inspect import DataUse, EntryReads, entry_reads
 from ticket2test.index.catalog import ClassEntry, SymbolCatalog
-from ticket2test.index.extract import ClassInfo, FileInfo
+from ticket2test.index.extract import ClassInfo, FileInfo, FunctionInfo
 from ticket2test.index.indexer import IndexData
 from ticket2test.index.pytest_ids import compute_test_ids
 from ticket2test.validate.code import dotted, is_assertion, is_check_helper
 
 _MAX_METHODS = 200  # bound on methods followed per test
+_MAX_PASS_DEPTH = 2  # functions the entry is handed to, then the ones they hand it to
 
 
 @dataclass(frozen=True)
@@ -55,6 +56,8 @@ class Resolver:
         self.helpers = helpers
         self._parsed: dict[tuple[str, str], ast.ClassDef | None] = {}
         self._hooked: dict[tuple[str, tuple[str, ...]], EntryReads] = {}
+        self._functions: dict[str, FunctionInfo] | None = None  # qualname -> module function
+        self._handed: dict[tuple[str, frozenset[str], int], EntryReads | None] = {}
 
     # --- classes and their bases -------------------------------------------------------
 
@@ -134,7 +137,7 @@ class Resolver:
         total = EntryReads()
         seen: set[str] = set()
         self._follow(cls, [function], seen, total)
-        key = (cls.name, tuple(hooks))
+        key = (cls.name, (*hooks, *self.autouse_fixtures(cls)))
         if key not in self._hooked:  # the same for every test of the class
             hooked = EntryReads()
             found = [self.method(cls, name) for name in key[1]]
@@ -168,13 +171,16 @@ class Resolver:
         self,
         cls: ast.ClassDef,
         function: ast.FunctionDef,
-        assertion_object: str,
+        assertion_object: str | list[str],
         self_asserts: bool = False,
         check_helpers: list[str] | tuple[str, ...] = (),
+        hooks: Iterable[str] = (),
     ) -> bool:
-        """True if a method the function calls (transitively) asserts or validates."""
+        """True if a method the function calls (transitively) asserts or validates, or a
+        teardown of the class does (checks that run after every test)."""
         seen = {function.name}
-        queue = [n for n in self._reads(function).self_calls]
+        after = [h for h in hooks if "teardown" in h.lower()]
+        queue = [*after, *self._reads(function).self_calls]
         while queue and len(seen) < _MAX_METHODS:
             name = queue.pop()
             if name in seen:
@@ -194,8 +200,95 @@ class Resolver:
             queue += list(reads.self_calls - seen)
         return False
 
+    def autouse_fixtures(self, cls: ast.ClassDef) -> list[str]:
+        """Methods of the class or its repo bases that are autouse pytest fixtures: they run
+        around every test, like setup/teardown."""
+        found = [
+            n.name
+            for n in cls.body
+            if isinstance(n, ast.FunctionDef)
+            and any(_is_autouse(ast.unparse(d)) for d in n.decorator_list)
+        ]
+        for base in self.repo_bases(cls):
+            _, base_cls = self._class_info(base)
+            for method in base_cls.methods if base_cls else []:
+                if any(_is_autouse(d) for d in method.decorators) and method.name not in found:
+                    found.append(method.name)
+        return found
+
     def _reads(self, function: ast.FunctionDef) -> EntryReads:
-        return entry_reads(_walk(function), self.access, self.helpers)
+        reads = entry_reads(_walk(function), self.access, self.helpers)
+        return self._with_handed(reads, depth=0)
+
+    def _with_handed(self, reads: EntryReads, depth: int) -> EntryReads:
+        """Adds what repo functions read when the entry (or ``self``) is handed to them. A
+        call that can't be followed keeps ``passes_whole``; when all can, it is dropped."""
+        if not reads.passed or depth >= _MAX_PASS_DEPTH:
+            return reads
+        unresolved = False
+        for callee, where, given in reads.passed:
+            found = self._handed_reads(callee, where, given, depth)
+            if found is None:
+                unresolved = unresolved or given != "self"
+                continue
+            reads.add(found)
+        if not unresolved:
+            reads.passes_whole = False
+        return reads
+
+    def _handed_reads(
+        self, callee: str, where: int | str, given: str, depth: int
+    ) -> EntryReads | None:
+        function = self._module_function(callee)
+        if function is None:
+            return None
+        params = [p.name for p in function.params]
+        if isinstance(where, int):
+            param = params[where] if where < len(params) else None
+        else:
+            param = where if where in params else None
+        if param is None:
+            return None
+        if given == "self":  # self.params -> <param>.params
+            roots = {f"{param}{a[len('self') :]}" for a in self.access if a.startswith("self.")}
+        else:
+            roots = {param}
+        key = (callee, frozenset(roots), depth)
+        if key not in self._handed:
+            self._handed[key] = None  # a function that hands the entry to itself stops here
+            tree = _parse_function(function)
+            if tree is not None:
+                reads = entry_reads(_walk(tree), roots, self.helpers)
+                reads.passes_whole = bool(reads.passed) and reads.passes_whole
+                self._handed[key] = self._with_handed(reads, depth + 1)
+        return self._handed[key]
+
+    def _module_function(self, callee: str) -> FunctionInfo | None:
+        """The repo's module-level function a call names, through the module's imports."""
+        if self.catalog is None:
+            return None
+        if self._functions is None:
+            self._functions = {
+                f"{info.module}.{fn.name}": fn
+                for info in self.infos.values()
+                for fn in info.functions
+            }
+        head, _, rest = callee.partition(".")
+        target = self.catalog.imported(self.module, head) or f"{self.module}.{head}"
+        return self._functions.get(f"{target}.{rest}" if rest else target)
+
+
+def _is_autouse(decorator: str) -> bool:
+    return "fixture" in decorator and "autouse=True" in decorator.replace(" ", "")
+
+
+def _parse_function(function: FunctionInfo) -> ast.FunctionDef | None:
+    try:
+        tree = ast.parse(textwrap.dedent(function.code))
+    except SyntaxError:
+        return None
+    node = tree.body[0] if tree.body else None
+    return node if isinstance(node, ast.FunctionDef) else None
 
 
 def _parse_class(cls: ClassInfo) -> ast.ClassDef | None:

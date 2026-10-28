@@ -328,7 +328,7 @@ class CheckCall:
 
 def check_calls(
     fn: ast.FunctionDef,
-    assertion_object: str,
+    assertion_object: str | list[str],
     helpers: set[str],
     self_asserts: bool = False,
     check_helpers: list[str] | tuple[str, ...] = (),
@@ -354,11 +354,9 @@ def is_check_helper(name: str, patterns: list[str] | tuple[str, ...]) -> bool:
     return bool(last) and any(fnmatch.fnmatchcase(last, p) for p in patterns)
 
 
-def is_assertion(name: str, assertion_object: str, self_asserts: bool) -> bool:
-    if (
-        name.startswith(assertion_object + ".")
-        and name.count(".") == assertion_object.count(".") + 1
-    ):
+def is_assertion(name: str, assertion_object: str | list[str], self_asserts: bool) -> bool:
+    objects = [assertion_object] if isinstance(assertion_object, str) else assertion_object
+    if any(name.startswith(o + ".") and name.count(".") == o.count(".") + 1 for o in objects):
         return True
     method = name.removeprefix("self.")
     return (

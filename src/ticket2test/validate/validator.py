@@ -430,6 +430,8 @@ def check_base_class(s: Subject) -> Iterator[Finding]:
         return
     for cls in test_classes(s.tree, s.settings.index.test_class_prefix):
         names = [dotted(b) for b in cls.bases]
+        if s.settings.validation.baseless_classes and names in ([], ["object"]):
+            continue
         inherits = any(
             n.rsplit(".", 1)[-1] in allowed
             or any(e.name in allowed for e in _mro_by_name(s.catalog, n))
@@ -1456,12 +1458,21 @@ def _prepare(s: Subject) -> None:
         s.chains[fn.name] = function_chains(fn, resolver)
         self_asserts = cls is not None and _is_testcase(cls, bases, v.testcase_bases)
         s.checks[fn.name] = check_calls(
-            fn, v.assertion_object, helpers, self_asserts, v.check_helpers
+            fn,
+            [v.assertion_object, *v.extra_assertion_objects],
+            helpers,
+            self_asserts,
+            v.check_helpers,
         )
         if cls is not None:
             s.uses[fn.name] = reuse.data_use(cls, fn, hooks)
             s.deep_checks[fn.name] = reuse.checks_through_calls(
-                cls, fn, v.assertion_object, self_asserts, v.check_helpers
+                cls,
+                fn,
+                [v.assertion_object, *v.extra_assertion_objects],
+                self_asserts,
+                v.check_helpers,
+                hooks,
             )
     for cls in reuse.classes():
         if not cls.name.startswith(s.settings.index.test_class_prefix):

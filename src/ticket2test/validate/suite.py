@@ -27,7 +27,12 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field
 from ticket2test.config import Settings
 from ticket2test.generate.domain import domain_of, domains, is_legacy
 from ticket2test.generate.generator import first_party
-from ticket2test.index.datafile import function_data_matches, layout_of, split_defaults
+from ticket2test.index.datafile import (
+    function_data_matches,
+    layout_of,
+    module_data_path,
+    split_defaults,
+)
 from ticket2test.index.indexer import IndexData, update_index
 from ticket2test.models.generated import GeneratedTest
 from ticket2test.sandbox.runner import ImportProblem, collect_suite
@@ -507,6 +512,8 @@ def _function_file_entries(
         own = layout_of(chunk.file_path, chunk.symbol_name, chunk.data_file, settings.index)
         if own != "function" or (chunk.symbol_name, chunk.data_file) in seen:
             continue
+        if chunk.data_file == module_data_path(path, settings.index):
+            continue  # test_x.py::test_x: its file is the module's, already read
         seen.add((chunk.symbol_name, chunk.data_file))
         files = [chunk.data_file]
         if settings.index.function_data_prefix:

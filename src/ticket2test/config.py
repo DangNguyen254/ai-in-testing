@@ -397,6 +397,12 @@ class ValidateSettings(_Section):
     base_classes: list[str] = Field(default_factory=list)
     discover_base_classes: bool = True
     assertion_object: str = "self.check"
+    # Other objects whose methods are assertions in existing tests (e.g. a module-level
+    # ``check = unittest.TestCase()``). Generated tests use ``assertion_object``.
+    extra_assertion_objects: list[str] = Field(default_factory=list)
+    # Test classes with no base at all (``class TestX:``) pass the base-class check: some
+    # suites keep plain API tests that way.
+    baseless_classes: bool = False
     # Classes that inherit one of these (anywhere up the lineage) may also assert on ``self``
     # (``self.assertEqual``): real suites mix both styles. Only assert*/fail* methods count.
     testcase_bases: list[str] = Field(default_factory=lambda: ["unittest.TestCase", "TestCase"])

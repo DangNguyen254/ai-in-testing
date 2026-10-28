@@ -549,3 +549,93 @@ def test_what_setup_reads_or_calls_counts_for_every_test(tmp_path: Path) -> None
 
     report = file_findings(repo, "tests/test_a.py", index, settings)
     assert [f.message for f in report.findings if f.check == "data_keys"] == []
+
+
+def _suite_findings(tmp_path: Path, files: dict[str, str], config: dict[str, Any]) -> list[Any]:
+    repo = tmp_path / "repo"
+    for path, text in files.items():
+        (repo / path).parent.mkdir(parents=True, exist_ok=True)
+        (repo / path).write_text(text, encoding="utf-8")
+    settings = Settings.model_validate(
+        {"paths": {"cache_dir": str(tmp_path / "cache")}, "validation": {"base_classes": []}}
+        | config
+    )
+    index, _, _ = update_index(repo, settings)
+    from ticket2test.validate.suite import file_findings
+
+    return file_findings(repo, "tests/test_a.py", index, settings).findings
+
+
+def test_keys_read_by_a_repo_function_the_entry_or_self_is_handed_to(tmp_path: Path) -> None:
+    """Found on the real suite: tests hand the entry, or themselves, to a helper module that
+    reads the keys; the tool saw only "passes the whole entry" or nothing at all."""
+    files = {
+        "helpers/checks.py": (
+            "def run(entry):\n   return entry['a']\n\n\n"
+            "def check(test):\n   return test.params.get('b')\n"
+        ),
+        "tests/test_a.py": (
+            "from framework.base import Base\nfrom helpers import checks\n\n\n"
+            "class TestA(Base):\n"
+            "   def test_one(self):\n"
+            "      checks.run(self.params)\n      checks.check(self)\n"
+            "      self.check.assertTrue(True)\n"
+        ),
+        "tests/test_a.json": json.dumps([{"test_id": "test_one", "a": 1, "b": 2, "c": 3}]),
+    }
+    found = _suite_findings(tmp_path, files, {"data": {"seed_sections": []}})
+    messages = [f.message for f in found if f.check == "data_keys"]
+    assert len(messages) == 1 and "'c'" in messages[0] and "'a'" not in messages[0]
+
+
+def test_a_local_variable_named_like_the_entry_is_not_the_entry(tmp_path: Path) -> None:
+    files = {
+        "tests/test_a.py": (
+            "def test_one(params):\n"
+            "   block = params['block']\n   params = block\n   assert params['inner']\n"
+        ),
+        "tests/test_a.json": json.dumps([{"test_id": "test_one", "block": {"inner": 1}}]),
+    }
+    found = _suite_findings(tmp_path, files, {"data": {"access": ["params"]}})
+    assert not [f.message for f in found if f.check == "data_keys"]
+
+
+def test_other_assertion_objects_and_classes_without_a_base(tmp_path: Path) -> None:
+    files = {
+        "framework/base.py": "class Base:\n   pass\n",
+        "tests/test_a.py": (
+            "import unittest\nfrom framework.base import Base\n\n"
+            "check = unittest.TestCase()\n\n\n"
+            "class TestA:\n   def test_one(self):\n      check.assertEqual(1, 1)\n\n\n"
+            "class TestB(Base):\n   def test_two(self):\n      pass\n"
+        ),
+    }
+    config = {
+        "validation": {
+            "base_classes": ["Base"],
+            "extra_assertion_objects": ["check"],
+            "baseless_classes": True,
+        }
+    }
+    found = _suite_findings(tmp_path, files, config)
+    assertions = [(f.test, f.message) for f in found if f.check == "assertions"]
+    assert [t for t, _ in assertions] == ["test_two"]  # test_one's check counts
+    assert not [f for f in found if f.check == "base_class"]
+
+
+def test_checks_in_teardown_and_autouse_fixtures_count(tmp_path: Path) -> None:
+    files = {
+        "tests/test_a.py": (
+            "import pytest\nfrom framework.base import Base\n\n\n"
+            "class TestA(Base):\n"
+            "   @pytest.fixture(autouse=True)\n   def seed(self):\n"
+            "      self.apply_policy()\n      yield\n\n"
+            "   def apply_policy(self):\n      pass\n\n"
+            "   def teardown(self):\n      self.check.assertTrue(self.done)\n\n"
+            "   def test_one(self):\n      self.done = True\n"
+        ),
+        "tests/test_a.json": json.dumps([{"test_id": "test_one", "policy": {}}]),
+    }
+    config = {"data": {"seed_sections": [], "expectation_sections": {"policy": "self.apply_*"}}}
+    found = _suite_findings(tmp_path, files, config)
+    assert not [f.message for f in found if f.check in ("assertions", "data_keys")]
