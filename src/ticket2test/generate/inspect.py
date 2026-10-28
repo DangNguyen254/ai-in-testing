@@ -142,11 +142,13 @@ def entry_reads(nodes: Iterable[ast.AST], roots: set[str], helpers: Iterable[str
     all_roots = roots
     for node in nodes:
         line = getattr(node, "lineno", 0)  # after a rebinding line the name is something else
-        roots = all_roots - {r for r, at in rebound.items() if line > at}
-        roots = roots | {a for a, at in aliases.items() if line > at}
+        direct = all_roots - {r for r, at in rebound.items() if line > at}
+        roots = direct | {a for a, at in aliases.items() if line > at}
         if isinstance(node, ast.Subscript) and _dotted(node.value) in roots:
             if isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, str):
                 reads.keys.add(node.slice.value)
+                if _dotted(node.value) not in direct:  # through a copy: read, not required
+                    reads.optional.add(node.slice.value)
                 if id(node) in tried:  # try: params["k"] ... except KeyError: a missing key
                     reads.guarded.add(node.slice.value)
         elif isinstance(node, ast.Compare) and _key_check(node, roots):
@@ -223,8 +225,6 @@ def _rebound(nodes: list[ast.AST], roots: set[str]) -> dict[str, int]:
     found: dict[str, int] = {}
     for node in nodes:
         targets = node.targets if isinstance(node, ast.Assign) else []
-        if isinstance(node, ast.Assign) and _copies_entry(node.value, roots):
-            continue  # params = dict(params): still the entry (see _aliases)
         if isinstance(node, ast.AnnAssign | ast.AugAssign):
             targets = [node.target]
         if isinstance(node, ast.For):
@@ -236,14 +236,15 @@ def _rebound(nodes: list[ast.AST], roots: set[str]) -> dict[str, int]:
 
 
 def _aliases(nodes: list[ast.AST], roots: set[str]) -> dict[str, int]:
-    """Local names that hold the entry, or a copy of it, from the line that assigns them:
-    ``data = self.params``, ``row = dict(params)``, ``row = resolve(env, params)``."""
+    """Local names that may hold the entry, a copy or a part of it, from the line that assigns
+    them: ``data = self.params``, ``row = resolve(env, params)``. What is read through them
+    counts as read, never as required (a part's keys aren't the entry's)."""
     found: dict[str, int] = {}
     for node in nodes:
         if not isinstance(node, ast.Assign) or not _copies_entry(node.value, roots):
             continue
         for target in node.targets:
-            if isinstance(target, ast.Name) and target.id not in roots:
+            if isinstance(target, ast.Name):  # params = get(params, ...) too: maybe a part
                 found[target.id] = min(found.get(target.id, target.lineno), target.lineno)
     return found
 

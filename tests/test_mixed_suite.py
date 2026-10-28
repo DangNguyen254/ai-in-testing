@@ -711,3 +711,16 @@ def test_a_module_level_testcase_and_an_entry_copied_in_a_helper(tmp_path: Path)
     assert not [f for f in found if f.check == "assertions"]
     messages = [f.message for f in found if f.check == "data_keys"]
     assert len(messages) == 1 and "'c'" in messages[0] and "'a'" not in messages[0]
+
+
+def test_a_name_rebound_from_a_call_given_the_entry_is_read_not_required(tmp_path: Path) -> None:
+    files = {
+        "tests/test_a.py": (
+            "def block_of(params, name):\n   return params[name]\n\n\n"
+            "def test_one(params):\n"
+            "   params = block_of(params, 'block')\n   assert params['inner']\n"
+        ),
+        "tests/test_a.json": json.dumps([{"test_id": "test_one", "block": {"inner": 1}}]),
+    }
+    found = _suite_findings(tmp_path, files, {"data": {"access": ["params"]}})
+    assert not [f.message for f in found if f.check == "data_keys" and "lacks" in f.message]
