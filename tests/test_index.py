@@ -241,7 +241,11 @@ def test_cache_reloads_without_reparsing(tmp_path: Path) -> None:
 
     loaded = load_index(index_dir(repo, settings), settings)
     assert loaded is not None
-    assert loaded.chunks == first.chunks and loaded.tokens == first.tokens
+    assert loaded.chunks == first.chunks and loaded.token_map() == first.token_map()
+    from ticket2test.index.indexer import load_files
+
+    files = load_files(path.parent, settings)
+    assert files is not None and files == first.files  # what an incremental build reuses
     assert b'"tokens"' not in path.read_bytes()  # rebuilt on load, not saved
 
     from ticket2test.index.indexer import _same_build

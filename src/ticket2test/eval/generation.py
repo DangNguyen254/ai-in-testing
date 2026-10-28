@@ -159,7 +159,7 @@ def index_without(index: IndexData, chunk_ids: set[str]) -> IndexData:
     return index.model_copy(
         update={
             "chunks": [c for c in index.chunks if c.id not in chunk_ids],
-            "tokens": {k: v for k, v in index.tokens.items() if k not in chunk_ids},
+            "tokens": {k: v for k, v in index.token_map().items() if k not in chunk_ids},
         }
     )
 

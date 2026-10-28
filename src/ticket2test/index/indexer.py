@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from ticket2test.adapters.repo.local_path import LocalPathRepoSource, RepoReadError
 from ticket2test.config import DataSettings, Settings
@@ -31,11 +31,12 @@ from ticket2test.models.chunk import Chunk
 
 log = logging.getLogger(__name__)
 
-INDEX_VERSION = 12  # 2: syntax-tree refs; 3: array data files, returned calls; 4: imports;
+INDEX_VERSION = 13  # 2: syntax-tree refs; 3: array data files, returned calls; 4: imports;
 # 5: inherited tests and class variants; 6: defaults rows, per-function data files;
 # 7: page objects by type traversal, chains_truncated; 8: Python 3 parse check;
 # 9: return self-chains; 10: per-module import maps and star imports;
-# 11: function-local imports; 12: search tokens rebuilt on load, not saved
+# 11: function-local imports; 12: search tokens rebuilt on load, not saved;
+# 13: tokens built on first search, sections written one at a time
 INDEX_FILE = "index.json"
 
 
@@ -61,13 +62,21 @@ class IndexData(BaseModel):
     repo_root: str
     settings_fingerprint: str
     built_at: datetime
+    name_boost: int = 3  # index.name_boost the search tokens are built with
     files: dict[str, FileRecord] = Field(default_factory=dict)
     chunks: list[Chunk] = Field(default_factory=list)
+    # Search tokens per chunk: built on the first search (check-suite never searches), never
+    # saved. Read them through search_index() or token_map().
     tokens: dict[str, list[str]] = Field(default_factory=dict)
     catalog: SymbolCatalog = Field(default_factory=SymbolCatalog)
 
+    def token_map(self) -> dict[str, list[str]]:
+        if not self.tokens and self.chunks:
+            self.tokens = _tokens(self.chunks, self.name_boost)
+        return self.tokens
+
     def search_index(self) -> SearchIndex:
-        return SearchIndex(self.chunks, self.tokens)
+        return SearchIndex(self.chunks, self.token_map())
 
 
 class BuildStats(BaseModel):
@@ -108,9 +117,25 @@ def load_index(directory: Path, settings: Settings) -> IndexData | None:
         return None
     if data.version != INDEX_VERSION or data.settings_fingerprint != settings_fingerprint(settings):
         return None
-    if not data.tokens:  # not saved: rebuilt from the chunks
-        data.tokens = _tokens(data.chunks, settings)
     return data
+
+
+def load_files(directory: Path, settings: Settings) -> dict[str, FileRecord] | None:
+    """Only the saved index's file records (what an incremental build reuses), without
+    reading its chunks and catalog into memory. None when it can't be reused."""
+    path = directory / INDEX_FILE
+    if not path.is_file() or not _same_build(path, settings):
+        return None
+    raw = path.read_bytes()
+    start = raw.find(b'"files":')
+    end = raw.find(b',"chunks":', start)  # no data key in a file record is named so
+    if start < 0 or end < 0:
+        return None
+    try:
+        return _FILES.validate_json(raw[start + len(b'"files":') : end])
+    except ValueError:
+        log.warning("Ignoring unreadable index at %s", path)
+        return None
 
 
 _HEAD = re.compile(
@@ -130,9 +155,13 @@ def _same_build(path: Path, settings: Settings) -> bool:
     return version == INDEX_VERSION and fingerprint == settings_fingerprint(settings)
 
 
-def _tokens(chunks: list[Chunk], settings: Settings) -> dict[str, list[str]]:
-    boost = settings.index.name_boost
+def _tokens(chunks: list[Chunk], boost: int) -> dict[str, list[str]]:
     return {c.id: tokenize(chunk_search_text(c, boost)) for c in chunks}
+
+
+_FILES = TypeAdapter(dict[str, FileRecord])
+_CHUNKS = TypeAdapter(list[Chunk])
+_CATALOG = TypeAdapter(SymbolCatalog)
 
 
 def save_index(data: IndexData, directory: Path, attempts: int = 5) -> Path:
@@ -141,8 +170,15 @@ def save_index(data: IndexData, directory: Path, attempts: int = 5) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / INDEX_FILE
     tmp = path.with_suffix(".tmp")
-    # bytes straight from the serializer (no second copy as text); tokens are rebuilt on load
-    tmp.write_bytes(data.__pydantic_serializer__.to_json(data, exclude={"tokens"}))
+    # one section at a time (no buffer of the whole index); the head fields first, in the
+    # model's order (_same_build reads them); tokens are never saved
+    head = data.model_dump_json(include={"version", "repo_root", "settings_fingerprint"})
+    rest = data.model_dump_json(include={"built_at", "name_boost"})
+    with tmp.open("wb") as out:
+        out.write(head[:-1].encode() + b"," + rest[1:-1].encode())
+        out.write(b',"files":' + _FILES.dump_json(data.files))
+        out.write(b',"chunks":' + _CHUNKS.dump_json(data.chunks))
+        out.write(b',"catalog":' + _CATALOG.dump_json(data.catalog) + b"}")
     for attempt in range(1, attempts + 1):
         try:
             tmp.replace(path)
@@ -155,12 +191,15 @@ def save_index(data: IndexData, directory: Path, attempts: int = 5) -> Path:
 
 
 def build_index(
-    repo: LocalPathRepoSource, settings: Settings, previous: IndexData | None = None
+    repo: LocalPathRepoSource,
+    settings: Settings,
+    previous: IndexData | dict[str, FileRecord] | None = None,
 ) -> tuple[IndexData, BuildStats]:
+    """``previous``: an earlier index, or just its file records; unchanged files are reused."""
     started = time.perf_counter()
     stats = BuildStats()
     records: dict[str, FileRecord] = {}
-    old = previous.files if previous else {}
+    old = previous.files if isinstance(previous, IndexData) else (previous or {})
 
     for rel in repo.list_files((".py",)):
         path = rel.as_posix()
@@ -241,14 +280,13 @@ def build_index(
                 values.add(str(marker.args[0]))
     catalog.markers = {k: sorted(v) for k, v in sorted(markers.items())}
 
-    tokens = _tokens(chunks, settings)
     data = IndexData(
         repo_root=str(repo.root),
         settings_fingerprint=settings_fingerprint(settings),
         built_at=datetime.now(UTC),
+        name_boost=index_settings.name_boost,
         files=records,
         chunks=chunks,
-        tokens=tokens,
         catalog=catalog,
     )
     stats.symbols = len(catalog.symbols)
@@ -270,9 +308,7 @@ def update_index(
         repo_root, ignore=settings.index.ignore, max_file_bytes=settings.index.max_file_bytes
     )
     directory = index_dir(repo_root, settings)
-    previous = None if force else load_index(directory, settings)
-    if previous is not None:  # only its file records are reused: let the rest go
-        previous = previous.model_copy(update={"chunks": [], "tokens": {}})
+    previous = None if force else load_files(directory, settings)  # all it reuses
     data, stats = build_index(repo, settings, previous)
     del previous
     return data, stats, save_index(data, directory, settings.index.save_attempts)
