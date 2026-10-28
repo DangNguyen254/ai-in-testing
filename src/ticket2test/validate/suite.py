@@ -104,6 +104,9 @@ class CheckSummary(BaseModel):
     # The most common messages with names masked (see mask_message): safe to share when the
     # suite's names must stay private, and enough to tell which config key is wrong.
     patterns: list[str] = Field(default_factory=list)
+    # JSON only (private: real names): up to a few examples per pattern, each from another
+    # file where possible, so an investigation can look at several areas.
+    pattern_examples: dict[str, list[str]] = Field(default_factory=dict)
 
 
 _MASKS = [
@@ -190,6 +193,19 @@ class SuiteReport(BaseModel):
         return self.errors == 0 and (not self.ids.ran or (self.ids.exit_code == 0 and no_id_gaps))
 
 
+_PATTERN_EXAMPLES = 5
+
+
+def _add_example(
+    kept: dict[str, list[tuple[str, str]]], pattern: str, path: str, message: str
+) -> None:
+    """Up to ``_PATTERN_EXAMPLES`` (file, message) per pattern, one per file, so the
+    examples spread over files and areas."""
+    rows = kept.setdefault(pattern, [])
+    if len(rows) < _PATTERN_EXAMPLES and all(f != path for f, _ in rows):
+        rows.append((path, f"{path}: {message}"))
+
+
 def _memory() -> str:
     """The process's peak memory so far, where the platform reports it (not on Windows)."""
     if sys.platform == "win32":
@@ -218,6 +234,7 @@ def check_suite(
     imports = module_imports(index)
     errors: dict[str, list[tuple[str, str]]] = defaultdict(list)  # check -> (file, message)
     patterns: dict[str, Counter[str]] = defaultdict(Counter)  # check -> masked message -> count
+    by_pattern: dict[str, dict[str, list[tuple[str, str]]]] = defaultdict(dict)
     by_key: Counter[str] = Counter()  # "<key>: <what>" over all data_keys errors
     warnings: dict[str, int] = defaultdict(int)
 
@@ -254,7 +271,9 @@ def check_suite(
                 report.not_static.append(path)  # suite tests may use computed parametrize
             else:
                 errors[finding.check].append((path, finding.render()))
-                patterns[finding.check][mask_message(finding.message)] += 1
+                masked = mask_message(finding.message)
+                patterns[finding.check][masked] += 1
+                _add_example(by_pattern[finding.check], masked, path, finding.render())
                 if finding.check == "data_keys":
                     by_key.update(_key_reasons(finding.message))
                 file_errors += 1
@@ -281,6 +300,10 @@ def check_suite(
             hint=CONFIG_HINTS.get(check, ""),
             examples=[f"{f}: {m}" for f, m in found[:_EXAMPLES]],
             patterns=[f"{n}x {p}" for p, n in patterns[check].most_common(_PATTERNS)],
+            pattern_examples={
+                p: [e for _, e in by_pattern[check].get(p, [])]
+                for p, _ in patterns[check].most_common(_PATTERNS)
+            },
         )
         for check, found in sorted(errors.items(), key=lambda kv: -len(kv[1]))
     ]
