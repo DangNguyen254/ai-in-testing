@@ -14,9 +14,10 @@ from typing import Literal
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
-from ticket2test.adapters.tickets.base import RawTicket, TicketSourceError
+from ticket2test.adapters.tickets.base import RawTicket, TicketNotFoundError, TicketSourceError
 from ticket2test.adapters.tickets.github import GitHubIssueSource
 from ticket2test.adapters.tickets.jira import JiraExportSource
+from ticket2test.adapters.tickets.paste import PastedTicketSource
 from ticket2test.config import Settings
 
 
@@ -53,8 +54,11 @@ class PairSet(BaseModel):
     repo_path: str  # relative to the project root
     repo_ref: str | None = None  # tag/commit the repo must be at
     repo_clone: str | None = None  # how to get it, for the error message
-    ticket_source: Literal["github", "jira_export"]
+    ticket_source: Literal["github", "jira_export", "paste"]
     jira_export: str | None = None  # relative to the project root
+    # Pasted tickets (<tickets_dir>/<ticket>.md); default: paths.tickets_dir. A pair whose
+    # ticket isn't pasted is skipped.
+    tickets_dir: str | None = None
     ground_truth: Literal["fix_pr_files", "tests"]
     conventions_doc: str | None = None  # relative to the project root; used by generation evals
     generation: bool = False  # also run the generation eval on this set (linked-test sets only)
@@ -80,6 +84,17 @@ class EvalCache:
         return self.root / "pr_files" / f"{_safe(owner_repo)}_{number}.json"
 
     def raw_ticket(self, pair_set: PairSet, pair: EvalPair, project_root: Path) -> RawTicket:
+        """The pair's ticket. Raises ``TicketNotFoundError`` for a ticket not pasted yet."""
+        if pair_set.ticket_source == "paste":
+            folder = (
+                project_root / pair_set.tickets_dir
+                if pair_set.tickets_dir
+                else self._settings.paths.tickets_dir
+            )
+            if folder is None:
+                raise TicketNotFoundError("no tickets folder: set paths.tickets_dir")
+            source = PastedTicketSource(folder, self._settings.normalize.max_attachment_chars)
+            return source.fetch(pair.ticket)
         if pair_set.ticket_source == "jira_export":
             assert pair_set.jira_export, "jira_export path missing in pair set"
             return JiraExportSource(project_root / pair_set.jira_export).fetch(pair.ticket)

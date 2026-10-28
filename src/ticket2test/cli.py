@@ -1009,7 +1009,8 @@ def mine(
         "name": name,
         "description": f"Ticket <-> test pairs mined from {repo.as_posix()}: {how}",
         "repo_path": repo_path or repo.as_posix(),
-        "ticket_source": "jira_export",
+        # without an export, the tickets are pasted by hand into paths.tickets_dir
+        "ticket_source": "jira_export" if jira_export else "paste",
         "jira_export": jira_export,
         "ground_truth": "tests",
         "pairs": pairs,

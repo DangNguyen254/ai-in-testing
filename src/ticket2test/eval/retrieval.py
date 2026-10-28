@@ -9,6 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ticket2test.adapters.tickets.base import TicketNotFoundError
 from ticket2test.config import LLMStep, Settings
 from ticket2test.eval.pairs import EvalCache, EvalPair, PairSet
 from ticket2test.index.indexer import update_index
@@ -16,7 +17,7 @@ from ticket2test.llm.base import LLMClient
 from ticket2test.llm.factory import model_name
 from ticket2test.llm.meter import Usage, usage_of
 from ticket2test.models.retrieval import Investigation, RetrievalResult
-from ticket2test.normalize import normalize
+from ticket2test.normalize import NormalizationError, normalize
 from ticket2test.retrieve.pipeline import retrieve
 
 
@@ -116,7 +117,11 @@ def evaluate_retrieval(
         if not present:
             report.skipped.append(SkippedPair(pair_id=pair.id, reason="no ground truth in index"))
             continue
-        ticket = normalize(cache.raw_ticket(pair_set, pair, project_root), settings)
+        try:
+            ticket = normalize(cache.raw_ticket(pair_set, pair, project_root), settings)
+        except (TicketNotFoundError, NormalizationError) as exc:  # e.g. not pasted yet
+            report.skipped.append(SkippedPair(pair_id=pair.id, reason=f"ticket: {exc}"))
+            continue
         result = retrieve(ticket, index, settings, client if use_llm else None)
         report.pairs.append(_score(pair, unit, present, truth, result, k))
 

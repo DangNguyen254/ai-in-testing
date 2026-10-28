@@ -412,3 +412,47 @@ def test_hits_carry_rank_features(index: IndexData, tmp_path: Path) -> None:
     assert all("fused" in h.rank_features and h.fused_score is not None for h in result.hits)
     files = [h.file_path for h in result.hits]
     assert max(files.count(f) for f in set(files)) <= 3
+
+
+def test_eval_with_pasted_tickets_skips_the_ones_not_pasted(tmp_path: Path) -> None:
+    """Mined pairs from a suite without a tracker API: tickets are pasted by hand, and only
+    the pasted ones are measured."""
+    from ticket2test.eval.pairs import PairSet
+
+    tickets = tmp_path / "tickets"
+    tickets.mkdir()
+    (tickets / "DEMO-1.md").write_text(
+        "# DEMO-1: The agent API returns an error for an unknown page\n\n"
+        "## Steps to reproduce\n1. Ask the agent API for a page that doesn't exist.\n\n"
+        "## Expected\nAn unknown-page error interaction.\n",
+        encoding="utf-8",
+    )
+    pair_set = PairSet.model_validate(
+        {
+            "name": "pasted",
+            "repo_path": "standin",
+            "ticket_source": "paste",
+            "tickets_dir": str(tickets),
+            "ground_truth": "tests",
+            "pairs": [
+                {
+                    "id": "p1",
+                    "ticket": "DEMO-1",
+                    "tests": [
+                        "tests/agent/test_agent_api.py::TestAgentApi::test_agent_api_unknown_page"
+                    ],
+                },
+                {
+                    "id": "p2",
+                    "ticket": "DEMO-2",
+                    "tests": [
+                        "tests/agent/test_agent_api.py::TestAgentApi::test_agent_api_unknown_page"
+                    ],
+                },
+            ],
+        }
+    )
+    report = evaluate_retrieval(pair_set, REPO_ROOT, _settings(tmp_path), client=None)
+    assert [p.pair_id for p in report.pairs] == ["p1"]
+    assert [s.pair_id for s in report.skipped] == ["p2"]
+    assert "not found" in report.skipped[0].reason
