@@ -11,6 +11,7 @@ import ast
 import hashlib
 import json
 import logging
+import re
 import time
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
@@ -30,11 +31,11 @@ from ticket2test.models.chunk import Chunk
 
 log = logging.getLogger(__name__)
 
-INDEX_VERSION = 11  # 2: syntax-tree refs; 3: array data files, returned calls; 4: imports;
+INDEX_VERSION = 12  # 2: syntax-tree refs; 3: array data files, returned calls; 4: imports;
 # 5: inherited tests and class variants; 6: defaults rows, per-function data files;
 # 7: page objects by type traversal, chains_truncated; 8: Python 3 parse check;
 # 9: return self-chains; 10: per-module import maps and star imports;
-# 11: function-local imports
+# 11: function-local imports; 12: search tokens rebuilt on load, not saved
 INDEX_FILE = "index.json"
 
 
@@ -98,16 +99,40 @@ def index_dir(repo_root: Path, settings: Settings) -> Path:
 def load_index(directory: Path, settings: Settings) -> IndexData | None:
     """The saved index, or None if missing, unreadable, or built with other settings."""
     path = directory / INDEX_FILE
-    if not path.is_file():
-        return None
+    if not path.is_file() or not _same_build(path, settings):
+        return None  # a large index isn't read just to find it can't be used
     try:
-        data = IndexData.model_validate_json(path.read_text(encoding="utf-8"))
+        data = IndexData.model_validate_json(path.read_bytes())
     except ValueError:
         log.warning("Ignoring unreadable index at %s", path)
         return None
     if data.version != INDEX_VERSION or data.settings_fingerprint != settings_fingerprint(settings):
         return None
+    if not data.tokens:  # not saved: rebuilt from the chunks
+        data.tokens = _tokens(data.chunks, settings)
     return data
+
+
+_HEAD = re.compile(
+    rb'"version":(\d+),"repo_root":(?:"(?:[^"\\]|\\.)*"),"settings_fingerprint":"(\w+)"'
+)
+
+
+def _same_build(path: Path, settings: Settings) -> bool:
+    """The saved index was built by this version with these settings, read from its first
+    bytes (the fields are written first). True when that can't be told: the full read decides."""
+    with path.open("rb") as handle:
+        head = handle.read(8192)
+    found = _HEAD.search(head)
+    if found is None:
+        return True
+    version, fingerprint = int(found.group(1)), found.group(2).decode()
+    return version == INDEX_VERSION and fingerprint == settings_fingerprint(settings)
+
+
+def _tokens(chunks: list[Chunk], settings: Settings) -> dict[str, list[str]]:
+    boost = settings.index.name_boost
+    return {c.id: tokenize(chunk_search_text(c, boost)) for c in chunks}
 
 
 def save_index(data: IndexData, directory: Path, attempts: int = 5) -> Path:
@@ -116,7 +141,8 @@ def save_index(data: IndexData, directory: Path, attempts: int = 5) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / INDEX_FILE
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(data.model_dump_json(), encoding="utf-8")
+    # bytes straight from the serializer (no second copy as text); tokens are rebuilt on load
+    tmp.write_bytes(data.__pydantic_serializer__.to_json(data, exclude={"tokens"}))
     for attempt in range(1, attempts + 1):
         try:
             tmp.replace(path)
@@ -215,7 +241,7 @@ def build_index(
                 values.add(str(marker.args[0]))
     catalog.markers = {k: sorted(v) for k, v in sorted(markers.items())}
 
-    tokens = {c.id: tokenize(chunk_search_text(c, index_settings.name_boost)) for c in chunks}
+    tokens = _tokens(chunks, settings)
     data = IndexData(
         repo_root=str(repo.root),
         settings_fingerprint=settings_fingerprint(settings),
@@ -245,7 +271,10 @@ def update_index(
     )
     directory = index_dir(repo_root, settings)
     previous = None if force else load_index(directory, settings)
+    if previous is not None:  # only its file records are reused: let the rest go
+        previous = previous.model_copy(update={"chunks": [], "tokens": {}})
     data, stats = build_index(repo, settings, previous)
+    del previous
     return data, stats, save_index(data, directory, settings.index.save_attempts)
 
 

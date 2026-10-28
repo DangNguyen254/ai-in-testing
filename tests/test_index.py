@@ -242,6 +242,15 @@ def test_cache_reloads_without_reparsing(tmp_path: Path) -> None:
     loaded = load_index(index_dir(repo, settings), settings)
     assert loaded is not None
     assert loaded.chunks == first.chunks and loaded.tokens == first.tokens
+    assert b'"tokens"' not in path.read_bytes()  # rebuilt on load, not saved
+
+    from ticket2test.index.indexer import _same_build
+
+    assert _same_build(path, settings)  # told from the file's first bytes
+    other = settings.model_copy(
+        update={"index": settings.index.model_copy(update={"name_boost": 9})}
+    )
+    assert not _same_build(path, other) and load_index(path.parent, other) is None
 
     _, again, _ = update_index(repo, settings)
     assert again.parsed == 0 and again.reused == stats.files
