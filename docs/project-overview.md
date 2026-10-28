@@ -22,7 +22,7 @@ The backbone is a **fixed workflow**: the same steps in the same order every tim
 
 | Input | What it is | Where it comes from | Needed? |
 |---|---|---|---|
-| **Ticket** | A bug report: id, title, description, steps to reproduce, expected and actual behaviour, components, labels, comments, links. | A Jira export (JSON in Jira's REST shape) or a GitHub issue. Custom Jira fields are mapped in config. | Yes |
+| **Ticket** | A bug report: id, title, description, steps to reproduce, expected and actual behaviour, components, labels, comments, links. | A Jira export (JSON in Jira's REST shape), a GitHub issue, or a Markdown file filled in by hand from the tracker (`new-ticket` writes the template) while its API can't be used. Custom Jira fields are mapped in config. | Yes |
 | **Target repo** | A local, read-only checkout of the test suite (Python, pytest). Its git history is read only for evaluation. | The team's repository. | Yes |
 | **Config** | Every setting and limit: how the suite is shaped (data files, markers, style, base classes, page-object root, domains), which checks apply, budgets, the LLM, the sandbox. | `config.yaml` (defaults), a private override file (`T2T_CONFIG`), environment variables (`T2T_<SECTION>__<KEY>`). Secrets only in environment variables. | Yes |
 | **LLM access** | One model provider behind one interface: the Claude Code CLI (default), the Anthropic API, or Gemini. | The approved endpoint. | Yes |
@@ -61,7 +61,7 @@ Suite-level outputs (built once, refreshed when the suite changes): the **index*
 
 ## The full flow, input to output (every option on)
 
-`(opt)` marks steps that are switched on in config or by a command flag. `[LLM]` marks the steps that call the model; everything else is code. Today the steps run as separate commands (`normalize`, `draft`, `retrieve`, `generate`, `validate`, `results`); the eval harness runs them end to end.
+`(opt)` marks steps that are switched on in config or by a command flag. `[LLM]` marks the steps that call the model; everything else is code. The steps run as separate commands (`normalize`, `draft`, `retrieve`, `generate`, `validate`, `results`), or for one ticket as `run` in two halves with the draft review between them (`run <id> --paste <dir>`, then `run <id> --continue`); the eval harness runs them end to end.
 
 ### 0. Once per suite (and again when it changes)
 
@@ -75,12 +75,15 @@ Suite-level outputs (built once, refreshed when the suite changes): the **index*
    - Older code that breaks a correctness rule (driving the browser directly, page locators in tests, pages built by constructors, star imports) is listed per area as a **deviation**, not an error.
    - Legacy areas are skipped.
    - With `--collect`, the whole suite is collected in the sandbox and the computed test ids are compared with pytest's. Each module that fails to import is named, with its error.
+   - Without a container runtime, `scripts/compare_collect.py` compares a collect run made with the suite's own runner against the computed ids, file by file, printing counts and masked shapes only. Classes the framework generates per browser or mode are folded into the method ids that data entries use.
+   - Rules learned from the real suite, each general and most behind config: helpers reached from setup, teardown, `super()` calls, autouse or `usefixtures` fixtures; the entry handed to a repo function or copied into a local name; reads guarded by a presence check or `try`/`except KeyError`; data files named after the test function (also by name prefix, holding the function's cases); checks done by waiting on a condition or raising a failure (`validation.wait_checks`); module-level `TestCase` objects; retired tests (an unconditional skip) left out of the data checks.
+   - The report prints peak memory after indexing and per progress line, and the JSON keeps up to five examples per message pattern, one per file, for investigations.
 3. **Suite map** (opt) (`ticket2test map`). Per-area summaries from the index, in code: classes, setup options, test shapes, page objects, helpers, data keys, typical tests.
 4. **Area guides** (opt) `[LLM, stronger model, once]` (`ticket2test guides`). One call per area, with material picked by code, under a hard dollar cap. Names in the guide are checked against the index and removed if they don't exist.
 
 ### 1. Read the ticket
 
-5. **Normalize** (`ticket2test normalize`). A Jira export or GitHub issue becomes the tidy ticket: steps, expected and actual are found by section headings or mapped custom fields, and long comment threads are trimmed. Nothing is guessed.
+5. **Normalize** (`ticket2test normalize`). A Jira export, GitHub issue or pasted ticket file becomes the tidy ticket: steps, expected and actual are found by section headings or mapped custom fields, and long comment threads are trimmed. In a pasted file they come from their own sections, then from the description, then from a pasted test plan; local `.md`, `.txt` and `.csv` attachments are read, links are recorded but never opened. Nothing is guessed.
 
 ### 2. Plan the test
 
@@ -218,7 +221,7 @@ Suite-level outputs (built once, refreshed when the suite changes): the **index*
 
 | Folder | What's in it |
 |---|---|
-| `src/ticket2test/adapters` | Reading tickets (GitHub, Jira exports) and the suite and its git history (read-only) |
+| `src/ticket2test/adapters` | Reading tickets (GitHub, Jira exports, pasted files) and the suite and its git history (read-only) |
 | `src/ticket2test/normalize` | Raw tickets into the tidy format |
 | `src/ticket2test/draft` | Drafts, partial drafts for vague tickets, support facts |
 | `src/ticket2test/index` | Parsing, chunks, the symbol catalog (chains, import maps), test ids, data-file rules, BM25 |
@@ -235,7 +238,7 @@ Suite-level outputs (built once, refreshed when the suite changes): the **index*
 | `prompts/` | Every instruction given to the AI, as numbered versions, never edited in place |
 | `standin/` | The invented practice suite: app, framework, tests, data, tickets |
 | `eval_data/` | Ticket-test pairs used for measurement |
-| `tests/` | The project's own automated tests (about 830) |
+| `tests/` | The project's own automated tests (about 880) |
 | `docs/` | This overview, the integration brief and fit check, the porting checklist, the conventions prompt |
 
 ## How well it works today (on the practice suite)
@@ -245,13 +248,17 @@ Suite-level outputs (built once, refreshed when the suite changes): the **index*
 - **Missing-piece proposals** (3 gap tickets): each got a correct one-line member, every check passed, and the regenerated tests used it.
 - **Older and legacy code** (stand-in v7, Haiku 5.5): the mixed-area tickets became tests in the right class, in the file's own style; the legacy tickets were reported out of scope. Dev and held-out both passed, for a few cents.
 
-These are synthetic results. Real-suite numbers don't exist yet.
+These are synthetic results. On the real suite so far:
+
+- **Calibration:** validator errors on the suite's own tests fell by about 98%; what's left is mostly real leftovers (old data, retired tests).
+- **Test ids:** for a sample area, the computed method ids equal pytest's exactly.
+- **Memory:** check-suite's peak fell from about 2.5 GB to about 1.1 GB (search tokens built only when searching, incremental builds read only the old file records, the index written in sections).
+
+Generation quality on real tickets isn't measured yet.
 
 ## What's still open
 
-- **Connecting to the real suite:**
-  - **Team inputs:** the Python and pytest versions, one requirements list, the legacy areas, the LLM endpoint, a ticket export.
-  - **Then:** calibration with `check-suite`, and the first real tickets. The integration brief and the fit check in this folder guide it.
+- **The real suite:** calibration is done to a small remainder. Next is a trial on a few real tickets, pasted by hand, through `run`. Collecting a generated test is a manual step until a container runtime is available.
 - **Known limits:**
   - a test can use a real member that's the wrong one and still pass every check;
   - a missing member that needs a new selector can't be proposed;
