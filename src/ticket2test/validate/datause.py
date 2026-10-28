@@ -53,6 +53,8 @@ class Resolver:
         }
         self.access = set(access)
         self.helpers = helpers
+        self._parsed: dict[tuple[str, str], ast.ClassDef | None] = {}
+        self._hooked: dict[tuple[str, tuple[str, ...]], EntryReads] = {}
 
     # --- classes and their bases -------------------------------------------------------
 
@@ -102,7 +104,10 @@ class Resolver:
             _, base_cls = self._class_info(base)
             if base_cls is None or not any(m.name == name for m in base_cls.methods):
                 continue
-            parsed = _parse_class(base_cls)
+            key = (base.file_path, base.name)
+            if key not in self._parsed:  # base classes are shared by every test: parse once
+                self._parsed[key] = _parse_class(base_cls)
+            parsed = self._parsed[key]
             if parsed is not None:
                 return next(
                     (n for n in parsed.body if isinstance(n, ast.FunctionDef) and n.name == name),
@@ -129,9 +134,13 @@ class Resolver:
         total = EntryReads()
         seen: set[str] = set()
         self._follow(cls, [function], seen, total)
-        hooked = EntryReads()
-        found = [self.method(cls, name) for name in hooks]
-        self._follow(cls, [f for f in found if f is not None], seen, hooked)
+        key = (cls.name, tuple(hooks))
+        if key not in self._hooked:  # the same for every test of the class
+            hooked = EntryReads()
+            found = [self.method(cls, name) for name in key[1]]
+            self._follow(cls, [f for f in found if f is not None], set(), hooked)
+            self._hooked[key] = hooked
+        hooked = self._hooked[key]
         return replace(
             total.use(),
             hook_keys=frozenset(hooked.keys | hooked.optional),
