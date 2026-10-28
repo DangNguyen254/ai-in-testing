@@ -186,6 +186,13 @@ def build_index(
     if index_settings.function_data_prefix:
         for rel in repo.list_files((index_settings.data_file_suffix,)):
             data_names.setdefault(str(rel.parent), []).append(rel.name)
+    read: dict[str, DataFile | None] = {}  # each data file parsed once; tests share its entries
+
+    def read_data(path: str) -> DataFile | None:
+        if path not in read:
+            read[path] = _read_data_file(repo, path, settings.data)
+        return read[path]
+
     chunks: list[Chunk] = []
     for info in infos:
         chunks.extend(
@@ -193,7 +200,7 @@ def build_index(
                 info,
                 catalog,
                 index_settings,
-                lambda p: _read_data_file(repo, p, settings.data),
+                read_data,
                 custom_id_hook,
                 infos_by_path,
                 lambda folder: data_names.get(folder, []),
