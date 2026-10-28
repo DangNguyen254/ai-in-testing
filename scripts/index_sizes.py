@@ -130,5 +130,84 @@ def main(path: str) -> None:
             print(f"    catalog.{name}: {size / 1e6:.1f} MB")
 
 
+def _deep_size(root: object) -> int:
+    """Bytes of ``root`` and everything it holds (each object counted once)."""
+    seen: set[int] = set()
+    stack = [root]
+    total = 0
+    while stack:
+        obj = stack.pop()
+        if id(obj) in seen:
+            continue
+        seen.add(id(obj))
+        total += sys.getsizeof(obj)
+        if isinstance(obj, dict):
+            stack += list(obj.keys()) + list(obj.values())
+        elif isinstance(obj, list | tuple | set | frozenset):
+            stack += list(obj)
+        elif hasattr(obj, "__dict__"):
+            stack.append(vars(obj))
+        if hasattr(obj, "__pydantic_fields_set__"):
+            stack.append(obj.__pydantic_fields_set__)  # type: ignore[attr-defined]
+    return total
+
+
+def memory(path: str) -> None:
+    """Each section loaded the way the tool loads it, measured, then freed (one at a time:
+    the peak is about the largest section, not the whole index)."""
+    import gc
+
+    from pydantic import TypeAdapter
+
+    from ticket2test.index.catalog import SymbolCatalog
+    from ticket2test.index.indexer import FileRecord
+    from ticket2test.models.chunk import Chunk
+
+    with open(path, encoding="utf-8") as handle:
+        text = handle.read()
+    spans = _top_level(text)
+    adapters = {
+        "files": TypeAdapter(dict[str, FileRecord]),
+        "chunks": TypeAdapter(list[Chunk]),
+        "catalog": TypeAdapter(SymbolCatalog),
+    }
+    for key, adapter in adapters.items():
+        if key not in spans:
+            continue
+        start, end = spans[key]
+        value = adapter.validate_json(text[start:end])
+        print(f"  {key} in memory: {_deep_size(value) / 1e6:.0f} MB")
+        if key == "chunks":
+            parts: Counter[str] = Counter()
+            for chunk in value:
+                for name in ("data_entries", "code", "refs", "decorators", "markers"):
+                    parts[name] += _deep_size(getattr(chunk, name))
+            for name, size in parts.most_common():
+                print(f"    chunks.{name}: {size / 1e6:.0f} MB")
+        if key == "files":
+            parts = Counter()
+            for record in value.values():
+                info = record.info
+                if info is None:
+                    continue
+                for cls in info.classes:
+                    parts["classes.code"] += _deep_size(cls.code)
+                    for method in cls.methods:
+                        parts["methods.code"] += _deep_size(method.code)
+                        parts["methods.refs"] += _deep_size(method.refs)
+                        parts["methods.rest"] += (
+                            _deep_size(method) - _deep_size(method.code) - _deep_size(method.refs)
+                        )
+                for fn in info.functions:
+                    parts["functions"] += _deep_size(fn)
+            for name, size in parts.most_common():
+                print(f"    files.{name}: {size / 1e6:.0f} MB")
+        del value
+        gc.collect()
+
+
 if __name__ == "__main__":
-    main(sys.argv[1])
+    if "--memory" in sys.argv:
+        memory(next(a for a in sys.argv[1:] if a != "--memory"))
+    else:
+        main(sys.argv[1])
