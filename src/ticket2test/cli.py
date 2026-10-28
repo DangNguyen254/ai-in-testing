@@ -168,6 +168,18 @@ def new_ticket(
     typer.echo(f"Wrote {target}")
 
 
+def _repo(state: AppState, given: Path | None) -> Path:
+    """The target repo: the argument, else ``paths.repo``; an existing folder either way."""
+    repo = given or state.settings.paths.repo
+    if repo is None:
+        typer.echo("Error: give the repo path or set paths.repo in the config.", err=True)
+        raise typer.Exit(code=2)
+    if not repo.is_dir():
+        typer.echo(f"Error: not a directory: {repo}", err=True)
+        raise typer.Exit(code=2)
+    return repo
+
+
 def _safe_name(ticket_id: str) -> str:
     return "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in ticket_id)
 
@@ -322,7 +334,10 @@ def draft(
 @app.command()
 def index(
     ctx: typer.Context,
-    repo_path: Annotated[Path, typer.Argument(help="Target repo to index (read-only).")],
+    repo_path: Annotated[
+        Path | None,
+        typer.Argument(help="Target repo to index (read-only; default: paths.repo)."),
+    ] = None,
     force: Annotated[
         bool, typer.Option("--force", help="Rebuild from scratch instead of reusing the cache.")
     ] = False,
@@ -331,9 +346,7 @@ def index(
     from ticket2test.index.indexer import update_index
 
     state: AppState = ctx.obj
-    if not repo_path.is_dir():
-        typer.echo(f"Error: not a directory: {repo_path}", err=True)
-        raise typer.Exit(code=2)
+    repo_path = _repo(state, repo_path)
     _, stats, path = update_index(repo_path, state.settings, force=force)
     kinds = ", ".join(f"{n} {k}" for k, n in sorted(stats.chunks_by_kind.items()))
     typer.echo(
@@ -937,7 +950,6 @@ def eval_(
 @app.command()
 def mine(
     ctx: typer.Context,
-    repo: Annotated[Path, typer.Argument(help="A git repo (read only) to mine.")],
     out: Annotated[Path, typer.Option(help="Pair-set JSON to write (e.g. eval_data/x.json).")],
     name: Annotated[str, typer.Option(help="Pair-set name.")] = "mined",
     repo_path: Annotated[
@@ -953,6 +965,10 @@ def mine(
             help="No history needed: pairs from skips in the current tree that cite a ticket.",
         ),
     ] = False,
+    repo: Annotated[
+        Path | None,
+        typer.Argument(help="A git repo (read only) to mine (default: paths.repo)."),
+    ] = None,
 ) -> None:
     """Mine ticket <-> test pairs from commits that remove a ticket-id skip (or, with
     --from-skips, from skips in the current tree)."""
@@ -963,6 +979,7 @@ def mine(
     from ticket2test.index.indexer import update_index
 
     state: AppState = ctx.obj
+    repo = _repo(state, repo)
     if from_skips:
         index, _, _ = update_index(repo, state.settings)
         files = sorted({c.file_path for c in index.chunks if c.kind == "test"})
@@ -1007,7 +1024,10 @@ def mine(
 @app.command(name="check-suite")
 def check_suite_cmd(
     ctx: typer.Context,
-    repo: Annotated[Path, typer.Argument(help="An existing test suite (read only).")],
+    repo: Annotated[
+        Path | None,
+        typer.Argument(help="An existing test suite (read only; default: paths.repo)."),
+    ] = None,
     collect: Annotated[
         bool,
         typer.Option("--collect", help="Also compare static ids with a sandbox collect."),
@@ -1023,9 +1043,7 @@ def check_suite_cmd(
     from ticket2test.validate.suite import check_suite, render_markdown
 
     state: AppState = ctx.obj
-    if not repo.is_dir():
-        typer.echo(f"Error: repo not found: {repo}", err=True)
-        raise typer.Exit(code=2)
+    repo = _repo(state, repo)
     try:
         report = check_suite(
             repo, state.settings, collect=collect, progress=lambda line: typer.echo(line, err=True)

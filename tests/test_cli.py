@@ -80,3 +80,20 @@ def test_normalize_rejects_unknown_ref() -> None:
     result = runner.invoke(app, ["normalize", "DEMO-1"])
     assert result.exit_code == 2
     assert "--jira-export" in result.output
+
+
+def test_repo_commands_fall_back_to_paths_repo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`index`, `mine` and `check-suite` take the repo from paths.repo when it is left out."""
+    monkeypatch.delenv("T2T_PATHS__REPO", raising=False)
+    missing = CliRunner().invoke(app, ["index"])
+    assert missing.exit_code == 2 and "paths.repo" in missing.output
+    repo = tmp_path / "repo"
+    (repo / "tests").mkdir(parents=True)
+    (repo / "tests" / "test_a.py").write_text("def test_a():\n    pass\n", encoding="utf-8")
+    monkeypatch.setenv("T2T_PATHS__REPO", str(repo))
+    monkeypatch.setenv("T2T_PATHS__CACHE_DIR", str(tmp_path / "cache"))
+    done = CliRunner().invoke(app, ["index"])
+    assert done.exit_code == 0, done.output
+    assert f"Indexed {repo}" in done.output
