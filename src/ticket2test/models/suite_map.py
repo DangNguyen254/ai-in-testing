@@ -27,6 +27,20 @@ class TestClassSummary(BaseModel):
     tests: int  # test functions (inherited ones not counted)
 
 
+class KeyValues(BaseModel):
+    """The values one data key takes across an area's entries (nested keys as ``a.b``, list
+    items as ``a[]``): the suite's known values, for drafts and a tracker-to-suite glossary."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    key: str
+    entries: int  # entries that have the key
+    distinct: int  # distinct short values (long text is counted in long_text)
+    values: list[Count]  # the most common short values (none when free_text)
+    long_text: int = 0  # values longer than map.max_value_chars
+    free_text: bool = False  # nearly every value differs (names, payloads): not listed
+
+
 class AreaSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -51,6 +65,7 @@ class AreaSummary(BaseModel):
     data_key_roles: dict[str, str]  # key -> seed / expectation / per entry / read by the test
     expectations: list[Count]  # "<section>: <method> <path>" -> entries
     placeholders: list[Count]  # brace placeholders in entry values -> entries
+    data_values: list[KeyValues] = Field(default_factory=list)  # known values per key path
     skipped: int  # tests with a skip marker or an entry-level skip
     examples: list[str]  # chunk ids: the most typical test per shape
     sources: dict[str, str]  # path -> sha256: the files this summary was built from

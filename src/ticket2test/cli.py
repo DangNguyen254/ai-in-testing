@@ -435,7 +435,10 @@ def index(
 @app.command(name="map")
 def map_(
     ctx: typer.Context,
-    repo_path: Annotated[Path, typer.Argument(help="Target repo to map (read-only).")],
+    repo_path: Annotated[
+        Path | None,
+        typer.Argument(help="Target repo to map (read-only; default: paths.repo)."),
+    ] = None,
     out: Annotated[
         Path | None,
         typer.Option(help="Output directory (default: <output_dir>/map/<repo folder name>)."),
@@ -447,9 +450,7 @@ def map_(
 
     state: AppState = ctx.obj
     settings = state.settings
-    if not repo_path.is_dir():
-        typer.echo(f"Error: not a directory: {repo_path}", err=True)
-        raise typer.Exit(code=2)
+    repo_path = _repo(state, repo_path)
     index, _, _ = update_index(repo_path, settings)
     folder = out or settings.paths.output_dir / "map" / _safe_name(repo_path.resolve().name)
     suite_map = build_map(index, settings, previous=load_map(folder))
@@ -467,7 +468,9 @@ def map_(
 @app.command()
 def guides(
     ctx: typer.Context,
-    repo_path: Annotated[Path, typer.Argument(help="Target repo (read-only).")],
+    repo_path: Annotated[
+        Path | None, typer.Argument(help="Target repo (read-only; default: paths.repo).")
+    ] = None,
     estimate: Annotated[
         bool, typer.Option("--estimate", help="Show tokens and worst-case cost; no LLM calls.")
     ] = False,
@@ -499,9 +502,7 @@ def guides(
 
     state: AppState = ctx.obj
     settings = state.settings
-    if not repo_path.is_dir():
-        typer.echo(f"Error: not a directory: {repo_path}", err=True)
-        raise typer.Exit(code=2)
+    repo_path = _repo(state, repo_path)
     index, _, _ = update_index(repo_path, settings)
     suite_map = build_map(index, settings)
     folder = out or guides_dir(repo_path, settings)

@@ -650,6 +650,11 @@ class MapSettings(_Section):
     # An area with more tests is split into one sub-area per module (<area>/<module>): real
     # suites have areas holding half of all tests, too much for one guide.
     max_tests_per_area: int = Field(default=300, ge=1)
+    # Known values per data key path (map.json, areas/*.md): how many values are listed per key,
+    # how long a value may be to count as a value (longer is text), how many keys per area.
+    max_values_per_key: int = Field(default=25, ge=1)
+    max_value_chars: int = Field(default=80, ge=1)
+    max_value_keys: int = Field(default=80, ge=1)
 
 
 class Price(_Section):

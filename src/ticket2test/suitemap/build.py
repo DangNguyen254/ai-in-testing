@@ -30,6 +30,7 @@ from ticket2test.models.suite_map import (
     AreaSummary,
     Count,
     CoverageGap,
+    KeyValues,
     SuiteMap,
     SuiteOverview,
     TestClassSummary,
@@ -168,6 +169,7 @@ def _area(area: Domain, tests: list[Chunk], index: IndexData, settings: Settings
                 expectations.update(f"{section}: {_request(item)}" for item in items)
         placeholders.update(set(_BRACE.findall(json.dumps(data_entry, ensure_ascii=False))))
     skipped_tests = sum(any(m.name == "skip" for m in t.markers) for t in tests)
+    data_values = known_values(entries, settings)
     limit = settings.map.max_items
     return AreaSummary(
         name=area.name,
@@ -191,6 +193,7 @@ def _area(area: Domain, tests: list[Chunk], index: IndexData, settings: Settings
         data_key_roles={k: _role(k, settings) for k in data_keys},
         expectations=_top(expectations, limit),
         placeholders=_top(placeholders, limit),
+        data_values=data_values,
         skipped=skipped_tests + skipped_entries,
         examples=_examples(tests, settings, chains, actions | helpers),
         sources=sources,
@@ -522,6 +525,73 @@ def _role(key: str, settings: Settings) -> str:
     if key in data.per_entry_keys:
         return "per entry"
     return "read by the test"
+
+
+_MAX_DEPTH = 5  # nesting followed into entries (a.b.c...)
+_FREE_TEXT_SHARE = 0.6  # distinct values / occurrences above this (with many values): free text
+
+
+def known_values(entries: Iterable[dict[str, Any]], settings: Settings) -> list[KeyValues]:
+    """Per key path, the distinct short values the entries use, most common first. A key whose
+    values nearly all differ (generated names, payloads) is marked free text, not listed."""
+    m = settings.map
+    values: dict[str, Counter[str]] = {}
+    holders: Counter[str] = Counter()
+    long_text: Counter[str] = Counter()
+    id_field = settings.data.id_field
+    for entry in entries:
+        seen: set[str] = set()
+        for path, leaf in _leaves(entry, "", 0):
+            if path == id_field:
+                continue
+            seen.add(path)
+            if isinstance(leaf, str) and len(leaf) > m.max_value_chars:
+                long_text[path] += 1
+                continue
+            counter = values.setdefault(path, Counter())
+            if len(counter) <= 20 * m.max_values_per_key or leaf in counter:  # bounded
+                counter[_value_text(leaf)] += 1
+        holders.update(seen)
+    found: list[KeyValues] = []
+    for path, count in sorted(holders.items(), key=lambda kv: (-kv[1], kv[0]))[: m.max_value_keys]:
+        counter = values.get(path, Counter())
+        occurrences = sum(counter.values())
+        free = len(counter) > m.max_values_per_key and len(counter) > _FREE_TEXT_SHARE * occurrences
+        found.append(
+            KeyValues(
+                key=path,
+                entries=count,
+                distinct=len(counter),
+                values=[] if free else _top(counter, m.max_values_per_key),
+                long_text=long_text[path],
+                free_text=free or (not counter and long_text[path] > 0),
+            )
+        )
+    return found
+
+
+def _leaves(value: Any, path: str, depth: int) -> Iterable[tuple[str, Any]]:
+    """(key path, scalar) pairs: dict keys joined by ".", list items as "[]"."""
+    if isinstance(value, dict):
+        if depth >= _MAX_DEPTH:
+            return
+        for key, item in value.items():
+            yield from _leaves(item, f"{path}.{key}" if path else str(key), depth + 1)
+    elif isinstance(value, list):
+        if depth >= _MAX_DEPTH:
+            return
+        for item in value:
+            yield from _leaves(item, f"{path}[]", depth + 1)
+    elif path:
+        yield path, value
+
+
+def _value_text(value: Any) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
 
 
 def _top(counter: Counter[str], limit: int | None) -> list[Count]:

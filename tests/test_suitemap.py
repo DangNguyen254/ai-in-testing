@@ -190,3 +190,30 @@ def test_leftover_folders_and_imported_functions(tmp_path: Path) -> None:
     assert [f.name for f in client.functions] == ["build"]  # imported under an alias
     assert "lib/tools.py" in client.sources
     assert m.overview.unassigned_tests == []
+
+
+def test_an_area_lists_its_known_data_values(suite_map: SuiteMap, tmp_path: Path) -> None:
+    """The suite's own values per key path: what a draft should pick from, and what a
+    tracker-to-suite glossary maps onto."""
+    files = _area(suite_map, "files")
+    by_key = {v.key: v for v in files.data_values}
+    assert {c.name for c in by_key["targets[].method"].values} == {"GET"}
+    assert "block" in {c.name for c in by_key["policy.downloads.types.exe"].values}
+    assert {"converted", "blocked"} <= {c.name for c in by_key["decision"].values}
+    assert by_key["site.files[].name"].entries >= 1
+    assert "test_id" not in by_key  # the id field is not a value
+    write_map(suite_map, tmp_path, 10)
+    text = (tmp_path / "areas" / "files.md").read_text(encoding="utf-8")
+    assert "## Known data values" in text and "`decision`" in text
+
+
+def test_values_that_nearly_all_differ_are_free_text(tmp_path: Path) -> None:
+    from ticket2test.suitemap.build import known_values
+
+    settings = _settings(tmp_path, map={"max_values_per_key": 3})
+    entries = [{"test_id": f"t{i}", "name": f"rule-{i}", "mode": "proxy"} for i in range(10)]
+    entries.append({"test_id": "t10", "name": "x" * 200, "mode": "isolate"})
+    values = {v.key: v for v in known_values(entries, settings)}
+    assert values["name"].free_text and values["name"].values == []
+    assert values["name"].long_text == 1
+    assert [(c.name, c.count) for c in values["mode"].values] == [("proxy", 10), ("isolate", 1)]

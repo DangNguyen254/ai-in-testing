@@ -281,6 +281,9 @@ map:                             # suite map: area summaries from the index (no 
   max_examples: 6                # typical tests per area, one per shape
   max_coverage_listed: 200       # in coverage.md; map.json has every gap
   max_tests_per_area: 300        # larger areas split into one sub-area per module
+  max_values_per_key: 25         # known values listed per data key path
+  max_value_chars: 80            # longer values count as text, not as a value
+  max_value_keys: 80             # data key paths listed per area (most common first)
 
 guides:                          # area guides: one strong-model call per area (no exploring)
   prompt: guide_v1

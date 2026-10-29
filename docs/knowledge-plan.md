@@ -33,9 +33,13 @@ API Sonnet.
 
 ## Steps
 
-**A. Known values (code).** A command (e.g. `ticket2test vocab`) writes, per area, from the index:
-the data keys with their distinct short values and counts, the marker values, page-object names
-and chains, and helper names. Private output, next to the index.
+**A. Known values (code). Built:** part of the suite map (`ticket2test map`). Per area,
+`map.json` and `areas/<area>.md` hold the marker values, the page-object chains and actions, the
+base-class helpers, and, new, the **known data values**: every data key path (nested as `a.b`,
+list items as `a[]`) with its distinct short values and counts; keys whose values nearly all
+differ (generated names, payloads) are marked free text instead of listed (limits in `map:`).
+The values are kept out of the area summary the guide prompts use. Private output, under the
+output folder.
 
 **B. Glossary (Haiku).** A prompt in `docs/` has Haiku read the known-values file, folder,
 class and test names, docstrings and comments, the suite's component documentation and

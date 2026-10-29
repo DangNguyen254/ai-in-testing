@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ticket2test.models.suite_map import AreaSummary, Count, SuiteMap
+from ticket2test.models.suite_map import AreaSummary, Count, KeyValues, SuiteMap
 
 
 def write_map(suite_map: SuiteMap, folder: Path, max_coverage: int) -> list[Path]:
@@ -18,13 +18,38 @@ def write_map(suite_map: SuiteMap, folder: Path, max_coverage: int) -> list[Path
     keep = set()
     for area in suite_map.areas:
         path = areas_dir / f"{_safe(area.name)}.md"
-        path.write_text(render_area(area), encoding="utf-8")
+        path.write_text(render_area(area) + render_values(area), encoding="utf-8")
         keep.add(path.name)
         written.append(path)
     for old in areas_dir.glob("*.md"):
         if old.name not in keep:
             old.unlink()
     return written
+
+
+def render_values(a: AreaSummary) -> str:
+    """The area's known data values (kept out of render_area, which the guide prompts use)."""
+    if not a.data_values:
+        return ""
+    lines = [
+        "",
+        "## Known data values",
+        "",
+        "Key path (entries that have it, distinct values):",
+        "",
+    ]
+    lines += [_value_line(v) for v in a.data_values]
+    return "\n".join(lines) + "\n"
+
+
+def _value_line(v: KeyValues) -> str:
+    head = f"- `{v.key}` ({v.entries} entries, {v.distinct} distinct"
+    head += f", {v.long_text} long text)" if v.long_text else ")"
+    if v.free_text:
+        return f"{head}: free text (nearly every value differs)"
+    shown = ", ".join(f"`{c.name}` ({c.count})" for c in v.values)
+    more = v.distinct - len(v.values)
+    return f"{head}: {shown}" + (f", +{more} more" if more > 0 else "")
 
 
 def load_map(folder: Path) -> SuiteMap | None:
