@@ -213,6 +213,9 @@ def generate_reusing(
         ]
         checklist = [*outcome.generated.review_checklist, *notes]
         outcome.generated = outcome.generated.model_copy(update={"review_checklist": checklist})
+    if outcome.generated is not None and outcome.decision.review_notes:
+        checklist = [*outcome.generated.review_checklist, *outcome.decision.review_notes]
+        outcome.generated = outcome.generated.model_copy(update={"review_checklist": checklist})
     if outcome.generated is not None:
         neighbours = _neighbour_notes(outcome.decision, index, settings, repo_root)
         if neighbours:

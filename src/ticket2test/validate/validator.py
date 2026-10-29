@@ -828,7 +828,7 @@ def check_markers(s: Subject) -> Iterator[Finding]:
         "priority": set(m.priorities),
         "suite": set(m.suites),
         "project": parts([m.project, *s.catalog.markers.get("project", [])]),
-        "component": parts(s.catalog.markers.get("component", [])),
+        "component": parts([*s.catalog.markers.get("component", []), *m.components]),
     }
     assert s.tree is not None
     module_marks = markers(pytestmark_nodes(s.tree.body))  # pytest applies these to every test

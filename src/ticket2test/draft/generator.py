@@ -57,11 +57,16 @@ def generate_drafts(
 
     ticket_scrub = scrub(ticket_prompt_json(ticket, settings.draft.max_comment_chars))
     markers = settings.markers
-    user = prompt.render_user(
-        ticket_json=ticket_scrub.text,
-        priorities=", ".join(markers.priorities),
-        suites=", ".join([*markers.suites, UNKNOWN]),
-    )
+    values = {
+        "ticket_json": ticket_scrub.text,
+        "priorities": ", ".join(markers.priorities),
+        "suites": ", ".join([*markers.suites, UNKNOWN]),
+    }
+    if "{{components}}" in prompt.user:  # from draft_v3 on
+        values["components"] = (
+            ", ".join([*markers.components, UNKNOWN]) if markers.components else "(not given)"
+        )
+    user = prompt.render_user(**values)
     request = LLMRequest(
         messages=(
             Message(role="system", content=prompt.system),
@@ -70,7 +75,7 @@ def generate_drafts(
         temperature=settings.llm.temperature,
         seed=settings.llm.seed,
         max_output_tokens=settings.llm.max_output_tokens,
-        json_schema=draft_schema(markers.priorities, markers.suites),
+        json_schema=draft_schema(markers.priorities, markers.suites, markers.components),
         model=model_name(settings, "draft"),
     )
     result = complete_structured(
@@ -88,7 +93,7 @@ def generate_drafts(
     )
     response, output_redactions = _scrub_output(restored)
     drafts = [
-        _to_stored(item, ticket, index, prompt.version)
+        _to_stored(item, ticket, index, prompt.version, markers.components)
         for index, item in enumerate(_primary_first(response.drafts), start=1)
     ]
     drafted = DraftResult(
@@ -152,23 +157,42 @@ def ticket_prompt_json(ticket: Ticket, max_comment_chars: int) -> str:
     return json.dumps(payload, indent=2, ensure_ascii=False)
 
 
-def draft_schema(priorities: list[str], suites: list[str]) -> dict[str, Any]:
-    """Wire schema for DraftResponse, with the configured marker values as enums."""
+def draft_schema(
+    priorities: list[str], suites: list[str], components: list[str] | None = None
+) -> dict[str, Any]:
+    """Wire schema for DraftResponse, with the configured marker values as enums (components
+    only when the suite's list is configured)."""
     schema = strict_schema(DraftResponse)
     markers = schema["properties"]["drafts"]["items"]["properties"]["markers"]["properties"]
     markers["priority"]["enum"] = list(priorities)
     markers["suite"]["enum"] = [*suites, UNKNOWN]
+    if components:
+        markers["component"]["enum"] = [*components, UNKNOWN]
     return schema
+
+
+def known_component(value: str, components: list[str]) -> str:
+    """The draft's component as one of the suite's values: the same spelling ignoring case,
+    else "unknown" (never an invented name). Without a configured list, as given."""
+    if value.lower() in _UNKNOWN_SPELLINGS:
+        return UNKNOWN
+    if not components:
+        return value
+    return next((c for c in components if c.lower() == value.lower()), UNKNOWN)
 
 
 def _primary_first(items: list[DraftItem]) -> list[DraftItem]:
     return sorted(items, key=lambda item: item.kind != "primary")
 
 
-def _to_stored(item: DraftItem, ticket: Ticket, index: int, prompt_version: str) -> TestCaseDraft:
-    component = item.markers.component.strip()
-    if component.lower() in _UNKNOWN_SPELLINGS:
-        component = UNKNOWN
+def _to_stored(
+    item: DraftItem,
+    ticket: Ticket,
+    index: int,
+    prompt_version: str,
+    components: list[str] | None = None,
+) -> TestCaseDraft:
+    component = known_component(item.markers.component.strip(), components or [])
     data = item.model_dump()
     data["markers"]["component"] = component
     texts = [

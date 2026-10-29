@@ -32,7 +32,7 @@ llm:
     model: ""                  # required when provider is gemini
 
 draft:
-  prompt_version: draft_v2
+  prompt_version: draft_v3
   max_comment_chars: 20000
   skeleton: auto                 # partial draft + open questions: auto (insufficient, or no explicit
                                  # steps/expected section in the ticket) | always | never
@@ -41,6 +41,7 @@ draft:
 markers:                       # generic placeholders; set real values per environment
   priorities: [p0, p1, p2, p3]  # first = highest
   suites: [smoke, regression]
+  components: []                 # the suite's real component values; drafts then pick from them
   project: example-project
   required: [priority, project, component, suite]
   value_separator: ","           # joined values ("a,b") are checked part by part; "" = whole

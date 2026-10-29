@@ -406,3 +406,74 @@ def test_an_uncertain_area_never_patches_an_existing_test(
     decision = decide(draft, retrieval, index, settings, unsure)
     assert decision.kind not in ("covered", "variant")
     assert any("area uncertain" in r for r in decision.reasons)
+
+
+def test_the_new_method_goes_into_the_closest_templates_class(
+    setup: tuple[Settings, IndexData],
+) -> None:
+    """Found in the first real trial: search ranked one class's tests first and took its test
+    as the template, but the method went into another class (a slightly higher word match),
+    where the template's helpers and module objects didn't exist."""
+    from ticket2test.models.retrieval import TemplateRef
+
+    settings, index = setup
+    draft, _target = SCENARIOS["method"]
+    ticket = Ticket(
+        id=draft.ticket_id,
+        title=draft.intent,
+        description=" ".join(draft.steps) + " " + draft.expected_outcome,
+        source=SourceInfo(system="jira", ref=draft.ticket_id),
+    )
+    loose = settings.model_copy(
+        update={
+            "generate": settings.generate.model_copy(
+                update={"reuse": settings.generate.reuse.model_copy(update={"method_min": 0.25})}
+            )
+        }
+    )
+    retrieval = retrieve(ticket, index, loose, None, draft)
+    choice = choose_domain(retrieval, index, loose, ticket, draft)
+    assert decide(draft, retrieval, index, loose, choice).target == "TestFilesArchives"
+    viewer = next(c for c in index.chunks if c.class_name == "TestFilesViewer" and c.data_entries)
+    templated = retrieval.model_copy(
+        update={
+            "templates": [
+                TemplateRef(chunk_id=viewer.id, entry_key=next(iter(viewer.data_entries)), why="t"),
+                *retrieval.templates,
+            ]
+        }
+    )
+    decision = decide(draft, templated, index, loose, choice)
+    assert decision.kind == "method" and decision.target == "TestFilesViewer"
+    assert any("closest template test is in this class" in r for r in decision.reasons)
+    # a template class below the bar any class must clear doesn't win
+    strict = settings.model_copy(
+        update={
+            "generate": settings.generate.model_copy(
+                update={
+                    "reuse": settings.generate.reuse.model_copy(
+                        update={"method_min": 0.4, "method_named_min": 0.3}
+                    )
+                }
+            )
+        }
+    )
+    assert decide(draft, templated, index, strict, choice).target == "TestFilesArchives"
+
+
+def test_a_draft_component_must_be_one_of_the_suites() -> None:
+    from ticket2test.draft.generator import draft_schema, known_component
+
+    assert known_component("Rules", ["rules", "profiles"]) == "rules"
+    assert known_component("rule management", ["rules", "profiles"]) == "unknown"
+    assert known_component("n/a", ["rules"]) == "unknown"
+    assert known_component("rule management", []) == "rule management"  # no list: as given
+    schema = draft_schema(["p1"], ["regression"], ["rules", "profiles"])
+    markers = schema["properties"]["drafts"]["items"]["properties"]["markers"]["properties"]
+    assert markers["component"]["enum"] == ["rules", "profiles", "unknown"]
+    assert (
+        "enum"
+        not in draft_schema(["p1"], ["regression"])["properties"]["drafts"]["items"]["properties"][
+            "markers"
+        ]["properties"]["component"]
+    )

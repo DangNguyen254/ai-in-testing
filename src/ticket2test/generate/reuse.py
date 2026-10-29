@@ -92,6 +92,8 @@ class ReuseDecision:
     candidates: list[Candidate] = field(default_factory=list)
     class_scores: dict[str, float] = field(default_factory=dict)
     reasons: list[str] = field(default_factory=list)
+    # For the reviewer: e.g. the chosen class runs on one deployment, the draft didn't say.
+    review_notes: list[str] = field(default_factory=list)
 
 
 def decide(
@@ -194,7 +196,10 @@ def decide(
             )
         )
 
-    excluded = _excluded_classes(candidates, index, settings, draft)
+    excluded, gated = _excluded_classes(candidates, index, settings, draft)
+    home = _template_class(retrieval, index)
+    if home in gated:  # the closest existing test already runs there: its gate wins, flagged
+        del excluded[home]
     for key, why in sorted(excluded.items()):
         decision.reasons.append(f"not {key.split('::', 1)[1]}: {why}")
     classes: dict[tuple[str, str], list[float]] = {}
@@ -208,10 +213,34 @@ def decide(
             classes.setdefault((c.file_path, c.class_name), []).append(c.flow)
     scores = {f"{path}::{name}": max(flows_) for (path, name), flows_ in classes.items()}
     decision.class_scores = dict(sorted(scores.items(), key=lambda kv: -kv[1]))
+
+    def named_words(key: str) -> set[str]:
+        name = key.split("::", 1)[1]
+        named = _named_after(name, all_draft_words, domain.name if domain else "", settings)
+        return {  # "download" in every file test names nothing
+            w
+            for w in named
+            if sum(w in f for f in flows.values()) <= NAME_WORD_MAX_SHARE * len(flows)
+        }
+
+    def qualifies(key: str) -> bool:
+        return scores[key] >= reuse.method_min or bool(
+            named_words(key) and scores[key] >= reuse.method_named_min
+        )
+
     if scores:
         target, score = max(scores.items(), key=lambda kv: (kv[1], kv[0]))
         matching = _component_match(scores, retrieval.ticket_components, index, settings)
-        if matching and target not in matching:
+        if home in scores and qualifies(home):
+            # the closest template's own class: its helpers, module objects and data style
+            # are what the new method is built from (another class may lack them)
+            if home != target:
+                decision.reasons.append(
+                    f"{home.split('::', 1)[1]}: the closest template test is in this class "
+                    f"(class match {scores[home]:.2f}; best match was {score:.2f})"
+                )
+            target, score = home, scores[home]
+        elif matching and target not in matching:
             better = max(matching, key=lambda k: (scores[k], k))
             if scores[better] >= reuse.method_named_min:
                 decision.reasons.append(
@@ -220,15 +249,11 @@ def decide(
                 )
                 target, score = better, max(scores[better], reuse.method_min)
         path, name = target.split("::", 1)
-        named = _named_after(name, all_draft_words, domain.name if domain else "", settings)
-        common = {
-            w
-            for w in named
-            if sum(w in f for f in flows.values()) > NAME_WORD_MAX_SHARE * len(flows)
-        }
-        named -= common  # "download" in every file test names nothing
+        named = named_words(target)
         if score >= reuse.method_min or (named and score >= reuse.method_named_min):
             decision.kind, decision.target, decision.target_file = "method", name, path
+            if target in gated:
+                decision.review_notes.append(gated[target])
             why = f"class match {score:.2f}" + (f", named after {sorted(named)}" if named else "")
             decision.reasons.append(f"new method in {name} ({why})")
             return decision
@@ -260,16 +285,31 @@ def decide(
 _DEPLOYMENT_CONDITION = re.compile(r"""deployment\s*(!=|==)\s*["'](\w+)["']""")
 
 
+def _template_class(retrieval: RetrievalResult, index: IndexData) -> str | None:
+    """``path::Class`` of the closest template test (retrieval's first), if it has a class."""
+    if not retrieval.templates:
+        return None
+    first = retrieval.templates[0].chunk_id
+    chunk = next((c for c in index.chunks if c.id == first), None)
+    if chunk is None or chunk.class_name is None:
+        return None
+    return f"{chunk.file_path}::{chunk.class_name}"
+
+
 def _excluded_classes(
     candidates: list[Candidate], index: IndexData, settings: Settings, draft: TestCaseDraft
-) -> dict[str, str]:
-    """``path::Class`` -> why a new test must not go there: a frozen class, or a deployment
-    gate narrower than where the draft has to run."""
+) -> tuple[dict[str, str], dict[str, str]]:
+    """(``path::Class`` -> why a new test must not go there: a frozen class, or a deployment
+    gate narrower than where the draft has to run; ``path::Class`` -> a reviewer note for the
+    classes gated to one deployment when the draft says "both", which is also what a draft
+    says when the ticket doesn't mention deployment: such a class is used only when it holds
+    the closest template, and then its own gate wins, flagged)."""
     gen = settings.generate
     deployments = list(gen.deployment_decorators) or ["cloud", "on_prem"]
     needed = set(deployments) if draft.deployment_type == "both" else {draft.deployment_type}
     frozen = set(gen.reuse.frozen_classes)
     found: dict[str, str] = {}
+    gated: dict[str, str] = {}
     for c in candidates:
         if c.class_name is None:
             continue
@@ -299,11 +339,17 @@ def _excluded_classes(
             continue
         gate = _deployment_gate(cls.decorators, deployments, settings)
         if gate is not None and not needed <= gate:
+            if draft.deployment_type == "both":  # kept only as the template's own class
+                gated[key] = (
+                    f"{c.class_name} runs only on {', '.join(sorted(gate))}; the draft says "
+                    "both, which is also its default when the ticket doesn't say: confirm the "
+                    "test only needs to run there"
+                )
             found[key] = (
                 f"runs only on {', '.join(sorted(gate))}; "
                 f"the draft needs {', '.join(sorted(needed))}"
             )
-    return found
+    return found, gated
 
 
 def _deployment_gate(

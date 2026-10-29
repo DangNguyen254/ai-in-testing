@@ -86,6 +86,9 @@ class MarkerSettings(_Section):
 
     priorities: list[str] = Field(default_factory=lambda: ["p0", "p1", "p2", "p3"], min_length=1)
     suites: list[str] = Field(default_factory=lambda: ["smoke", "regression"], min_length=1)
+    # The suite's real component values (e.g. the markers registered in pytest.ini). When set,
+    # a draft's component must be one of them or "unknown", and generated markers may use them.
+    components: list[str] = Field(default_factory=list)
     project: str = "example-project"
     required: list[str] = Field(
         default_factory=lambda: ["priority", "project", "component", "suite"]
@@ -102,7 +105,7 @@ class EvalSettings(_Section):
 
 
 class DraftSettings(_Section):
-    prompt_version: str = "draft_v2"
+    prompt_version: str = "draft_v3"
     # Comments go into the prompt in order until this many characters; the rest are dropped.
     max_comment_chars: int = Field(default=20000, ge=0)
     # A partial draft with open questions (draft/skeleton.py), one extra LLM call: "auto" when

@@ -74,13 +74,13 @@ def test_ok_path_builds_traceable_drafts() -> None:
 
     assert result.status == "ok"
     assert result.attempts == 1
-    assert result.prompt_version == "draft_v2"
+    assert result.prompt_version == "draft_v3"
     assert (result.provider, result.model) == ("fake", "fake-model")
     assert [d.kind for d in result.drafts] == ["primary", "edge_case"]  # primary first
     assert [d.id for d in result.drafts] == ["encode/httpx#1482/d1", "encode/httpx#1482/d2"]
     first = result.drafts[0]
     assert first.ticket_id == "encode/httpx#1482"
-    assert first.prompt_version == "draft_v2"
+    assert first.prompt_version == "draft_v3"
     assert first.markers.priority == "p1"
     assert first.test_kind == "api"
     assert first.deployment_type == "both"
@@ -289,3 +289,25 @@ def test_vague_fixture_is_a_valid_ticket() -> None:
         (FIXTURES / "tickets" / "vague_ticket.json").read_text(encoding="utf-8")
     )
     assert precheck_missing(ticket) == []  # has a description, so the LLM decides
+
+
+def test_the_draft_picks_a_component_from_the_suites_list() -> None:
+    """Found in the first real trial: the draft invented a component the suite doesn't have,
+    so the template step's "same component first" matched nothing."""
+    settings = SETTINGS.model_copy(
+        update={
+            "markers": SETTINGS.markers.model_copy(update={"components": ["multipart", "auth"]})
+        }
+    )
+    markers = {"priority": "p1", "suite": "regression"}
+    fake = FakeLLMClient(
+        [
+            _reply(_item(markers={**markers, "component": "Multipart"})),
+            _reply(_item(markers={**markers, "component": "file uploads"})),
+        ]
+    )
+    first = _run(fake, settings=settings)
+    assert first.drafts[0].markers.component == "multipart"  # the suite's spelling
+    assert "Allowed components: multipart, auth, unknown" in fake.requests[0].messages[-1].content
+    second = _run(fake, settings=settings)
+    assert second.drafts[0].markers.component == "unknown"  # never an invented name
