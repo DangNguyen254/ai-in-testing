@@ -217,3 +217,22 @@ def test_values_that_nearly_all_differ_are_free_text(tmp_path: Path) -> None:
     assert values["name"].free_text and values["name"].values == []
     assert values["name"].long_text == 1
     assert [(c.name, c.count) for c in values["mode"].values] == [("proxy", 10), ("isolate", 1)]
+
+
+def test_a_test_defined_twice_doesnt_break_large_area_splitting(tmp_path: Path) -> None:
+    """Found on the real suite: old code defines a test method twice under one name, so two
+    chunks share an id; splitting a large area into modules failed on the second."""
+    repo = tmp_path / "repo"
+    (repo / "tests" / "area").mkdir(parents=True)
+    (repo / "tests" / "area" / "test_a.py").write_text(
+        "class TestA:\n    def test_x(self):\n        pass\n\n"
+        "    def test_x(self):\n        pass\n",
+        encoding="utf-8",
+    )
+    (repo / "tests" / "area" / "test_b.py").write_text(
+        "def test_y():\n    pass\n", encoding="utf-8"
+    )
+    settings = _settings(tmp_path, map={"max_tests_per_area": 1})
+    index, _, _ = update_index(repo, settings)
+    built = build_map(index, settings)
+    assert {a.name for a in built.areas} == {"area/test_a", "area/test_b"}

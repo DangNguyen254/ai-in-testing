@@ -89,9 +89,10 @@ def _owners(index: IndexData, settings: Settings, tests: list[Chunk]) -> dict[st
     for domain in owners.values():
         sizes[domain.name] = sizes.get(domain.name, 0) + 1
     limit = settings.map.max_tests_per_area
+    first = dict(owners)  # two tests can share an id (a method defined twice): look up the first
     for test in tests:  # a very large area: one sub-area per module, so a guide stays specific
-        domain = owners[test.id]
-        if sizes[domain.name] > limit:
+        domain = first[test.id]
+        if sizes.get(domain.name, 0) > limit:
             owners[test.id] = Domain(sub_area(domain.name, test.file_path), (test.file_path,))
     return owners
 
