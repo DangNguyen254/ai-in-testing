@@ -74,6 +74,9 @@ def manifest_test_to_chunk_id(test: str) -> str:
     return f"{path}::{rest.replace('::', '.')}"
 
 
+_TEST_WIDENING = 3  # results asked for per scored test, so k tests remain after the filter
+
+
 def evaluate_retrieval(
     pair_set: PairSet,
     project_root: Path,
@@ -83,8 +86,11 @@ def evaluate_retrieval(
     k: int | None = None,
 ) -> RetrievalReport:
     k = k or settings.retrieval.top_k
+    # with tests as the ground truth, scored on the first k *tests* search returns: helpers,
+    # page objects and framework classes are wanted in the results too, but not as tests
+    wide = k * _TEST_WIDENING if pair_set.ground_truth == "tests" else k
     settings = settings.model_copy(
-        update={"retrieval": settings.retrieval.model_copy(update={"top_k": k})}
+        update={"retrieval": settings.retrieval.model_copy(update={"top_k": wide})}
     )
     repo = project_root / pair_set.repo_path
     if not repo.is_dir():
@@ -167,6 +173,8 @@ def _score(
 ) -> PairResult:
     retrieved: list[str] = []
     for hit in result.hits:
+        if unit == "test" and hit.kind != "test":
+            continue  # scored on the tests among the results
         key = hit.file_path if unit == "file" else hit.chunk_id
         if key not in retrieved:
             retrieved.append(key)

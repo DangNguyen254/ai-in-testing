@@ -489,3 +489,11 @@ def test_hit_and_file_hit_say_whether_search_found_the_area(tmp_path: Path) -> N
     assert pair.hit == bool(pair.found) and report.hit_rate == float(pair.hit)
     assert pair.file_hit and report.file_hit_rate == 1.0
     assert "File hit@10" in render_markdown(report)
+    # scored on tests only: every scored result is a test chunk, at most k of them
+    from ticket2test.index.indexer import index_dir, load_index
+
+    settings = _settings(tmp_path)
+    index = load_index(index_dir(REPO_ROOT / "standin", settings), settings)
+    assert index is not None
+    kinds = {c.id: c.kind for c in index.chunks}
+    assert 0 < len(pair.retrieved) <= 10 and {kinds[r] for r in pair.retrieved} == {"test"}
