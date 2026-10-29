@@ -16,6 +16,10 @@ from ticket2test.adapters.tickets.base import RawTicket, TicketNotFoundError, Ti
 TEMPLATE = """\
 # {key}: <title>
 
+## Type
+
+## Epic
+
 ## Components
 
 ## Labels
@@ -27,6 +31,8 @@ TEMPLATE = """\
 ## Expected
 
 ## Actual
+
+## Acceptance criteria
 
 ## Test plan
 <!-- Paste the part of the linked test plan for this ticket: its steps and expected results. -->

@@ -227,3 +227,25 @@ def test_without_a_folder_new_ticket_says_how_to_give_one(
     monkeypatch.delenv("T2T_PATHS__TICKETS_DIR", raising=False)
     result = CliRunner().invoke(app, ["new-ticket", "TEST-095"])
     assert result.exit_code == 2 and "paths.tickets_dir" in result.output
+
+
+def test_a_story_with_type_epic_and_acceptance_criteria(tmp_path: Path) -> None:
+    """Story tickets often have no steps or expected result: the epic names the feature area,
+    and acceptance criteria say what must hold. Sections may come in any order."""
+    text = (
+        "# DEMO-7: Rules can be exported\n\n"
+        "## Acceptance criteria\nThe export lists every rule with its name.\n\n"
+        "## Epic\nRule management\n\n"
+        "## Type\nStory\n\n"
+        "## Components\nrules\n"
+    )
+    ticket = _ticket(tmp_path, text)
+    assert ticket.labels == ["Story", "Rule management"]
+    assert ticket.expected == "The export lists every rule with its name."
+    assert "Epic: Rule management" in (ticket.description or "")
+    assert not ticket.steps_to_reproduce  # nothing invented
+
+
+def test_the_template_has_the_story_sections() -> None:
+    for heading in ("## Type", "## Epic", "## Acceptance criteria"):
+        assert heading in TEMPLATE

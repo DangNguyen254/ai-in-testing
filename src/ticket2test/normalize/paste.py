@@ -1,8 +1,11 @@
 """A pasted ticket file (adapters/tickets/paste.py) -> Ticket.
 
-The ``##`` sections fill the matching fields. Steps, expected and actual come from their own
-sections first; when those are empty, from the same kind of sections inside the description,
-then inside the pasted test plan (it is often where the full steps live). The test plan and
+The ``##`` sections fill the matching fields, in any order. Type and epic become labels (the
+epic is also kept in the description, as the feature area's name); acceptance criteria are
+the expected result when there is no expected section. Steps, expected and actual come from
+their own sections first; when those are empty, from the same kind of sections inside the
+acceptance criteria, the description, then the pasted test plan (it is often where the full
+steps live). The test plan and
 readable attachments are also kept in the description, under their own labels, so the draft
 step sees them. A pasted ticket is a tracker ticket copied by hand: its source is ``jira``.
 """
@@ -43,6 +46,14 @@ _ALIASES = {
     "actual behavior": "actual",
     "actual behaviour": "actual",
     "test plan": "test_plan",
+    "type": "type",
+    "issue type": "type",
+    "ticket type": "type",
+    "epic": "epic",
+    "epic link": "epic",
+    "epic name": "epic",
+    "acceptance criteria": "acceptance",
+    "acceptance": "acceptance",
     "attachments": "attachments",
     "attachment": "attachments",
     "comments": "comments",
@@ -66,7 +77,10 @@ def normalize_paste(raw: RawTicket, settings: Settings) -> Ticket:
         lines_to_text(lines("expected")) or None,
         lines_to_text(lines("actual")) or None,
     )
-    for fallback in ("description", "test_plan"):  # sections written inside other text
+    # acceptance criteria are the expected result when there is no section of its own; steps
+    # or expected written inside them count too
+    found.expected = found.expected or lines_to_text(lines("acceptance")) or None
+    for fallback in ("acceptance", "description", "test_plan"):  # sections inside other text
         inner = extract_sections(lines(fallback))
         found.steps = found.steps or inner.steps
         found.expected = found.expected or inner.expected
@@ -90,7 +104,13 @@ def normalize_paste(raw: RawTicket, settings: Settings) -> Ticket:
         expected=found.expected,
         actual=found.actual,
         components=_items(sections.get("components", "")),
-        labels=_items(sections.get("labels", "")),
+        labels=_unique(
+            [
+                *_items(sections.get("labels", "")),
+                *_items(sections.get("type", "")),
+                *_items(sections.get("epic", "")),
+            ]
+        ),
         comments=kept,
         comments_omitted=len(comments) - len(kept),
         links=[u for u in links if u.startswith(("http://", "https://"))],
@@ -128,10 +148,16 @@ def _split(text: str, ref: str) -> tuple[str, str, dict[str, str], list[tuple[st
     return key, title, joined, [(h, "\n".join(b).strip()) for h, b in extra]
 
 
+def _unique(items: list[str]) -> list[str]:
+    return list(dict.fromkeys(items))
+
+
 def _description(
     sections: dict[str, str], extra: list[tuple[str, str]], attachments: list[dict[str, Any]]
 ) -> str | None:
     parts = [sections.get("description", "")]
+    if sections.get("epic"):  # the feature area's name: often the best hint for search
+        parts.append(f"Epic: {sections['epic']}")
     parts += [f"{heading}:\n{body}" for heading, body in extra if body]
     if sections.get("test_plan"):
         parts.append(f"Test plan (pasted):\n{sections['test_plan']}")

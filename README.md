@@ -67,8 +67,10 @@ uv run ticket2test new-ticket DEMO-101 --dir <private folder>/tickets
 uv run ticket2test normalize DEMO-101 --paste <private folder>/tickets --out ticket.json
 ```
 
-A pasted ticket is one Markdown file with fixed `##` sections (components, labels, description,
-steps to reproduce, expected, actual, test plan, attachments, comments, links). When the steps or
+A pasted ticket is one Markdown file with `##` sections, in any order (type, epic, components,
+labels, description, steps to reproduce, expected, actual, acceptance criteria, test plan,
+attachments, comments, links). Type and epic become labels; acceptance criteria count as the
+expected result when there is no expected section. When the steps or
 expected result live in a linked test plan, paste that part under `## Test plan`: steps and
 expected come from their own sections first, then from the description, then from the test plan.
 Attachments are local files listed one per line; `.md`, `.txt` and `.csv` are read, others only
