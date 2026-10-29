@@ -3,7 +3,8 @@
     python scripts/to_container.py <container> [--target /root/work/ai-prj]
 
 Only committed files go (``git archive HEAD``): no virtual environment, ``.env``, ``.scratch``
-or git history. The copy in the container is removed and written again; the target must be a
+or git history. An empty ``.scratch`` is created again, since the tool writes its working files
+there. The copy in the container is removed and written again; the target must be a
 folder named ``ai-prj`` (or ``ai-prj-<something>``), so a typo can't point the removal at
 another folder, such as the real repo next to it. Nothing is read from the container. A
 ``.copied-from`` file in the copy records the commit.
@@ -42,7 +43,8 @@ def container_command(runtime: str, container: str, user: str, target: str, sha:
         raise ValueError(f"unexpected commit id {sha!r}")
     script = (
         f"rm -rf '{target}' && mkdir -p '{target}' && tar -x -C '{target}' "
-        f"&& printf '%s\\n' {sha} > '{target}/.copied-from'"
+        f"&& printf '%s\\n' {sha} > '{target}/.copied-from' "
+        f"&& mkdir -p '{target}/.scratch'"  # git-ignored, so not in the archive; tools write here
     )
     return [runtime, "exec", "-i", "--user", user, container, "sh", "-c", script]
 

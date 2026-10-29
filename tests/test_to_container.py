@@ -51,6 +51,7 @@ def test_the_container_command() -> None:
     shell = command[-1]
     assert shell.startswith("rm -rf '/root/work/ai-prj' && mkdir -p '/root/work/ai-prj'")
     assert "tar -x -C '/root/work/ai-prj'" in shell and "abc1234def56" in shell
+    assert shell.endswith("mkdir -p '/root/work/ai-prj/.scratch'")  # not in the archive
     with pytest.raises(ValueError):
         script.container_command("podman", "x; rm", "root", "/root/work/ai-prj", "abc1234")
     with pytest.raises(ValueError):
