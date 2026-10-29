@@ -668,3 +668,32 @@ def test_cli_generate_reuses_first(
     assert (
         sorted(p.as_posix() for p in STANDIN.rglob("*") if "__pycache__" not in p.parts) == before
     )
+
+
+def test_the_repair_loop_judges_attempts_with_the_given_check(
+    index: IndexData, retrieval: RetrievalResult, tmp_path: Path
+) -> None:
+    """A new method in an existing class is judged inside that class: the check the pipeline
+    passes decides, and with a clean report no repair round runs."""
+    from ticket2test.validate.repair import generate_with_repair
+    from ticket2test.validate.report import ValidationReport
+
+    seen: list[str] = []
+
+    def check(attempt):  # type: ignore[no-untyped-def]
+        seen.append(attempt.file_name)
+        return attempt, ValidationReport()
+
+    fake = FakeLLMClient([_reply()])
+    result = generate_with_repair(
+        _draft(), retrieval, index, _settings(tmp_path), fake, "fake", "fake-model",
+        CONVENTIONS, check=check,
+    )  # fmt: skip
+    assert seen and result.report.ok and result.report.repairs == 0
+    assert fake.remaining == 0  # one generation call, no repair
+
+    fallback = generate_with_repair(
+        _draft(), retrieval, index, _settings(tmp_path), FakeLLMClient([_reply()]), "fake",
+        "fake-model", CONVENTIONS, check=lambda attempt: None,
+    )  # fmt: skip
+    assert fallback.report.checks_run  # None: judged as a module, the usual validators ran

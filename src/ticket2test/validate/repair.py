@@ -8,6 +8,7 @@ most ``repair.max_attempts`` rounds, then returns the last version with its repo
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from ticket2test.config import Settings
@@ -69,8 +70,17 @@ def generate_with_repair(
     provider: str,
     model: str,
     conventions: str | None = None,
+    check: Callable[[GeneratedTest], tuple[GeneratedTest, ValidationReport] | None] | None = None,
 ) -> RepairResult:
+    """``check``: how each attempt is judged, when not as a new module. A new method in an
+    existing class is judged inside that class (the patched file), so the class's own helpers
+    resolve; ``None`` from it falls back to judging the attempt as a module."""
     setup = prepare_generation(draft, retrieval, index, settings, conventions)
+
+    def judged(attempt: GeneratedTest) -> tuple[GeneratedTest, ValidationReport]:
+        found = check(attempt) if check is not None else None
+        return found if found is not None else (attempt, validate_test(attempt, setup, settings))
+
     max_retries = settings.llm.max_retries_on_bad_json
     result = complete_structured(
         client,
@@ -81,8 +91,8 @@ def generate_with_repair(
     )
     calls = result.attempts
     generated = assemble(setup, result.value, calls, provider, model, masker_of(client))
-    report = validate_test(generated, setup, settings)
-    pieces = _pieces(generated, index, settings, {})
+    as_checked, report = judged(generated)
+    pieces = _pieces(as_checked, index, settings, {})
 
     prompt = load_prompt(settings.repair.prompt_version, settings.paths.prompts_dir)
     messages = list(setup.request.messages)
@@ -109,8 +119,8 @@ def generate_with_repair(
         calls += result.attempts
         last_reply = result.response.text
         generated = assemble(setup, result.value, calls, provider, model, masker_of(client))
-        report = validate_test(generated, setup, settings)
-        pieces = _pieces(generated, index, settings, pieces)
+        as_checked, report = judged(generated)
+        pieces = _pieces(as_checked, index, settings, pieces)
 
     report.repairs = len(history)
     report.history = history

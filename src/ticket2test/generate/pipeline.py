@@ -127,9 +127,22 @@ def _generate_reusing(
             except PatchError as exc:
                 outcome.notes.append(f"method not possible: {exc}; writing a new module")
             else:
+
+                def in_class(
+                    attempt: GeneratedTest,
+                ) -> tuple[GeneratedTest, ValidationReport] | None:
+                    """Each attempt judged where it will live: inside the existing class, whose
+                    own helpers it may call (as a module, they would look missing)."""
+                    try:
+                        patched = method_patch(attempt, chosen, index, settings, repo_root)
+                    except PatchError:
+                        return None
+                    return patched, validate_patch(patched, index, settings, repo_root, draft)
+
                 repaired = generate_with_repair(
-                    draft, steered, index, settings, client, provider, model, conventions
-                )
+                    draft, steered, index, settings, client, provider, model, conventions,
+                    check=in_class,
+                )  # fmt: skip
                 outcome.attempt_pieces = list(repaired.attempt_pieces)
                 try:
                     generated = method_patch(repaired.generated, chosen, index, settings, repo_root)

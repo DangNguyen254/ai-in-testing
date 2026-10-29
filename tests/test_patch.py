@@ -537,3 +537,40 @@ def test_a_numeric_case_takes_its_value_from_the_matching_input(
     numeric = parametrize_site(ONE_LINE.replace('["a", "b"]', "[1, 3]"), "TestA", "test_x")
     with pytest.raises(PatchError, match="whole numbers"):
         numeric.literal("two")
+
+
+HELPER_CALLER = """import pytest
+
+from framework.base_test import BaseTest
+
+
+class TestProfilesLevels(BaseTest):
+   def setup(self):
+      self.base_setup(fresh_driver=True)
+
+   @pytest.mark.priority("p2")
+   @pytest.mark.suite("regression")
+   def test_profiles_add_low_level(self):
+      self._add_profile("low-level", "low")
+      profiles = self.nav.profiles.list
+      self.check.assertEqual("low", profiles.level_of("low-level"))
+"""
+
+
+def test_a_new_method_may_call_the_target_classes_own_helper(
+    setup: tuple[Settings, IndexData],
+) -> None:
+    """Found in the first real trial: the repair loop judged a new method as a module of its
+    own, where the target class's own helper looked missing, and repair deleted the calls."""
+    from ticket2test.validate.validator import validate_generated
+
+    settings, index = setup
+    path = "tests/profiles/test_profiles.py"
+    alone = _generated(HELPER_CALLER, []).model_copy(update={"test_ids": []})
+    as_module = validate_generated(alone, index.catalog, settings, index=index)
+    assert any("_add_profile" in f.message for f in as_module.errors)  # the old, wrong view
+    patched = method_patch(
+        alone, _decision("method", "TestProfiles", path), index, settings, STANDIN
+    )
+    in_class = validate_patch(patched, index, settings, STANDIN)
+    assert not [f for f in in_class.errors if "_add_profile" in f.message]

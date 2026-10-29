@@ -742,6 +742,79 @@ def check_assertions(s: Subject) -> Iterator[Finding]:
                 test=fn.name,
                 line=fn.lineno,
             )
+            continue
+        static = [c for c in calls if not c.helper and _cannot_fail(c.node, fn, s)]
+        if not static:
+            continue
+        real = len(static) < len([c for c in calls if not c.helper]) or any(c.helper for c in calls)
+        for call in static:
+            yield _f(
+                "assertions",
+                f"{call.method} can't fail: both sides come from the test's own data or "
+                "constants, so it never reads the product. Compare with a value read from the "
+                "page or the backend",
+                severity="warning" if real or s.deep_checks.get(fn.name) else "error",
+                test=fn.name,
+                line=call.line,
+            )
+
+
+_ONE_ARG = {"assertTrue", "assertFalse", "assertIsNone", "assertIsNotNone"}
+_PURE = {"len", "str", "int", "float", "bool", "list", "tuple", "set", "sorted", "dict"}
+
+
+def _cannot_fail(call: ast.Call, fn: ast.FunctionDef, s: Subject) -> bool:
+    """The assertion's operands come only from constants and the test's own data entry (or are
+    the same expression), so its outcome never depends on the product."""
+    method = dotted(call.func).rsplit(".", 1)[-1]
+    args = list(call.args[: 1 if method in _ONE_ARG else 2])
+    if len(args) < (1 if method in _ONE_ARG else 2):
+        return False
+    if len(args) == 2 and ast.dump(args[0]) == ast.dump(args[1]):
+        return True  # x == x
+    roots = set(s.settings.data.access)
+    local = _static_locals(fn, roots)
+    if method in _ONE_ARG and isinstance(args[0], ast.Compare):
+        return all(_static(e, roots, local) for e in [args[0].left, *args[0].comparators])
+    return all(_static(a, roots, local) for a in args)
+
+
+def _static(node: ast.expr, roots: set[str], local: set[str]) -> bool:
+    if isinstance(node, ast.Constant):
+        return True
+    if isinstance(node, ast.List | ast.Tuple | ast.Set):
+        return all(_static(e, roots, local) for e in node.elts)
+    if isinstance(node, ast.Dict):
+        return all(_static(e, roots, local) for e in [*node.keys, *node.values] if e is not None)
+    if isinstance(node, ast.Name):
+        return node.id in local
+    if isinstance(node, ast.Subscript):  # params["k"], params["k"][0]
+        return dotted(node.value) in roots or _static(node.value, roots, local)
+    if isinstance(node, ast.Call):
+        name = dotted(node.func)
+        if name.endswith(".get") and dotted(node.func.value) in roots:  # type: ignore[attr-defined]
+            return True
+        return name in _PURE and all(_static(a, roots, local) for a in node.args)
+    if isinstance(node, ast.BinOp):
+        return _static(node.left, roots, local) and _static(node.right, roots, local)
+    return False
+
+
+def _static_locals(fn: ast.FunctionDef, roots: set[str]) -> set[str]:
+    """Local names assigned only from constants or the data entry (in source order)."""
+    local: set[str] = set()
+    tainted: set[str] = set()
+    for node in ast.walk(fn):
+        targets = node.targets if isinstance(node, ast.Assign) else []
+        value = node.value if isinstance(node, ast.Assign) else None
+        for target in targets:
+            if not isinstance(target, ast.Name):
+                continue
+            if value is not None and _static(value, roots, local):
+                local.add(target.id)
+            else:
+                tainted.add(target.id)
+    return local - tainted
 
 
 def check_markers(s: Subject) -> Iterator[Finding]:

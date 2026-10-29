@@ -606,7 +606,8 @@ def test_other_assertion_objects_and_classes_without_a_base(tmp_path: Path) -> N
         "tests/test_a.py": (
             "import unittest\nfrom framework.base import Base\n\n"
             "check = unittest.TestCase()\n\n\n"
-            "class TestA:\n   def test_one(self):\n      check.assertEqual(1, 1)\n\n\n"
+            "class TestA:\n   def test_one(self):\n"
+            "      check.assertEqual(1, self.page.count)\n\n\n"
             "class TestB(Base):\n   def test_two(self):\n      pass\n"
         ),
     }
@@ -702,7 +703,7 @@ def test_a_module_level_testcase_and_an_entry_copied_in_a_helper(tmp_path: Path)
             "import unittest\nfrom framework.run import run_helper\n\n"
             "tc = unittest.TestCase('__init__')\n\n\n"
             "class TestA:\n   def test_one(self, params, env):\n"
-            "      run_helper(env, params)\n      tc.assertTrue(True)\n"
+            "      run_helper(env, params)\n      tc.assertTrue(self.page.ready)\n"
         ),
         "tests/test_a.json": json.dumps([{"test_id": "test_one", "a": {}, "b": [], "c": 1}]),
     }
@@ -753,7 +754,7 @@ def test_waits_raises_shared_testcases_and_fixture_loaders_count(tmp_path: Path)
             "class TestA(Base):\n"
             "   def test_wait(self):\n      page = self.nav.page\n      page.toggle(False)\n\n"
             "   def test_raise(self):\n      self._run_all('x')\n\n"
-            "   def test_shared(self):\n      tc.assertTrue(True)\n\n"
+            "   def test_shared(self):\n      tc.assertTrue(self.page.ready)\n\n"
             "   def test_nothing(self):\n      page = self.nav.page\n      page.click()\n\n\n"
             "@pytest.mark.usefixtures('loader')\nclass TestB(Base):\n"
             "   def load(self, params):\n      self.cmds = params.get('a', [])\n\n"
@@ -769,3 +770,27 @@ def test_waits_raises_shared_testcases_and_fixture_loaders_count(tmp_path: Path)
     nothing = sorted(f.test for f in found if f.check == "assertions" and "nothing" in f.message)
     assert nothing == ["test_nothing"]
     assert not [f.message for f in found if f.check == "data_keys"]
+
+
+def test_a_check_that_cannot_fail_is_caught(tmp_path: Path) -> None:
+    """Found in the first real trial: after repair, the only check left compared a value from
+    the data entry with itself, so the test passed without touching the product."""
+    files = {
+        "framework/__init__.py": "",
+        "framework/base.py": "class Base:\n   pass\n",
+        "tests/test_a.py": (
+            "from framework.base import Base\n\n\nclass TestA(Base):\n"
+            "   def test_only_static(self):\n"
+            "      expected = self.params['count']\n"
+            "      self.check.assertEqual(self.params['count'], expected)\n\n"
+            "   def test_mixed(self):\n"
+            "      self.check.assertEqual(1, len([self.params['count']]))\n"
+            "      self.check.assertEqual(self.params['count'], self.page.count)\n"
+        ),
+        "tests/test_a.json": json.dumps(
+            [{"test_id": "test_only_static", "count": 1}, {"test_id": "test_mixed", "count": 1}]
+        ),
+    }
+    found = _suite_findings(tmp_path, files, {"data": {"seed_sections": []}})
+    cant = [(f.test, f.severity) for f in found if "can't fail" in f.message]
+    assert cant == [("test_only_static", "error"), ("test_mixed", "warning")]
