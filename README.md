@@ -87,7 +87,11 @@ uv run ticket2test run DEMO-101 --continue --repo <target repo>
 ```
 
 `--repo` can be left out once `paths.repo` is set in the config, and `--paste` / `--dir` once
-`paths.tickets_dir` is (`new-ticket TEST-095`, then `run TEST-095`). Each half runs the same steps as
+`paths.tickets_dir` is (`new-ticket TEST-095`, then `run TEST-095`).
+
+To compare with a test that already exists for the ticket, hide it: `run TEST-095 --continue
+--hide <path::Class::test or method name>`. The tool then works on a copy of the repo without that
+test and its data entries (in the cache folder; the repo itself is never changed). Each half runs the same steps as
 the separate commands below and writes the same files.
 
 Without `--out`, the ticket is written to `output/tickets/<id>.json`. `--raw-out FILE` also saves

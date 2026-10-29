@@ -168,6 +168,31 @@ def new_ticket(
     typer.echo(f"Wrote {target}")
 
 
+def _without_tests(state: AppState, repo: Path, hide: list[str], stem: str) -> Path:
+    """A copy of the repo without these tests (and their data entries), in the cache: what the
+    eval's leave-one-out does. The repo itself is only read."""
+    from ticket2test.eval.generation import leave_one_out_repo
+    from ticket2test.eval.retrieval import manifest_test_to_chunk_id
+    from ticket2test.index.indexer import update_index
+
+    settings = state.settings
+    index, _, _ = update_index(repo, settings)
+    tests = [c for c in index.chunks if c.kind == "test" and not c.inherited_from]
+    ids: set[str] = set()
+    for wanted in hide:
+        exact = manifest_test_to_chunk_id(wanted) if "::" in wanted else None
+        found = {
+            c.id for c in tests if c.id == exact or (exact is None and c.symbol_name == wanted)
+        }
+        if not found:
+            typer.echo(f"Error: no test matches --hide {wanted!r}", err=True)
+            raise typer.Exit(code=2)
+        ids |= found
+    dest = settings.paths.cache_dir / "run-hidden" / stem
+    typer.echo(f"Hiding {len(ids)} test(s): working on a copy of the repo in {dest}")
+    return leave_one_out_repo(repo, index, ids, settings, dest)
+
+
 def _repo(state: AppState, given: Path | None) -> Path:
     """The target repo: the argument, else ``paths.repo``; an existing folder either way."""
     repo = given or state.settings.paths.repo
@@ -206,6 +231,13 @@ def run(
     ] = False,
     repo: Annotated[
         Path | None, typer.Option(help="Target repo (default: paths.repo in the config).")
+    ] = None,
+    hide: Annotated[
+        list[str] | None,
+        typer.Option(
+            help="With --continue: a test the tool must not see (pytest id path::Class::test, "
+            "or the method name); repeatable. Works on a copy; the repo is never changed."
+        ),
     ] = None,
 ) -> None:
     """One ticket end to end, in two halves with a review between them.
@@ -263,6 +295,8 @@ def run(
     if drafts.status != "ok":
         typer.echo(f"Error: {key} has no draft to generate from ({drafts.status}).", err=True)
         raise typer.Exit(code=2)
+    if hide:  # e.g. the test a person already wrote for this ticket, to compare with
+        repo_root = _without_tests(state, repo_root, hide, stem)
     retrieve(
         ctx, ticket_file=ticket_path, repo=repo_root, draft=drafts_path, no_llm=False, out=None
     )

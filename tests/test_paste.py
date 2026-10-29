@@ -249,3 +249,46 @@ def test_a_story_with_type_epic_and_acceptance_criteria(tmp_path: Path) -> None:
 def test_the_template_has_the_story_sections() -> None:
     for heading in ("## Type", "## Epic", "## Acceptance criteria"):
         assert heading in TEMPLATE
+
+
+def test_run_continue_can_hide_a_test_on_a_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """To compare with a test a person already wrote: the tool works on a copy without it."""
+    import ticket2test.cli as cli
+
+    standin = Path(__file__).resolve().parents[1] / "standin"
+    target = standin / "tests" / "agent" / "test_agent_api.py"
+    before = target.read_text(encoding="utf-8")
+    out = tmp_path / "out"
+    monkeypatch.setenv("T2T_PATHS__OUTPUT_DIR", str(out))
+    monkeypatch.setenv("T2T_PATHS__CACHE_DIR", str(tmp_path / "cache"))
+    (out / "tickets").mkdir(parents=True)
+    (out / "drafts").mkdir()
+    (out / "tickets" / "DEMO-7.json").write_text("{}", encoding="utf-8")
+    drafts = {
+        "ticket_id": "DEMO-7",
+        "status": "ok",
+        "drafts": [],
+        "prompt_version": "v",
+        "provider": "fake",
+        "model": "m",
+        "attempts": 1,
+    }
+    (out / "drafts" / "DEMO-7.drafts.json").write_text(json.dumps(drafts), encoding="utf-8")
+    seen: dict[str, Path] = {}
+    monkeypatch.setattr(cli, "retrieve", lambda ctx, **kw: seen.setdefault("repo", kw["repo"]))
+    monkeypatch.setattr(cli, "generate", lambda ctx, **kw: None)
+
+    args = ["run", "DEMO-7", "--continue", "--repo", str(standin)]
+    result = CliRunner().invoke(app, [*args, "--hide", "test_agent_api_unknown_page"])
+    assert result.exit_code == 0, result.output
+    copy = seen["repo"]
+    assert copy != standin and (tmp_path / "cache") in copy.parents
+    hidden = (copy / "tests" / "agent" / "test_agent_api.py").read_text(encoding="utf-8")
+    assert "def test_agent_api_unknown_page" not in hidden
+    assert "def test_agent_api_unknown_page" in target.read_text(encoding="utf-8")
+    assert target.read_text(encoding="utf-8") == before  # the repo itself is never changed
+
+    nothing = CliRunner().invoke(app, [*args, "--hide", "test_that_does_not_exist"])
+    assert nothing.exit_code == 2 and "no test matches" in nothing.output
