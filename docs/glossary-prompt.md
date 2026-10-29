@@ -54,14 +54,18 @@ what it corresponds to in the suite. Start from MAP (area names, class names, co
 values, page-object chains, known data values), then confirm in REPO (folder and class names,
 docstrings, comments, the suite's own component documentation and `pytest.ini`). A term can map
 to any of:
-- an **area** (an area name from MAP) and its folders;
+- **folders**: the repo folders the feature's tests live in. A feature often has one folder
+  that the map splits into several areas (one per test module, when the folder is large): then
+  give the folder, not one of its areas;
+- **areas**: area names from MAP, when the term covers only some of them (or a folder's areas
+  differ in a way that matters, e.g. one per platform);
 - **classes** (`path::ClassName`) that test it;
 - **component marker values** the suite uses for it;
 - **data keys and values**: a key path from an area's known data values and the values that
   mean this term (e.g. a tracker word for an action → the action value the data uses);
 - **page-object chains** (`nav.<area>.<page>`) for its pages.
 
-Map only what the evidence supports; a term may have just an area, or just one value.
+Map only what the evidence supports; a term may have just a folder, or just one value.
 
 **3. Update, don't overwrite** (when GLOSSARY already exists):
 - keep every entry with `status: confirmed` unless its evidence is gone from REPO or MAP (renamed
@@ -83,7 +87,8 @@ terms:
     kind: component                 # component | epic | label | phrase
     status: proposed                # proposed (written by you) | confirmed (a person checked it)
     checked: 2026-10-29
-    area: <area name from MAP>      # optional
+    folders: [<repo folder>]        # optional: the feature's folder(s), as in the repo
+    areas: [<area name from MAP>]   # optional: when only some areas of a folder are meant
     classes: [<path>::<ClassName>]  # optional
     markers: [<component marker value>]          # optional
     data:                                        # optional
@@ -95,7 +100,7 @@ terms:
 unmapped:
   - term: "<tracker word>"
     kind: epic
-    reason: one short line (e.g. "no area, class or value mentions it")
+    reason: one short line (e.g. "no folder, class or value mentions it")
 ```
 
 Leave out the optional fields that don't apply. Only you write `proposed`; never set `confirmed`
@@ -106,6 +111,6 @@ yourself.
    `uv run --frozen python -c "import yaml; d = yaml.safe_load(open('PRIVATE/glossary.yaml')); print(len(d['terms']), 'terms,', len(d.get('unmapped', [])), 'unmapped')"`
    (with the real path for PRIVATE). Fix and retry until it prints the counts, at most 5 times.
 2. Reply with a short summary in general words: how many terms the TRACKER files hold now, how
-   many were mapped (and to what kinds: areas, classes, values), how many are unmapped and the
+   many were mapped (and to what kinds: folders, areas, classes, values), how many are unmapped and the
    common reasons. No term, area, class, key or value names in the reply.
 3. Stop there.
