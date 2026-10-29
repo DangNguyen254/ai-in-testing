@@ -5,7 +5,7 @@ from __future__ import annotations
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 
@@ -191,6 +191,40 @@ def _without_tests(state: AppState, repo: Path, hide: list[str], stem: str) -> P
     dest = settings.paths.cache_dir / "run-hidden" / stem
     typer.echo(f"Hiding {len(ids)} test(s): working on a copy of the repo in {dest}")
     return leave_one_out_repo(repo, index, ids, settings, dest, only_indexed=True)
+
+
+def _write_new_parts(folder: Path, generated: Any, settings: Any) -> list[Path]:
+    """For reading a patch: only the new test methods (new_tests.py, decorators included, class
+    indent removed) and their data entries (new_entries.json), next to the whole patched files."""
+    import ast
+    import json
+    import textwrap
+
+    new = {i.split("[", 1)[0] for i in generated.new_test_ids}
+    try:
+        tree = ast.parse(generated.code)
+    except SyntaxError:
+        return []
+    lines = generated.code.splitlines()
+    pieces = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name in new:
+            first = min([node.lineno, *(d.lineno for d in node.decorator_list)])
+            pieces.append(textwrap.dedent("\n".join(lines[first - 1 : node.end_lineno])))
+    written: list[Path] = []
+    if pieces:
+        path = folder / "new_tests.py"
+        path.write_text("\n\n\n".join(pieces) + "\n", encoding="utf-8", newline="\n")
+        written.append(path)
+    id_field = settings.data.id_field
+    entries = [
+        e for e in generated.data_entries if str(e.get(id_field, "")).split("[", 1)[0] in new
+    ]
+    if entries:
+        path = folder / "new_entries.json"
+        path.write_text(json.dumps(entries, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        written.append(path)
+    return written
 
 
 def _repo(state: AppState, given: Path | None) -> Path:
@@ -732,6 +766,7 @@ def generate(
         diff_path = folder / "changes.patch"
         diff_path.write_text("".join(p.diff for p in generated.patches), encoding="utf-8")
         written.append(diff_path)
+        written += _write_new_parts(folder, generated, settings)
     else:
         code_path = folder / generated.file_name
         data_path = folder / generated.data_file_name

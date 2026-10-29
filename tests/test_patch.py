@@ -574,3 +574,39 @@ def test_a_new_method_may_call_the_target_classes_own_helper(
     )
     in_class = validate_patch(patched, index, settings, STANDIN)
     assert not [f for f in in_class.errors if "_add_profile" in f.message]
+
+
+def test_a_patch_also_writes_only_its_new_parts(
+    setup: tuple[Settings, IndexData], tmp_path: Any
+) -> None:
+    """Found in the trial: the new method is hard to find in the whole patched file, and the
+    JSON record holds the code as one string."""
+    import json as json_
+
+    from ticket2test.cli import _write_new_parts
+
+    settings, index = setup
+    path = "tests/files/test_files_archives.py"
+    base = next(
+        e
+        for c in index.chunks
+        if c.symbol_name == "test_files_archive_view_members"
+        for e in c.data_entries.values()
+    )
+    kept = {k: v for k, v in base.items() if k not in ("decision", "targets")}
+    entry = {**kept, "test_id": "test_files_archive_encrypted_members", "members": ["a.txt"]}
+    generated = method_patch(
+        _generated(GENERATED_CLASS, [entry]),
+        _decision("method", "TestFilesArchives", path),
+        index,
+        settings,
+        STANDIN,
+    )
+    written = _write_new_parts(tmp_path, generated, settings)
+    assert {p.name for p in written} == {"new_tests.py", "new_entries.json"}
+    code = (tmp_path / "new_tests.py").read_text(encoding="utf-8")
+    assert code.startswith('@pytest.mark.priority("p2")')  # decorators kept, class indent gone
+    assert "def test_files_archive_encrypted_members(self):" in code
+    assert "test_files_archive_view_members" not in code  # only the new method
+    entries = json_.loads((tmp_path / "new_entries.json").read_text(encoding="utf-8"))
+    assert [e["test_id"] for e in entries] == ["test_files_archive_encrypted_members"]
