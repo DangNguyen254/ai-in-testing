@@ -164,8 +164,27 @@ def index_without(index: IndexData, chunk_ids: set[str]) -> IndexData:
     )
 
 
+def _copy_indexed(repo: Path, dest: Path, settings: Settings) -> None:
+    """Copy the repo's Python and data files (the index's ignore rules apply, folders are
+    walked without following links), as plain files."""
+    from ticket2test.adapters.repo.local_path import LocalPathRepoSource
+
+    source = LocalPathRepoSource(
+        repo, ignore=settings.index.ignore, max_file_bytes=settings.index.max_file_bytes
+    )
+    for rel in source.list_files((".py", settings.index.data_file_suffix)):
+        target = dest / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(repo / rel, target)
+
+
 def leave_one_out_repo(
-    repo: Path, index: IndexData, chunk_ids: set[str], settings: Settings, dest: Path
+    repo: Path,
+    index: IndexData,
+    chunk_ids: set[str],
+    settings: Settings,
+    dest: Path,
+    only_indexed: bool = False,
 ) -> Path:
     """A copy of the repo without these tests: their code and their data entries are cut, so
     the index, patches (which read files) and the sandbox collect all see the same suite.
@@ -175,7 +194,11 @@ def leave_one_out_repo(
     """
     if dest.exists():
         shutil.rmtree(dest)
-    shutil.copytree(repo, dest, ignore=shutil.ignore_patterns(".git", "__pycache__"))
+    if only_indexed:  # what the index, generation and patches read: Python and data files
+        _copy_indexed(repo, dest, settings)
+    else:  # links stay links: a repo may hold links that loop back into itself
+        ignore = shutil.ignore_patterns(".git", "__pycache__")
+        shutil.copytree(repo, dest, symlinks=True, ignore=ignore)
     chunks = [c for c in index.chunks if c.id in chunk_ids and not c.inherited_from]
     by_file: dict[str, list[Chunk]] = {}
     for chunk in chunks:

@@ -190,7 +190,7 @@ def _without_tests(state: AppState, repo: Path, hide: list[str], stem: str) -> P
         ids |= found
     dest = settings.paths.cache_dir / "run-hidden" / stem
     typer.echo(f"Hiding {len(ids)} test(s): working on a copy of the repo in {dest}")
-    return leave_one_out_repo(repo, index, ids, settings, dest)
+    return leave_one_out_repo(repo, index, ids, settings, dest, only_indexed=True)
 
 
 def _repo(state: AppState, given: Path | None) -> Path:

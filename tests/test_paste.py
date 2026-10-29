@@ -292,3 +292,34 @@ def test_run_continue_can_hide_a_test_on_a_copy(
 
     nothing = CliRunner().invoke(app, [*args, "--hide", "test_that_does_not_exist"])
     assert nothing.exit_code == 2 and "no test matches" in nothing.output
+
+
+def test_hiding_a_test_copies_only_indexed_files_and_survives_link_loops(
+    tmp_path: Path,
+) -> None:
+    """Found in the trial: a real repo held links that loop back into itself, and copying the
+    whole repo followed them until the copy failed."""
+    import os
+
+    from ticket2test.eval.generation import leave_one_out_repo
+    from ticket2test.index.indexer import update_index
+
+    repo = tmp_path / "repo"
+    (repo / "tests").mkdir(parents=True)
+    (repo / "tests" / "test_a.py").write_text(
+        "def test_keep():\n    pass\n\n\ndef test_hide():\n    pass\n", encoding="utf-8"
+    )
+    (repo / "tests" / "test_a.json").write_text("[]", encoding="utf-8")
+    (repo / "notes.txt").write_text("not read by the tool", encoding="utf-8")
+    try:
+        os.symlink(repo, repo / "tests" / "loop", target_is_directory=True)
+    except OSError:
+        pytest.skip("can't create a symbolic link here")
+    settings = Settings.model_validate({"paths": {"cache_dir": str(tmp_path / "cache")}})
+    index, _, _ = update_index(repo, settings)
+    hidden = {c.id for c in index.chunks if c.symbol_name == "test_hide"}
+    copy = leave_one_out_repo(repo, index, hidden, settings, tmp_path / "copy", only_indexed=True)
+    code = (copy / "tests" / "test_a.py").read_text(encoding="utf-8")
+    assert "def test_keep" in code and "def test_hide" not in code
+    assert (copy / "tests" / "test_a.json").is_file()
+    assert not (copy / "notes.txt").exists()  # only what the tool reads
