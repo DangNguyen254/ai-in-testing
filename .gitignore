@@ -37,4 +37,4 @@ drafts/
 Thumbs.db
 
 # Pasted real tickets (ticket2test new-ticket): never committed
-tickets/
+/tickets/
