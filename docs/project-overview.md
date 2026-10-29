@@ -263,4 +263,10 @@ Generation quality on real tickets isn't measured yet.
   - a test can use a real member that's the wrong one and still pass every check;
   - a missing member that needs a new selector can't be proposed;
   - members of pages built by constructors aren't type-checked.
+- **Planned, to refine after the trial: revising a draft by instruction.** Today a draft that needs changes is fixed by improving the ticket file and drafting again, or by editing `drafts/<id>.drafts.json` by hand (the `.md` is only a readable copy). The idea is a `revise <id> "<instruction>"` command:
+  - `[LLM]` API Haiku gets the current draft, the ticket and the person's instruction, and returns the revised draft;
+  - code checks it as it checks a first draft: the schema, and nothing taken from neither the ticket nor the instruction;
+  - it shows what changed and rewrites the `.md`; it can be repeated before `run <id> --continue`.
+
+  It keeps the fixed workflow: one bounded call per revision, the person gives the instruction, code checks the result. The same idea may later apply to a generated test (an instruction passed to the repair loop), once the trial shows what feedback reviewers need to give.
 - **Later:** the log triage agent; notes that learn from reviews and real runs; type inference (an LSP or SCIP backend) if real data shows it's worth a new dependency.

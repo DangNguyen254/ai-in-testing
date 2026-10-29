@@ -192,6 +192,8 @@ The code is organized by pipeline stage, with company-specific parts at the edge
 - linked documents aren't read automatically.
 
 **Later**
+- revising a draft by instruction (a `revise` step: the person says what to change, the model
+  applies it, code checks it); the same, later, for a generated test;
 - log triage of real runs;
 - reading the tracker through its API, and linked documents through their APIs, once approved;
 - learning from review comments and real runs.
