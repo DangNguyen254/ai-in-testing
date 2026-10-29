@@ -263,6 +263,7 @@ Generation quality on real tickets isn't measured yet.
   - a test can use a real member that's the wrong one and still pass every check;
   - a missing member that needs a new selector can't be proposed;
   - members of pages built by constructors aren't type-checked.
+- **Planned next: the suite's vocabulary and meaning** (see `docs/knowledge-plan.md`). The trials showed generated tests miss on meaning, not structure: tracker words that don't match the suite's, guessed values, unwritten conventions. The plan: known values extracted by code from the index; a glossary from tracker words to suite words written and kept current by a model session that can read the private code; both used in the draft, the search and the generation context; then area guides by a stronger model. Measured after each layer.
 - **Planned, to refine after the trial: revising a draft by instruction.** Today a draft that needs changes is fixed by improving the ticket file and drafting again, or by editing `drafts/<id>.drafts.json` by hand (the `.md` is only a readable copy). The idea is a `revise <id> "<instruction>"` command:
   - `[LLM]` API Haiku gets the current draft, the ticket and the person's instruction, and returns the revised draft;
   - code checks it as it checks a first draft: the schema, and nothing taken from neither the ticket nor the instruction;

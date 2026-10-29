@@ -182,8 +182,10 @@ The code is organized by pipeline stage, with company-specific parts at the edge
 
 **Next**
 - a trial on a few real tickets, pasted by hand: draft, review, generate, validate, then a
-  person collects and runs the tests;
-- whatever the trial shows needs fixing in the validators or the generation prompts.
+  person collects and runs the tests (started: structure comes out right; meaning doesn't yet);
+- the suite's vocabulary and meaning (`docs/knowledge-plan.md`): known values extracted by code,
+  a glossary from tracker words to suite words kept current by a model session that can read the
+  private code, then area guides by a stronger model, measured after each layer.
 
 **Known limits**
 - a test can use a real member that is the wrong one and still pass every check;
