@@ -41,7 +41,10 @@ differ (generated names, payloads) are marked free text instead of listed (limit
 The values are kept out of the area summary the guide prompts use. Private output, under the
 output folder.
 
-**B. Glossary (Haiku).** A prompt in `docs/` has Haiku read the known-values file, folder,
+**B. Glossary (Haiku).** The prompt is `docs/glossary-prompt.md` (it also defines the file
+format the tool reads, `glossary.yaml` in the private folder). It has Haiku first collect the
+tracker's words from the pasted tickets into `tracker/components.txt` and `tracker/epics.txt`
+(people add more names later), then read the known-values file, folder,
 class and test names, docstrings and comments, the suite's component documentation and
 `pytest.ini`, and the tracker's own lists: the names of the project's components and epics,
 copied from the tracker (names only). It writes a glossary file the tool reads; each entry maps a
