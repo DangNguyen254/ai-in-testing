@@ -456,3 +456,36 @@ def test_eval_with_pasted_tickets_skips_the_ones_not_pasted(tmp_path: Path) -> N
     assert [p.pair_id for p in report.pairs] == ["p1"]
     assert [s.pair_id for s in report.skipped] == ["p2"]
     assert "not found" in report.skipped[0].reason
+
+
+def test_hit_and_file_hit_say_whether_search_found_the_area(tmp_path: Path) -> None:
+    """A ticket that switched off several tests is one pair; finding any of them is a hit,
+    and a result in the right file is a file hit, even when no listed test is in the top k."""
+    from ticket2test.eval.pairs import PairSet
+
+    tickets = tmp_path / "tickets"
+    tickets.mkdir()
+    (tickets / "DEMO-1.md").write_text(
+        "# DEMO-1: The agent API returns an error for an unknown page\n\n"
+        "## Expected\nAn unknown-page error interaction.\n",
+        encoding="utf-8",
+    )
+    tests = [
+        "tests/agent/test_agent_api.py::TestAgentApi::test_agent_api_unknown_page",
+        "tests/agent/test_agent_api.py::TestAgentApi::test_agent_api_task_flags_injection",
+    ]
+    pair_set = PairSet.model_validate(
+        {
+            "name": "pasted",
+            "repo_path": "standin",
+            "ticket_source": "paste",
+            "tickets_dir": str(tickets),
+            "ground_truth": "tests",
+            "pairs": [{"id": "p1", "ticket": "DEMO-1", "tests": tests}],
+        }
+    )
+    report = evaluate_retrieval(pair_set, REPO_ROOT, _settings(tmp_path), client=None)
+    pair = report.pairs[0]
+    assert pair.hit == bool(pair.found) and report.hit_rate == float(pair.hit)
+    assert pair.file_hit and report.file_hit_rate == 1.0
+    assert "File hit@10" in render_markdown(report)

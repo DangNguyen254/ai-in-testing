@@ -975,7 +975,7 @@ def mine(
     import json
 
     from ticket2test.adapters.repo.git_history import GitHistoryError, GitHistoryReader
-    from ticket2test.eval.mining import mine_current_skips, mine_skip_removals
+    from ticket2test.eval.mining import MinedPair, mine_current_skips, mine_skip_removals
     from ticket2test.index.indexer import update_index
 
     state: AppState = ctx.obj
@@ -990,14 +990,20 @@ def mine(
         except GitHistoryError as exc:
             typer.echo(f"Error: {exc}", err=True)
             raise typer.Exit(code=1) from exc
+    # one pair per ticket, with every test it switched off as the ground truth: a ticket that
+    # skips 30 tests would otherwise count 30 times, most of them misses whatever search does
+    by_ticket: dict[str, list[MinedPair]] = {}
+    for m in mined:
+        by_ticket.setdefault(m.ticket, []).append(m)
     pairs = [
         {
-            "id": f"mined-{m.ticket}",
-            "ticket": m.ticket,
-            "tests": [m.test],
-            "source": f"mined: {m.commit[:10] or 'no commit'} {m.kind} ({m.subject})",
+            "id": f"mined-{ticket}",
+            "ticket": ticket,
+            "tests": list(dict.fromkeys(m.test for m in group)),
+            "source": f"mined: {group[0].commit[:10] or 'no commit'} {group[0].kind} "
+            f"({group[0].subject})" + (f", {len(group)} tests" if len(group) > 1 else ""),
         }
-        for m in mined
+        for ticket, group in by_ticket.items()
     ]
     how = (
         "skips in the current tree citing the ticket id (open tickets, no fix commit). Ground "

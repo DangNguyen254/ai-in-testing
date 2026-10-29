@@ -33,6 +33,8 @@ class PairResult(BaseModel):
     found: list[str]
     recall: float
     reciprocal_rank: float
+    hit: bool = False  # at least one ground-truth unit in the top k
+    file_hit: bool = False  # a top-k result in a ground-truth file (the right area)
     llm_calls: int = 0
     followup_rounds: int = 0
     investigation: Investigation | None = None  # when the investigator ran
@@ -57,6 +59,8 @@ class RetrievalReport(BaseModel):
     skipped: list[SkippedPair] = Field(default_factory=list)
     mean_recall: float | None = None
     mean_reciprocal_rank: float | None = None
+    hit_rate: float | None = None  # share of pairs with at least one ground-truth unit found
+    file_hit_rate: float | None = None  # share of pairs with a result in a ground-truth file
     settings: dict[str, Any] = Field(default_factory=dict)  # retrieval config snapshot
     llm_models: dict[str, str] = Field(default_factory=dict)  # step -> model, when LLM is on
     llm_calls: int = 0
@@ -135,6 +139,8 @@ def evaluate_retrieval(
         report.mean_reciprocal_rank = round(
             sum(p.reciprocal_rank for p in report.pairs) / len(report.pairs), 4
         )
+        report.hit_rate = round(sum(p.hit for p in report.pairs) / len(report.pairs), 4)
+        report.file_hit_rate = round(sum(p.file_hit for p in report.pairs) / len(report.pairs), 4)
     return report
 
 
@@ -167,6 +173,7 @@ def _score(
     retrieved = retrieved[:k]  # hits the investigator kept can run past the top_k
     found = [t for t in present if t in retrieved]
     first = next((rank for rank, key in enumerate(retrieved, 1) if key in present), None)
+    files = {t.split("::", 1)[0] for t in present}
     return PairResult(
         pair_id=pair.id,
         ticket=pair.ticket,
@@ -177,6 +184,8 @@ def _score(
         found=found,
         recall=round(len(found) / len(present), 4),
         reciprocal_rank=round(1 / first, 4) if first else 0.0,
+        hit=bool(found),
+        file_hit=any(r.split("::", 1)[0] in files for r in retrieved),
         llm_calls=result.llm_calls,
         followup_rounds=result.followup_rounds,
         investigation=result.investigation,
@@ -200,6 +209,8 @@ def render_markdown(report: RetrievalReport) -> str:
         + ("n/a" if report.elapsed_seconds is None else f"{report.elapsed_seconds:.0f} s"),
         f"- Pairs evaluated: {len(report.pairs)}, skipped: {len(report.skipped)}",
         f"- **Mean recall@{report.k}: {fmt(report.mean_recall)}**",
+        f"- Hit@{report.k} (at least one right test found): {fmt(report.hit_rate)}",
+        f"- File hit@{report.k} (a result in a right test's file): {fmt(report.file_hit_rate)}",
         f"- Mean reciprocal rank: {fmt(report.mean_reciprocal_rank)}",
         f"- Created: {report.created_at:%Y-%m-%d %H:%M UTC}",
         "",

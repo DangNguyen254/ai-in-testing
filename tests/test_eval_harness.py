@@ -366,6 +366,7 @@ def test_cli_mine_and_eval(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
     assert result.exit_code == 0, result.output
     mined = load_pair_set(out)
     assert [p.ticket for p in mined.pairs] == ["STND-103", "STND-104", "STND-117"]
+    assert len({p.id for p in mined.pairs}) == len(mined.pairs)  # one pair per ticket
 
     result = runner.invoke(
         app,

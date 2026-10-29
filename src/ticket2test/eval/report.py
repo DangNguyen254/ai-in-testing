@@ -60,6 +60,8 @@ def retrieval_summary(runs: list[RetrievalReport]) -> dict[str, Any]:
         "mrr_mean": _mean(mrrs),
         "mrr_min": min(mrrs) if mrrs else None,
         "mrr_max": max(mrrs) if mrrs else None,
+        "hit_mean": _mean([r.hit_rate for r in runs if r.hit_rate is not None]),
+        "file_hit_mean": _mean([r.file_hit_rate for r in runs if r.file_hit_rate is not None]),
         "llm_calls": sum(r.llm_calls for r in runs),
         "cost": _cost([r.usage for r in runs]),
         "seconds": round(sum(r.elapsed_seconds or 0 for r in runs), 1),
@@ -115,16 +117,19 @@ def render_markdown(report: EvalRunReport) -> str:
             "## Measured: retrieval",
             "",
             "recall@k and MRR per set; with several runs, mean [min-max] (LLM steps are not "
-            "deterministic; deterministic runs must be identical).",
+            "deterministic; deterministic runs must be identical). hit@k: at least one right "
+            "test in the top k; file hit@k: a top-k result in a right test's file (mean).",
             "",
-            "| Set | LLM | Runs | Pairs | recall@k | MRR | LLM calls | Cost ($) | Time (s) |",
-            "|---|---|---|---|---|---|---|---|---|",
+            "| Set | LLM | Runs | Pairs | recall@k | hit@k | file hit@k | MRR | LLM calls "
+            "| Cost ($) | Time (s) |",
+            "|---|---|---|---|---|---|---|---|---|---|---|",
         ]
         for name, runs in report.retrieval.items():
             s = retrieval_summary(runs)
             lines.append(
                 f"| {name} | {'on' if s['use_llm'] else 'off'} | {s['runs']} | {s['pairs']} | "
                 f"{_fmt(s['recall_mean'])} [{_fmt(s['recall_min'])}-{_fmt(s['recall_max'])}] | "
+                f"{_fmt(s['hit_mean'])} | {_fmt(s['file_hit_mean'])} | "
                 f"{_fmt(s['mrr_mean'])} [{_fmt(s['mrr_min'])}-{_fmt(s['mrr_max'])}] | "
                 f"{s['llm_calls']} | {s['cost']} | {s['seconds']} |"
             )
