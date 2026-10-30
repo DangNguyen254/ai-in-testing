@@ -163,9 +163,12 @@ class ChainResolver:
         base_class: ClassEntry | None,
         local: set[str],
         path_helpers: set[str] | None = None,
+        other_bases: list[ClassEntry] | None = None,
     ):
         self.catalog = catalog
         self.base = base_class
+        # the class's further repo bases (``class T(Mixin, Base)``): ``self`` has their members too
+        self.other_bases = other_bases or []
         self.local = local  # members the generated class defines itself
         self.path_helpers = path_helpers or set()  # helpers taking a dotted page path string
 
@@ -213,13 +216,26 @@ class ChainResolver:
             owner = next_type
         return "ok", steps, "", owner.qualname if owner else None
 
+    def resolve_self(
+        self, root: str, raw: list[tuple[str, bool]]
+    ) -> tuple[ChainStatus, list[Step], str, str | None]:
+        """A ``self`` chain: through the first base, else through whichever further base has
+        the member (the first result stands when none does)."""
+        first = self.resolve(root, raw, self.base.qualname if self.base else None)
+        if first[0] != "missing":
+            return first
+        for other in self.other_bases:
+            found = self.resolve(root, raw, other.qualname)
+            if found[0] != "missing":
+                return found
+        return first
+
 
 def function_chains(
     fn: ast.FunctionDef, resolver: ChainResolver, roots: set[str] | None = None
 ) -> FunctionChains:
     """All chains rooted at ``self`` or at a local bound to a resolved chain, in source order."""
     result = FunctionChains()
-    base = resolver.base.qualname if resolver.base else None
 
     def visit(node: ast.AST) -> None:
         if isinstance(node, ast.Assign):
@@ -269,7 +285,7 @@ def function_chains(
         if root == "self":
             if not raw or raw[0][0] in resolver.local:
                 return None
-            start = base
+            start = None
         elif root in result.local_types:
             start = result.local_types[root]
         elif roots is not None and root in roots:
@@ -278,7 +294,10 @@ def function_chains(
             return None
         called_last = _is_called(node)
         raw = [*raw[:-1], (raw[-1][0], raw[-1][1] or called_last)]
-        status, steps, message, last_type = resolver.resolve(root, raw, start)
+        if root == "self":
+            status, steps, message, last_type = resolver.resolve_self(root, raw)
+        else:
+            status, steps, message, last_type = resolver.resolve(root, raw, start)
         use = ChainUse(root, steps, node.lineno, store, status, message)
         if status == "missing":
             use.missing_owner, last_type = last_type, None

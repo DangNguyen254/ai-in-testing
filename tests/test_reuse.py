@@ -520,3 +520,69 @@ def test_the_templates_class_takes_the_method_when_the_ticket_names_its_feature(
     )
     decision = decide(draft, weak, index, settings, choice)
     assert decision.kind == "module" and decision.target == "TestFilesArchives"
+
+
+def test_the_domains_closest_template_counts_when_the_first_is_elsewhere(
+    setup: tuple[Settings, IndexData],
+) -> None:
+    """Found in the real trial: retrieval's first template sat in another area, so the
+    template-class rule never ran and a new module was built from another class, though search
+    ranked the person's own class first. The domain's closest template counts; with the ticket
+    naming its folder and search ranking its tests first, its flow needs no bar."""
+    from ticket2test.models.retrieval import TemplateRef
+
+    settings, index = setup
+    draft, _ = SCENARIOS["module"]
+    ticket = Ticket(
+        id=draft.ticket_id,
+        title=draft.intent,
+        description=" ".join(draft.steps) + " " + draft.expected_outcome,
+        source=SourceInfo(system="jira", ref=draft.ticket_id),
+    )
+    retrieval = retrieve(ticket, index, settings, None, draft)
+    choice = choose_domain(retrieval, index, settings, ticket, draft)
+    elsewhere = next(
+        c
+        for c in index.chunks
+        if c.kind == "test" and c.data_entries and not c.file_path.startswith("tests/files/")
+    )
+    own = next(
+        c
+        for c in index.chunks
+        if c.class_name == "TestFilesArchives" and c.kind == "test" and c.data_entries
+    )
+    top = next((h for h in retrieval.hits if h.chunk_id == own.id), None) or (
+        retrieval.hits[0].model_copy(
+            update={"chunk_id": own.id, "file_path": own.file_path, "kind": "test"}
+        )
+    )
+    moved = retrieval.model_copy(
+        update={
+            "glossary_folders": ["tests/files"],
+            "templates": [
+                TemplateRef(
+                    chunk_id=elsewhere.id, entry_key=next(iter(elsewhere.data_entries)), why="t"
+                ),
+                TemplateRef(chunk_id=own.id, entry_key=next(iter(own.data_entries)), why="t"),
+            ],
+            "hits": [top, *(h for h in retrieval.hits if h is not top)],
+        }
+    )
+    strict = settings.model_copy(
+        update={
+            "generate": settings.generate.model_copy(
+                update={
+                    "reuse": settings.generate.reuse.model_copy(
+                        update={"method_min": 0.95, "method_named_min": 0.9}
+                    )
+                }
+            )
+        }
+    )
+    decision = decide(draft, moved, index, strict, choice)
+    assert decision.kind == "method" and decision.target == "TestFilesArchives", decision.reasons
+    # not the top search hit: the bar still applies, so a new module
+    second = moved.model_copy(
+        update={"hits": [h for h in retrieval.hits if h.chunk_id != own.id and h.kind == "test"]}
+    )
+    assert decide(draft, second, index, strict, choice).kind == "module"

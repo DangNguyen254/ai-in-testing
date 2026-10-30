@@ -938,3 +938,59 @@ def test_the_suites_own_check_helpers_count_as_checks() -> None:
     assert not check_calls(fn, "self.check", set())
     assert check_calls(fn, "self.check", set(), check_helpers=["verify_*"])
     assert not check_calls(fn, "self.check", set(), check_helpers=["wait_for_*"])
+
+
+def test_self_members_come_from_every_base_class(tmp_path: Path) -> None:
+    """Found in a real trial: ``class T(LogMixin, AreaBase)`` had its ``AreaBase`` members
+    reported missing, because only the first base was looked at."""
+    from ticket2test.generate.generator import first_party
+
+    repo = tmp_path / "repo"
+    (repo / "framework").mkdir(parents=True)
+    (repo / "tests").mkdir()
+    (repo / "framework" / "base.py").write_text(
+        "class LogMixin:\n   def read_log(self):\n      return []\n\n\n"
+        "class AreaBase:\n   def open_home(self):\n      pass\n",
+        encoding="utf-8",
+    )
+    code = (
+        "from framework.base import AreaBase, LogMixin\n\n\n"
+        "class TestArea(LogMixin, AreaBase):\n   def test_area_one(self):\n"
+        "      self.open_home()\n      self.read_log()\n      self.not_there()\n"
+    )
+    (repo / "tests" / "test_area.py").write_text(code, encoding="utf-8")
+    settings = Settings.model_validate({"paths": {"cache_dir": str(tmp_path / "cache")}})
+    index, _, _ = update_index(repo, settings)
+    report = _validate(
+        (settings, index, first_party(index, settings)),
+        code=code,
+        entries=[],
+        file_name="tests/test_area.py",
+        test_ids=["test_area_one"],
+    )
+    missing = [m for m in _messages(report, "names") if "has no member" in m]
+    assert len(missing) == 1 and "'not_there'" in missing[0], missing
+
+
+def test_data_handed_to_a_check_through_a_local_counts_for_the_claims() -> None:
+    """Found in a real trial: ``row = params["targets"][0]`` then ``self._verify_log(row)``
+    checks the row's values, though no key is written in the call."""
+    import ast
+
+    from ticket2test.validate.claims import data_locals, find_gaps
+    from ticket2test.validate.code import check_calls
+
+    fn = ast.parse(
+        "def test_x(self, params):\n"
+        '    row = params["targets"][0]\n'
+        '    first = row.get("event")\n'
+        "    self._verify_log(row)\n"
+    ).body[0]
+    assert isinstance(fn, ast.FunctionDef)
+    locals_ = data_locals(fn, ["self.params", "params"])
+    assert locals_ == {"row": "targets", "first": "targets"}
+    checks = check_calls(fn, "self.check", set(), check_helpers=["_verify_*"])
+    entries = [{"test_id": "test_x", "targets": [{"event": "verdict", "malicious": "true"}]}]
+    claim = [("expected outcome", "The verdict event is logged")]
+    assert find_gaps(claim, checks, entries, {})  # the call names no data key
+    assert not find_gaps(claim, checks, entries, {}, data=locals_)

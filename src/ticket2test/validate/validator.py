@@ -1379,6 +1379,7 @@ def check_claims(s: Subject) -> Iterator[Finding]:
             sections,
             ignore,
             actions=actions,
+            data=claims.data_locals(fn, s.settings.data.access),
         )
         for gap in gaps:
             yield _f(
@@ -1398,12 +1399,16 @@ def check_draft_outcome(s: Subject) -> Iterator[Finding]:
         for p in [*s.settings.data.access, s.settings.validation.assertion_object]
     )
     all_checks = [c for _, fn in s.tests for c in s.checks.get(fn.name, [])]
+    data = {
+        k: v for _, fn in s.tests for k, v in claims.data_locals(fn, s.settings.data.access).items()
+    }
     gaps = claims.find_gaps(
         [("expected outcome", s.draft.expected_outcome)],
         all_checks,
         s.entries,
         s.settings.data.section_helpers(),
         ignore,
+        data=data,
     )
     for gap in gaps:
         yield _f("claims", f"{gap.source} claims {gap.clause!r}: {gap.reason}", "warning")
@@ -1673,7 +1678,7 @@ def _prepare(s: Subject) -> None:
         local = class_local_members(cls) if cls else set()
         bases = reuse.repo_bases(cls) if cls else []
         start = bases[0] if bases else s.base  # the class's own base, else the suite's
-        resolver = ChainResolver(s.catalog, start, local, path_helpers)
+        resolver = ChainResolver(s.catalog, start, local, path_helpers, bases[1:])
         s.chains[fn.name] = function_chains(fn, resolver)
         self_asserts = cls is not None and _is_testcase(cls, bases, v.testcase_bases)
         s.checks[fn.name] = check_calls(

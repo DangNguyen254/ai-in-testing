@@ -111,16 +111,68 @@ def clauses(claim: str) -> list[str]:
     return [p.strip(" .") for p in merged if p.strip(" .")]
 
 
+def data_locals(fn: ast.FunctionDef, access: list[str]) -> dict[str, str]:
+    """Locals bound to a read of the test's data (``target = params["targets"][0]``, also
+    through another such local) -> the entry key read. A check given such a local checks that
+    key's values."""
+    found: dict[str, str] = {}
+    for _ in range(2):  # a local of a local
+        for node in ast.walk(fn):
+            if not (
+                isinstance(node, ast.Assign)
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+            ):
+                continue
+            key = _data_key(node.value, access, found)
+            if key is not None:
+                found[node.targets[0].id] = key
+    return found
+
+
+def _data_key(node: ast.expr, access: list[str], local: dict[str, str]) -> str | None:
+    """The top entry key a subscript or ``.get`` chain reads, from the data access or a data
+    local (whose own key it keeps)."""
+    first: str | None = None
+    while True:
+        if isinstance(node, ast.Subscript):
+            if isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, str):
+                first = node.slice.value
+            node = node.value
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "get"
+            and node.args
+        ):
+            arg = node.args[0]
+            if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                first = arg.value
+            node = node.func.value
+        else:
+            break
+    if isinstance(node, ast.Name) and node.id in local:
+        return local[node.id]
+    if dotted(node) in access:
+        return first
+    return None
+
+
 def evidence(
     check: CheckCall,
     entries: list[dict[str, Any]],
     sections: dict[str, list[str]],
     ignore: frozenset[str] = frozenset(),
+    data: dict[str, str] | None = None,
 ) -> set[str]:
-    """Words a check touches. ``ignore``: attribute names that carry no meaning (``params``)."""
+    """Words a check touches. ``ignore``: attribute names that carry no meaning (``params``).
+    ``data``: locals bound to data reads (``data_locals``): their key's values count."""
     words: set[str] = set()
     node = check.node
     for inner in ast.walk(node):
+        if isinstance(inner, ast.Name) and data and inner.id in data:
+            for entry in entries:
+                words.update(_words(json.dumps(entry.get(data[inner.id], ""))))
         if isinstance(inner, ast.Attribute) and inner.attr not in ignore:
             # local variable names are not evidence
             words.update(norm(w) for w in split_identifier(inner.attr))
@@ -166,13 +218,15 @@ def find_gaps(
     sections: dict[str, list[str]],
     ignore: frozenset[str] = frozenset(),
     actions: set[str] | None = None,
+    data: dict[str, str] | None = None,
 ) -> list[Gap]:
     """``claims``: (source, text) pairs. Returns the clauses no check covers.
 
     ``ignore``: attribute names that carry no meaning (the data access and assertion object).
     ``actions``: words of the page-object steps the test uses (evidence for a name claim).
+    ``data``: locals bound to data reads (``data_locals``).
     """
-    per_check = [(c, evidence(c, entries, sections, ignore)) for c in checks]
+    per_check = [(c, evidence(c, entries, sections, ignore, data)) for c in checks]
     gaps: list[Gap] = []
     for source, claim in claims:
         for clause in clauses(claim):

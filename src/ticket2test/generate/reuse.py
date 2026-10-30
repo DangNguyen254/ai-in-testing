@@ -197,7 +197,8 @@ def decide(
         )
 
     excluded, gated = _excluded_classes(candidates, index, settings, draft)
-    home = _template_class(retrieval, index)
+    in_domain = {f"{c.file_path}::{c.class_name}" for c in candidates if c.class_name}
+    home, top_hit = _template_class(retrieval, index, in_domain)
     if home in gated:  # the closest existing test already runs there: its gate wins, flagged
         del excluded[home]
     for key, why in sorted(excluded.items()):
@@ -240,11 +241,13 @@ def decide(
             )
         )
         if home in scores and (
-            qualifies(home) or (backed and scores[home] >= reuse.method_named_min)
+            qualifies(home)
+            or (backed and (scores[home] >= reuse.method_named_min or home == top_hit))
         ):
             # the closest template's own class: its helpers, module objects and data style
             # are what the new method is built from (another class may lack them). When the
-            # ticket names its feature (glossary or component), its name need not match.
+            # ticket names its feature (glossary or component), its name need not match, and
+            # when search also ranks its tests first in the domain, nor need its flow.
             if home != target:
                 decision.reasons.append(
                     f"{home.split('::', 1)[1]}: the closest template test is in this class "
@@ -298,15 +301,26 @@ def decide(
 _DEPLOYMENT_CONDITION = re.compile(r"""deployment\s*(!=|==)\s*["'](\w+)["']""")
 
 
-def _template_class(retrieval: RetrievalResult, index: IndexData) -> str | None:
-    """``path::Class`` of the closest template test (retrieval's first), if it has a class."""
-    if not retrieval.templates:
+def _template_class(
+    retrieval: RetrievalResult, index: IndexData, within: set[str]
+) -> tuple[str | None, str | None]:
+    """(``path::Class`` of the closest template test inside the domain's classes ``within``,
+    ``path::Class`` of the domain's top search hit). Retrieval's first template may sit in
+    another area; the domain's own closest one is what a new method is built from."""
+    chunks = {c.id: c for c in index.chunks}
+
+    def first_in(ids: list[str]) -> str | None:
+        for chunk_id in ids:
+            chunk = chunks.get(chunk_id)
+            if chunk is not None and chunk.class_name is not None:
+                key = f"{chunk.file_path}::{chunk.class_name}"
+                if key in within:
+                    return key
         return None
-    first = retrieval.templates[0].chunk_id
-    chunk = next((c for c in index.chunks if c.id == first), None)
-    if chunk is None or chunk.class_name is None:
-        return None
-    return f"{chunk.file_path}::{chunk.class_name}"
+
+    hits = [h.chunk_id for h in retrieval.hits if h.kind == "test"]
+    top_hit = first_in(hits)
+    return first_in([t.chunk_id for t in retrieval.templates]) or top_hit, top_hit
 
 
 def _excluded_classes(
