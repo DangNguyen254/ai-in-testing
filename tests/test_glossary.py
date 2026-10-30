@@ -202,3 +202,49 @@ def test_a_class_stands_for_its_folder_and_checked_entries_lift_more(
     }
     assert any(not p.endswith("test_files_downloads.py") for p in lifted)  # the sibling classes
     assert set(lifted.values()) == {lift}
+
+
+def test_in_a_folder_with_several_features_a_class_lifts_only_its_own(tmp_path: Path) -> None:
+    """Found on the real suite: a class standing for its whole folder also lifted the other
+    features' tests in a folder that holds several. A class stands for its feature: the tests
+    sharing its component markers (sibling classes too), or itself when it has none."""
+    repo = tmp_path / "repo"
+    (repo / "tests" / "mixed").mkdir(parents=True)
+
+    def test_file(name: str, cls: str, component: str | None) -> None:
+        marker = f'@pytest.mark.component("{component}")\n' if component else ""
+        (repo / "tests" / "mixed" / f"test_{name}.py").write_text(
+            f"import pytest\n\n\n{marker}class {cls}:\n"
+            f"    def test_{name}_report_export(self):\n        pass\n",
+            encoding="utf-8",
+        )
+
+    test_file("alpha_one", "TestAlphaOne", "alpha")
+    test_file("alpha_two", "TestAlphaTwo", "alpha")
+    test_file("beta", "TestBeta", "beta")
+    test_file("plain", "TestPlain", None)
+    glossary = tmp_path / "glossary.yaml"
+    glossary.write_text(
+        "terms:\n"
+        "  - term: Alpha Feature\n    status: confirmed\n"
+        "    classes: [tests/mixed/test_alpha_one.py::TestAlphaOne]\n"
+        "  - term: Plain Feature\n    status: confirmed\n"
+        "    classes: [tests/mixed/test_plain.py::TestPlain]\n",
+        encoding="utf-8",
+    )
+    settings = Settings.model_validate(
+        {"paths": {"cache_dir": str(tmp_path / "c")}, "knowledge": {"glossary": str(glossary)}}
+    )
+    index, _, _ = update_index(repo, settings)
+
+    def lifted(component: str) -> set[str]:
+        ticket = _ticket(title="The report export fails", components=[component])
+        hits = retrieve(ticket, index, settings).hits
+        return {
+            Path(h.file_path).stem.removeprefix("test_")
+            for h in hits
+            if h.kind == "test" and "glossary" in h.rank_features
+        }
+
+    assert lifted("Alpha Feature") == {"alpha_one", "alpha_two"}  # its feature, not beta's
+    assert lifted("Plain Feature") == {"plain"}  # no component markers: just the class

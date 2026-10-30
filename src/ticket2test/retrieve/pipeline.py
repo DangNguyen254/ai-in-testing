@@ -42,7 +42,7 @@ from ticket2test.prompts import load_prompt
 from ticket2test.retrieve.investigator import investigate
 from ticket2test.retrieve.llm_steps import request_followups, rewrite_query
 from ticket2test.retrieve.query import candidate_identifiers, ticket_text, verify_identifiers
-from ticket2test.retrieve.rerank import Ranked, in_place, rerank
+from ticket2test.retrieve.rerank import Place, Ranked, component_values, in_place, rerank
 from ticket2test.retrieve.shape import shape_of_draft, shape_of_test
 
 log = logging.getLogger(__name__)
@@ -282,20 +282,43 @@ def term_folders(term: Term) -> list[str]:
     return list(dict.fromkeys(f for f in folders if f and f != "."))
 
 
-def _glossary_places(terms: list[Term], settings: Settings) -> list[tuple[str, float]]:
-    """(folder, lift) per matched term: the full lift for an entry a person confirmed, a smaller
-    one for an entry only proposed; a folder named by both keeps the larger."""
+def _glossary_places(terms: list[Term], settings: Settings, index: IndexData) -> list[Place]:
+    """Where each matched term points, with its lift (full for an entry a person confirmed,
+    smaller for one only proposed):
+    - a folder it names: all of it, or the tests with one of the entry's component markers;
+    - a class it names: the tests in the class's folder that share the class's component
+      markers (its feature, also in sibling classes; not the other features of a mixed folder),
+      or just the class when it has no component markers."""
     rerank_cfg = settings.retrieval.rerank
-    lifts: dict[str, float] = {}
+    sep = settings.markers.value_separator
+    places: list[Place] = []
     for term in terms:
         weight = (
             rerank_cfg.glossary_weight
             if term.status == "confirmed"
             else rerank_cfg.glossary_proposed_weight
         )
-        for folder in term_folders(term):
-            lifts[folder] = max(lifts.get(folder, 0.0), weight)
-    return list(lifts.items())
+        named = frozenset(
+            p.strip().lower() for m in term.markers for p in (m.split(sep) if sep else [m])
+        )
+        for folder in term.folders:
+            if folder.strip("/"):
+                places.append(Place(folder.strip("/"), weight, named, separator=sep))
+        for key in term.classes:
+            path, _, name = key.partition("::")
+            folder = str(PurePosixPath(path).parent)
+            own = set().union(
+                *(
+                    component_values(c, sep)
+                    for c in index.chunks
+                    if c.kind == "test" and c.file_path == path and c.class_name == name
+                )
+            )
+            markers = frozenset(own) | named
+            places.append(
+                Place(folder, weight, markers, frozenset() if markers else frozenset({key}), sep)
+            )
+    return places
 
 
 def _glossary_words(terms: list[Term]) -> str:
@@ -333,7 +356,7 @@ def retrieve(
         prompt_versions.append(prompt.version)
 
     matched = _glossary_terms(ticket, index, settings)
-    places = _glossary_places(matched, settings) if settings.knowledge.use_in_search else []
+    places = _glossary_places(matched, settings, index) if settings.knowledge.use_in_search else []
     guessed = candidate_identifiers(text) + (rewrite.identifiers if rewrite else [])
     identifiers, rejected = verify_identifiers(guessed, retriever.catalog)
 
@@ -348,7 +371,7 @@ def retrieve(
     pool = _build_pool(retriever, lists)
     rounds = 0
     searches_run = ["bm25: <ticket text>"] + (["bm25: <rewrite terms>"] if rewrite else [])
-    if places and not any(in_place(r.chunk, f) for r in ranked_top(pool) for f, _ in places):
+    if places and not any(in_place(r.chunk, p) for r in ranked_top(pool) for p in places):
         # the ticket's own words missed every place the glossary names: search in its words
         fallback = [retriever.grep(c.rsplit("::", 1)[-1]) for t in matched for c in t.classes]
         words = _glossary_words(matched)
@@ -487,7 +510,7 @@ def _final(
     identifiers: list[str],
     text: str,
     settings: Settings,
-    places: list[tuple[str, float]] | None = None,
+    places: list[Place] | None = None,
 ) -> list[Ranked]:
     candidates = [(c.chunk, c.score, [r.detail for r in c.reasons]) for c in pool.values()]
     return rerank(

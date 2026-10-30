@@ -29,12 +29,11 @@ def rerank(
     ticket_text: str,
     k: int,
     settings: RerankSettings,
-    places: Sequence[tuple[str, float]] = (),
+    places: Sequence[Place] = (),
 ) -> list[Ranked]:
     """``candidates``: (chunk, fused score, reason details). Returns the selected top ``k``.
-    ``places``: (folder, lift) pairs the glossary maps the ticket to; chunks there are lifted by
-    the highest lift that applies (a reorder: they must have been found by the ticket's own
-    words)."""
+    ``places``: where the glossary maps the ticket; chunks there are lifted by the highest lift
+    that applies (a reorder: they must have been found by the ticket's own words)."""
     if not candidates:
         return []
     top_fused = max(score for _, score, _ in candidates) or 1.0
@@ -56,7 +55,7 @@ def rerank(
             overlap = len(ticket_words & path_words - {"tests", "test", "src"})
             if overlap:
                 features["path"] = settings.path_weight * min(overlap, 2) / 2
-            lift = max((w for place, w in places if in_place(chunk, place)), default=0.0)
+            lift = max((p.weight for p in places if in_place(chunk, p)), default=0.0)
             if lift:
                 features["glossary"] = lift
         score = sum(features.values())
@@ -70,9 +69,42 @@ def rerank(
     return _select(scored, k, settings.max_chunks_per_file, settings.min_tests)
 
 
-def in_place(chunk: Chunk, folder: str) -> bool:
-    """The chunk's file is inside the folder."""
-    return chunk.file_path.startswith(folder.strip("/") + "/")
+@dataclass(frozen=True)
+class Place:
+    """Where a glossary term points: a folder, narrowed to the tests carrying one of
+    ``markers`` (component marker values) when set, or to the ``classes`` (``path::Class``)
+    when set; a bare folder means all of it."""
+
+    folder: str
+    weight: float
+    markers: frozenset[str] = frozenset()
+    classes: frozenset[str] = frozenset()
+    separator: str = ","
+
+
+def in_place(chunk: Chunk, place: Place) -> bool:
+    if not chunk.file_path.startswith(place.folder.strip("/") + "/"):
+        return False
+    if place.markers:
+        return bool(component_values(chunk, place.separator) & place.markers)
+    if place.classes:
+        keys = {f"{chunk.file_path}::{chunk.symbol_name}"}
+        if chunk.class_name:
+            keys.add(f"{chunk.file_path}::{chunk.class_name}")
+        return bool(keys & place.classes)
+    return True
+
+
+def component_values(chunk: Chunk, separator: str = ",") -> set[str]:
+    """The chunk's component marker values, lowercased, joined values split."""
+    return {
+        part.strip().lower()
+        for m in chunk.markers
+        if m.name == "component"
+        for a in m.args
+        for part in (str(a).split(separator) if separator else [str(a)])
+        if part.strip()
+    }
 
 
 def _select(ranked: list[Ranked], k: int, per_file: int, min_tests: int) -> list[Ranked]:
