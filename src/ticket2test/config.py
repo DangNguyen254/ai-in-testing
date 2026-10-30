@@ -109,7 +109,7 @@ class EvalSettings(_Section):
 
 
 class DraftSettings(_Section):
-    prompt_version: str = "draft_v5"
+    prompt_version: str = "draft_v6"
     # How the draft chooses a priority (draft_v5 on): the team's own convention, e.g. "p2 for
     # most tests; p1 only for release-blocking core flows or a vulnerability in the product".
     priority_guide: str = (

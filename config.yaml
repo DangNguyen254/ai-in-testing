@@ -32,7 +32,7 @@ llm:
     model: ""                  # required when provider is gemini
 
 draft:
-  prompt_version: draft_v5
+  prompt_version: draft_v6
   # How the draft picks a priority (the team's convention); default: the generic guide in config.py
   # priority_guide: "p2 for most tests; p1 only for release-blocking core flows or a product vulnerability"
   max_comment_chars: 20000

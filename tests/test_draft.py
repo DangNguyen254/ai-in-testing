@@ -74,13 +74,13 @@ def test_ok_path_builds_traceable_drafts() -> None:
 
     assert result.status == "ok"
     assert result.attempts == 1
-    assert result.prompt_version == "draft_v5"
+    assert result.prompt_version == "draft_v6"
     assert (result.provider, result.model) == ("fake", "fake-model")
     assert [d.kind for d in result.drafts] == ["primary", "edge_case"]  # primary first
     assert [d.id for d in result.drafts] == ["encode/httpx#1482/d1", "encode/httpx#1482/d2"]
     first = result.drafts[0]
     assert first.ticket_id == "encode/httpx#1482"
-    assert first.prompt_version == "draft_v5"
+    assert first.prompt_version == "draft_v6"
     assert first.markers.priority == "p1"
     assert first.test_kind == "api"
     assert first.deployment_type == "both"
@@ -311,3 +311,29 @@ def test_the_draft_picks_a_component_from_the_suites_list() -> None:
     assert "Allowed components: multipart, auth, unknown" in fake.requests[0].messages[-1].content
     second = _run(fake, settings=settings)
     assert second.drafts[0].markers.component == "unknown"  # never an invented name
+
+
+def test_variants_whose_values_the_ticket_doesnt_name_are_flagged() -> None:
+    """Found in the real trials: the draft kept splitting the ticket's one case into "single
+    payload" and "multi payload" variants the ticket never names. Flagged in code (draft_v6
+    also tells the model not to); nothing is dropped."""
+    from ticket2test.draft.support import support_for
+    from ticket2test.models.ticket import SourceInfo, Ticket
+
+    ticket = Ticket(
+        id="T-1",
+        title="Redact action on a page with an injected prompt",
+        description="Run it for both block_mode and redact. The page carries one payload.",
+        source=SourceInfo(system="jira", ref="T-1"),
+    )
+    support = support_for(
+        ticket,
+        "",
+        ["Open the page"],
+        [
+            ("block", ["block mode"]),  # spaces for underscores: the ticket names it
+            ("redact", ["redact"]),
+            ("multi", ["multi-payload page", "several snippets"]),
+        ],
+    )
+    assert support.ungrounded_variants == ["multi"]

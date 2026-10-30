@@ -92,6 +92,9 @@ def _render_support(support: DraftSupport) -> list[str]:
 
     numbers = f"**{', '.join(support.invented_numbers)}**" if support.invented_numbers else "none"
     added = ", ".join(support.ungrounded_words) or "none"
+    variants = (
+        f"**{', '.join(support.ungrounded_variants)}**" if support.ungrounded_variants else "none"
+    )
     return [
         "**How well the ticket supports this draft** (checked in code)",
         "",
@@ -104,6 +107,8 @@ def _render_support(support: DraftSupport) -> list[str]:
         f"| Numbers not in the ticket | {numbers} |",
         f"| Draft words found in the ticket | {round(support.grounding * 100)}% |",
         f"| Draft words not in the ticket | {_cell(added)} |",
+        f"| Variants whose values the ticket doesn't name (remove unless meant) | "
+        f"{_cell(variants)} |",
         "",
     ]
 

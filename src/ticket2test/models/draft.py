@@ -175,6 +175,9 @@ class DraftSupport(_Frozen):
     invented_numbers: list[str]  # numbers in the draft that the ticket doesn't contain
     grounding: float = Field(ge=0.0, le=1.0)  # share of the draft's content words in the ticket
     ungrounded_words: list[str]  # the draft's words the ticket doesn't have (most frequent)
+    # Variants none of whose input values the ticket names: a split the draft made up (one
+    # payload vs several, when the ticket names one). Shown for review; nothing is dropped.
+    ungrounded_variants: list[str] = Field(default_factory=list)
 
 
 class TestCaseDraft(_Frozen):

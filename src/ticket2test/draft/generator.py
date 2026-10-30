@@ -211,7 +211,12 @@ def _to_stored(
         id=f"{ticket.id}/d{index}",
         ticket_id=ticket.id,
         prompt_version=prompt_version,
-        support=support_for(ticket, "" if component == UNKNOWN else component, texts),
+        support=support_for(
+            ticket,
+            "" if component == UNKNOWN else component,
+            texts,
+            [(v.name, [i.value for i in v.inputs]) for v in item.variants],
+        ),
         **data,
     )
 

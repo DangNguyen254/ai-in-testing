@@ -9,7 +9,9 @@ For each draft:
   labels, or title (the draft didn't name a component the ticket doesn't);
 - **invented numbers**: numbers in the draft that the ticket doesn't contain;
 - **grounding**: the share of the draft's content words (preconditions, steps, expected
-  outcome, variants) found in the ticket, and the words that aren't (what the draft added).
+  outcome, variants) found in the ticket, and the words that aren't (what the draft added);
+- **ungrounded variants**: variants none of whose input values the ticket names (as written,
+  or every content word of it): a parametrized split the ticket doesn't ask for.
 """
 
 from __future__ import annotations
@@ -107,8 +109,14 @@ def ticket_text(ticket: Ticket) -> str:
     return "\n".join(p for p in parts if p)
 
 
-def support_for(ticket: Ticket, component: str, texts: list[str]) -> DraftSupport:
-    """``texts``: the draft's preconditions, steps, expected outcome, and variant texts."""
+def support_for(
+    ticket: Ticket,
+    component: str,
+    texts: list[str],
+    variants: list[tuple[str, list[str]]] | None = None,
+) -> DraftSupport:
+    """``texts``: the draft's preconditions, steps, expected outcome, and variant texts;
+    ``variants``: (name, input values) per variant."""
     source = ticket_text(ticket)
     source_words = {norm(w) for w in _WORD.findall(source)}
     raw = [w.lower() for t in texts for w in _WORD.findall(t)]
@@ -133,4 +141,27 @@ def support_for(ticket: Ticket, component: str, texts: list[str]) -> DraftSuppor
         ungrounded_words=[
             spelled[w] for w in sorted(missing, key=lambda w: (-missing[w], w))[:MAX_SHOWN]
         ],
+        ungrounded_variants=[
+            name
+            for name, values in variants or []
+            if values and not any(_named(v, source, source_words) for v in values)
+        ],
+    )
+
+
+_LOOSE = re.compile(r"[\s_\-]+")
+
+
+def _named(value: str, source: str, source_words: set[str]) -> bool:
+    """The ticket names the value: as written (case, spaces, ``_``, ``-`` aside), or every
+    content word of it."""
+    loose = _LOOSE.sub(" ", value).strip().lower()
+    if not loose:
+        return True
+    if loose in _LOOSE.sub(" ", source).lower():
+        return True
+    words = {norm(w) for w in _WORD.findall(value)} - _COMMON
+    numbers = set(_NUMBER.findall(value))
+    return (
+        bool(words or numbers) and words <= source_words and numbers <= set(_NUMBER.findall(source))
     )
