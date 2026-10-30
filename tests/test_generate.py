@@ -939,3 +939,19 @@ def test_a_value_nothing_supports_is_flagged_as_made_up(index: IndexData, tmp_pa
     assert len(found) == 1 and found[0].startswith("payload:"), found
     # the ticket (so the draft) gives the value: supported
     assert not flagged(_draft(preconditions=[f'The page carries "{payload}"']))
+
+
+def test_the_context_shows_the_bodies_of_the_helpers_the_template_calls(
+    index: IndexData, tmp_path: Path
+) -> None:
+    """Found in the real trial: the model re-checked a log by hand after calling the class's
+    helper, which already asserts the expected row (through a base-class helper) and returns
+    the events; it saw the helper's name, not what it does."""
+    from ticket2test.generate.generator import helpers_piece
+
+    settings = _settings(tmp_path)
+    chunk = next(c for c in index.chunks if c.id == TEMPLATE_CHUNK)
+    piece = helpers_piece(chunk, index, settings)
+    assert piece is not None and piece.title.startswith("Helpers the template test calls")
+    assert "# ValidationMixin.verify_targets\ndef verify_targets(self" in piece.body
+    assert "\n   def " not in piece.body  # dedented like the class's own methods

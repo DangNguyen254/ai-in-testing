@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import textwrap
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Any
@@ -807,6 +808,10 @@ def build_generation_context(
             )
         )
 
+    helpers = helpers_piece(template_chunk, index, settings)
+    if helpers is not None:  # what they check and return, so the test doesn't redo it
+        pieces.append(helpers)
+
     # The base test class (and its in-repo bases), so inherited helpers are visible.
     used: set[str] = {template_chunk.id}
     test_class = catalog.class_named(template_chunk.class_name or "")
@@ -857,6 +862,49 @@ def _template(retrieval: RetrievalResult, chunks: dict[str, Chunk]) -> tuple[Chu
     raise GenerationError(
         "no template test with a JSON data entry was retrieved; run `retrieve` against an "
         "indexed suite that has data files"
+    )
+
+
+def helpers_piece(template: Chunk, index: IndexData, settings: Settings) -> Piece | None:
+    """The bodies of the helpers the template test calls: its class's own methods (and theirs,
+    transitively), then one level into the base classes' methods they call. Names alone don't
+    say that a helper already asserts, waits, or returns what another test uses."""
+    record = index.files.get(template.file_path)
+    if record is None or record.info is None or template.class_name is None:
+        return None
+    cls = next((c for c in record.info.classes if c.name == template.class_name), None)
+    if cls is None:
+        return None
+    prefix = settings.index.test_function_prefix
+    hooks = set(settings.generate.scaffold_methods)  # already in the scaffold
+    called = set(_SELF_NAME.findall(template.code))
+    own = class_own_helpers(cls, called, prefix) - hooks
+    blocks = [
+        f"# {cls.name}.{m.name}\n{textwrap.dedent(_as_in_class(m.code, cls.code))}"
+        for m in cls.methods
+        if m.name in own
+    ]
+    reached = called | {n for m in cls.methods if m.name in own for n in _SELF_NAME.findall(m.code)}
+    inherited = reached - {m.name for m in cls.methods}
+    entry = index.catalog.class_named(cls.name)
+    for base in index.catalog.mro(entry.qualname)[1:] if entry is not None else []:
+        base_record = index.files.get(base.file_path)
+        info = base_record.info if base_record is not None else None
+        base_cls = next((c for c in info.classes if c.name == base.name), None) if info else None
+        if base_cls is None:
+            continue
+        for method in base_cls.methods:
+            if method.name in inherited and not method.name.startswith(prefix):
+                code = textwrap.dedent(_as_in_class(method.code, base_cls.code))
+                blocks.append(f"# {base.name}.{method.name}\n{code}")
+                inherited.discard(method.name)
+    if not blocks:
+        return None
+    return Piece(
+        "Helpers the template test calls (read what each checks and returns before checking "
+        "it again in the test)",
+        "```python\n" + "\n\n".join(blocks) + "\n```",
+        None,  # the template is traced already; these are pieces of its class
     )
 
 
