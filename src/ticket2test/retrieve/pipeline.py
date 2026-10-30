@@ -8,12 +8,23 @@ follow-up rounds (own search tools only), or the investigator agent when enabled
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from pathlib import PurePosixPath
 
 from ticket2test.config import Settings
 from ticket2test.index.indexer import IndexData
+from ticket2test.knowledge import (
+    GlossaryError,
+    Term,
+    load_glossary,
+    match_terms,
+    record_unmapped,
+    unknown_words,
+    unmapped_log_path,
+)
 from ticket2test.llm.base import LLMClient
 from ticket2test.models.chunk import Chunk
 from ticket2test.models.draft import TestCaseDraft
@@ -33,6 +44,8 @@ from ticket2test.retrieve.llm_steps import request_followups, rewrite_query
 from ticket2test.retrieve.query import candidate_identifiers, ticket_text, verify_identifiers
 from ticket2test.retrieve.rerank import Ranked, rerank
 from ticket2test.retrieve.shape import shape_of_draft, shape_of_test
+
+log = logging.getLogger(__name__)
 
 RankedList = list[tuple[Chunk, Reason]]
 
@@ -235,6 +248,44 @@ class Retriever:
         return refs
 
 
+def _glossary_terms(ticket: Ticket, index: IndexData, settings: Settings) -> list[Term]:
+    """The glossary terms the ticket names; what the glossary lacks goes to the unmapped log
+    (words it doesn't know, mapped folders and classes the suite no longer has)."""
+    path = settings.knowledge.glossary
+    try:
+        glossary = load_glossary(path)
+    except GlossaryError as exc:
+        log.warning("Glossary not used: %s", exc)
+        return []
+    if glossary is None:
+        return []
+    matched = match_terms(ticket, glossary)
+    folders = {str(p) for c in index.chunks for p in PurePosixPath(c.file_path).parents}
+    classes = {f"{c.file_path}::{c.symbol_name}" for c in index.chunks if c.kind != "test"}
+    stale = [
+        f"{t.term}: folder {f}" for t in matched for f in t.folders if f.strip("/") not in folders
+    ] + [f"{t.term}: class {c}" for t in matched for c in t.classes if c not in classes]
+    log_path = unmapped_log_path(settings.knowledge.unmapped_log, path)
+    if log_path is not None:
+        try:
+            record_unmapped(log_path, ticket.id, unknown_words(ticket, glossary), stale)
+        except OSError as exc:
+            log.warning("Unmapped words not recorded: %s", exc)
+    return matched  # a stale folder or class simply matches nothing
+
+
+def _glossary_words(terms: list[Term]) -> str:
+    """Search words from matched terms: class names, chains, component markers, data keys and
+    values (identifiers are split into words by the search itself)."""
+    words: list[str] = []
+    for term in terms:
+        words += [c.rsplit("::", 1)[-1] for c in term.classes]
+        words += term.chains + term.markers
+        for item in term.data:
+            words += [item.key.replace("[]", " ").replace(".", " "), *item.values]
+    return " ".join(dict.fromkeys(w for w in words if w))
+
+
 def retrieve(
     ticket: Ticket,
     index: IndexData,
@@ -257,17 +308,24 @@ def retrieve(
         rewrite, llm_calls = result.value, llm_calls + result.attempts
         prompt_versions.append(prompt.version)
 
+    matched = _glossary_terms(ticket, index, settings)
+    from_glossary = [c.rsplit("::", 1)[-1] for t in matched for c in t.classes]
     guessed = candidate_identifiers(text) + (rewrite.identifiers if rewrite else [])
+    guessed += from_glossary if settings.knowledge.use_in_search else []
     identifiers, rejected = verify_identifiers(guessed, retriever.catalog)
 
     lists: list[RankedList] = [retriever.bm25(text, "query=ticket")]
     if rewrite is not None and rewrite.terms:
         lists.append(retriever.bm25(" ".join(rewrite.terms), "query=rewrite"))
+    glossary_words = _glossary_words(matched) if settings.knowledge.use_in_search else ""
+    if glossary_words:  # the suite's own words for what the ticket names
+        lists.append(retriever.bm25(glossary_words, "query=glossary"))
     lists.extend(retriever.grep(name) for name in identifiers)
 
     pool = _build_pool(retriever, lists)
     rounds = 0
     searches_run = ["bm25: <ticket text>"] + (["bm25: <rewrite terms>"] if rewrite else [])
+    searches_run += ["bm25: <glossary terms>"] if glossary_words else []
     searches_run += [f"grep: {name}" for name in identifiers]
     investigation: Investigation | None = None
     if use_llm and cfg.investigator.enabled:
@@ -358,6 +416,8 @@ def retrieve(
         investigation=investigation,
         llm_calls=llm_calls,
         prompt_versions=prompt_versions,
+        glossary_terms=[t.term for t in matched],
+        glossary_folders=list(dict.fromkeys(f for t in matched for f in t.folders)),
         ticket_components=list(ticket.components),
         ticket_labels=list(ticket.labels),
     )

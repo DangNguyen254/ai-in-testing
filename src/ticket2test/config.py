@@ -705,6 +705,18 @@ class ProposalSettings(_Section):
     max_class_tokens: int = Field(default=3000, ge=200)  # larger classes go in as an outline
 
 
+class KnowledgeSettings(_Section):
+    """The suite's vocabulary (docs/knowledge-plan.md). Private files, outside this repo."""
+
+    # The tracker-to-suite glossary (YAML, docs/glossary-prompt.md). None: not used.
+    glossary: Path | None = None
+    # Ticket words the glossary doesn't know and mapped names the suite no longer has, for the
+    # next update. Default: <glossary>-unmapped.txt next to the glossary.
+    unmapped_log: Path | None = None
+    use_in_search: bool = True  # matched terms' classes, chains and values join the search
+    use_in_domain: bool = True  # matched terms' folders steer the area choice
+
+
 class PathSettings(_Section):
     output_dir: Path = Path("output")
     # The target suite's checkout, for `run` (other commands take it as an argument).
@@ -745,6 +757,7 @@ class Settings(BaseSettings):
     sandbox: SandboxSettings = SandboxSettings()
     security: SecuritySettings = SecuritySettings()
     map: MapSettings = MapSettings()
+    knowledge: KnowledgeSettings = KnowledgeSettings()
     guides: GuideSettings = GuideSettings()
     proposals: ProposalSettings = ProposalSettings()
     paths: PathSettings = PathSettings()

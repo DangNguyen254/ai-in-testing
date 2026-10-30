@@ -50,7 +50,14 @@ class and test names, docstrings and comments, the suite's component documentati
 copied from the tracker (names only). It writes a glossary file the tool reads; each entry maps a
 tracker term to suite terms and cites its evidence. A person skims it rather than writing it.
 
-**C. Use both (code).**
+**C. Use both (code).** *Search and area choice built:* with `knowledge.glossary` set, a ticket's
+components, labels and epic (and phrase terms in its text) are matched against the glossary;
+the matched terms' classes are searched by name, their chains, markers, keys and values join the
+search, and their folders decide the area when they point at one (or nudge it among several).
+Retrieval records the matched terms and folders. Ticket words the glossary doesn't know, and
+mapped folders or classes the suite no longer has, go to `knowledge.unmapped_log` (default
+`<glossary>-unmapped.txt`) for the next update. *Still to build:* the draft and generation parts
+below.
 - Draft: known values become the choices the draft picks from (actions, modes, verdicts,
   components); the glossary translates ticket words into suite words.
 - Query rewrite and search: ticket words are expanded with their glossary terms.

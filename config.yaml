@@ -276,6 +276,12 @@ security:
     min_chars: 1
     legend_prompt: masking_legend_v1
 
+knowledge:                       # the suite's vocabulary (docs/knowledge-plan.md); private files
+  glossary: null                 # tracker-to-suite glossary (YAML, docs/glossary-prompt.md)
+  unmapped_log: null             # default: <glossary>-unmapped.txt next to it
+  use_in_search: true            # matched terms' classes, chains and values join the search
+  use_in_domain: true            # matched terms' folders steer the area choice
+
 map:                             # suite map: area summaries from the index (no LLM)
   max_items: 15                  # per list in an area summary
   max_examples: 6                # typical tests per area, one per shape

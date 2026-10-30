@@ -112,6 +112,18 @@ def choose_domain(
                 False,
                 f"{marked[0].name}: holds a class marked with the ticket's components",
             )
+    mapped: list[Domain] = []
+    if settings.knowledge.use_in_domain and retrieval.glossary_folders:
+        mapped = [
+            d for d in all_domains if any(_overlaps(d, f) for f in retrieval.glossary_folders)
+        ]
+        if len(mapped) == 1:  # the glossary maps the ticket's words to this area's folder
+            return DomainChoice(
+                mapped[0],
+                {mapped[0].name: 1.0},
+                False,
+                f"{mapped[0].name}: the glossary maps {', '.join(retrieval.glossary_terms)} there",
+            )
     totals = dict.fromkeys(by_name, 0.0)
     for hit in retrieval.hits:
         found = domain_of(hit.file_path, all_domains)
@@ -131,6 +143,8 @@ def choose_domain(
             shares[name] += COMPONENT_BONUS
         elif _words(name) & labels:
             shares[name] += LABEL_BONUS
+    for domain in mapped:  # several areas under the glossary's folders: each gets a nudge
+        shares[domain.name] += COMPONENT_BONUS
     ranked = sorted(shares.items(), key=lambda kv: (-kv[1], kv[0]))
     best, best_score = ranked[0]
     second = ranked[1][1] if len(ranked) > 1 else 0.0
@@ -144,6 +158,15 @@ def choose_domain(
         {n: round(s, 3) for n, s in ranked},
         uncertain,
         reason,
+    )
+
+
+def _overlaps(domain: Domain, folder: str) -> bool:
+    """The glossary folder is one of the domain's folders, inside one, or contains one."""
+    folder = folder.strip("/")
+    return any(
+        f == folder or f.startswith(folder + "/") or folder.startswith(f + "/")
+        for f in domain.folders
     )
 
 

@@ -159,3 +159,6 @@ class RetrievalResult(BaseModel):
     # The ticket's own routing hints, kept for later steps (domain choice in `generate`).
     ticket_components: list[str] = Field(default_factory=list)
     ticket_labels: list[str] = Field(default_factory=list)
+    # Glossary terms the ticket matched (knowledge.glossary), and the folders they map to.
+    glossary_terms: list[str] = Field(default_factory=list)
+    glossary_folders: list[str] = Field(default_factory=list)
