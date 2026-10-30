@@ -9,6 +9,7 @@ the base entry, re-labelling, and formatting code and data to the suite's style 
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Any
@@ -27,7 +28,7 @@ from ticket2test.generate.entries import build_entry, function_of
 from ticket2test.generate.inspect import data_use
 from ticket2test.index.catalog import SymbolCatalog
 from ticket2test.index.datafile import function_data_path, layout_of, module_data_path
-from ticket2test.index.extract import module_name
+from ticket2test.index.extract import ClassInfo, module_name
 from ticket2test.index.indexer import IndexData
 from ticket2test.knowledge.vocabulary import entry_values, render_entry_values
 from ticket2test.llm.base import LLMClient, LLMError, LLMRequest, Message
@@ -205,7 +206,7 @@ def assemble(
         code = code_scrub.text
         notes = f"{notes} (not formatted: {exc})".strip()
 
-    code, shell_note = with_template_shell(code, setup)
+    code, shell_note, shell_helpers = with_template_shell(code, setup)
     try:
         order = {test_id: n for n, test_id in enumerate(_ids(code, settings))}
     except ValueError as exc:  # the LLM's code parsed; a step in code broke it: a bug to report
@@ -243,6 +244,12 @@ def assemble(
     folder = PurePosixPath(setup.template_chunk.file_path).parent
     file_name = str(folder / f"{response.module_name}.py")
     checklist = list(dict.fromkeys([*gen.review_checklist_defaults, *response.review_checklist]))
+    if shell_helpers:
+        checklist.append(
+            f"The new class is a copy of {setup.template_chunk.class_name}'s scaffold, not a "
+            f"subclass, so its own methods {', '.join(shell_helpers)} were copied in too. "
+            "Consider a shared base class for them instead of the copy."
+        )
     if conventional:  # the plans left them out: say what code added (copied by the model: no note)
         checklist.append(
             f"Every entry in {setup.conventions.scope} has "
@@ -287,7 +294,7 @@ def assemble(
     )
 
 
-def with_template_shell(code: str, setup: GenerationSetup) -> tuple[str, str]:
+def with_template_shell(code: str, setup: GenerationSetup) -> tuple[str, str, list[str]]:
     """The generated module rebuilt on the template class's shell, in code: the template
     module's imports, the class's decorator stack, base class and setup/teardown, then the
     generated test methods (and only the imports they use).
@@ -296,20 +303,42 @@ def with_template_shell(code: str, setup: GenerationSetup) -> tuple[str, str]:
     (values chosen for this draft, e.g. the component marker); decorators the template lacks
     (e.g. a deployment decorator for a cloud-only draft) are added after the stack. A module
     with other top-level code, or one that doesn't parse, is left as written.
-    Returns (code, note); the note is "" when nothing changed.
+    The template class's own methods the scaffold and the new tests call come along (a new class
+    doesn't inherit it). Returns (code, note, the methods copied that way); the note is "" when
+    nothing changed.
     """
     import ast
 
     from ticket2test.generate.patch import PatchError, splice_methods
 
     settings, chunk = setup.settings, setup.template_chunk
-    shell = class_scaffold(chunk, setup.index, settings.generate.scaffold_methods)
-    if shell is None or chunk.class_name is None:
-        return code, ""
     try:
         tree = ast.parse(code)
     except SyntaxError:
-        return code, ""
+        return code, "", []
+    # the template class's own methods the new tests call: a new class doesn't inherit them
+    called = {
+        name
+        for node in tree.body
+        if isinstance(node, ast.ClassDef)
+        for name in _SELF_NAME.findall(ast.get_source_segment(code, node) or "")
+    }
+    defined = {
+        n.name
+        for node in tree.body
+        if isinstance(node, ast.ClassDef)
+        for n in node.body
+        if isinstance(n, ast.FunctionDef)
+    }
+    shell = class_scaffold(
+        chunk,
+        setup.index,
+        settings.generate.scaffold_methods,
+        also=called - defined,
+        test_prefix=settings.index.test_function_prefix,
+    )
+    if shell is None or chunk.class_name is None:
+        return code, "", []
     prefix = settings.index.test_class_prefix
     classes = [n for n in tree.body if isinstance(n, ast.ClassDef)]
     others = [
@@ -319,7 +348,7 @@ def with_template_shell(code: str, setup: GenerationSetup) -> tuple[str, str]:
         and not (isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant))  # docstring
     ]
     if len(classes) != 1 or not classes[0].name.startswith(prefix) or others:
-        return code, ""
+        return code, "", []
     generated = classes[0]
     placeholder = "\n" + " " * settings.style.python.indent_width + "pass"
     bare = shell.rstrip().endswith(":")  # a class without setup/teardown
@@ -328,7 +357,7 @@ def with_template_shell(code: str, setup: GenerationSetup) -> tuple[str, str]:
     try:
         shell_tree = ast.parse(shell)
     except SyntaxError:
-        return code, ""
+        return code, "", []
     template = next(n for n in shell_tree.body if isinstance(n, ast.ClassDef))
 
     def name_of(node: ast.expr) -> str:
@@ -350,6 +379,7 @@ def with_template_shell(code: str, setup: GenerationSetup) -> tuple[str, str]:
     doc = ast.get_docstring(tree, clean=False)
     if doc is not None:
         rebuilt = f"{ast.get_source_segment(code, tree.body[0])}\n\n{rebuilt}"
+    copied = sorted(_methods_in(shell) - set(settings.generate.scaffold_methods) - defined)
     try:
         spliced, _added = splice_methods(rebuilt + "\n", generated.name, code, settings)
         if bare:
@@ -359,10 +389,13 @@ def with_template_shell(code: str, setup: GenerationSetup) -> tuple[str, str]:
         spliced = explicit_star_imports(spliced, setup.index.catalog)
         result = format_python(spliced, settings.style.python, first_party(setup.index, settings))
     except (PatchError, SyntaxError, FormatError):
-        return code, ""
+        return code, "", []
     if result == code:
-        return code, ""
-    return result, f"class shell (imports, decorators, base, setup) from {chunk.class_name}"
+        return code, "", []
+    note = f"class shell (imports, decorators, base, setup) from {chunk.class_name}"
+    if copied:
+        note += f", with its own methods {', '.join(copied)}"
+    return result, note, copied
 
 
 def explicit_star_imports(code: str, catalog: SymbolCatalog) -> str:
@@ -623,9 +656,17 @@ def first_party(index: IndexData, settings: Settings) -> list[str]:
     return sorted(roots)
 
 
-def class_scaffold(chunk: Chunk, index: IndexData, methods: list[str] | None = None) -> str | None:
+def class_scaffold(
+    chunk: Chunk,
+    index: IndexData,
+    methods: list[str] | None = None,
+    also: set[str] | None = None,
+    test_prefix: str = "test",
+) -> str | None:
     """The template module's imports, its class decorators and class line, and the class's
-    setup/teardown methods (``methods``), as written."""
+    setup/teardown methods (``methods``), as written. With them come the class's own methods
+    they call (``self.<name>``, also through each other), and those named in ``also``: a new
+    class copied from this one doesn't inherit it, so its own helpers would be missing."""
     record = index.files.get(chunk.file_path)
     if record is None or record.info is None or chunk.class_name is None:
         return None
@@ -635,9 +676,47 @@ def class_scaffold(chunk: Chunk, index: IndexData, methods: list[str] | None = N
     bases = f"({', '.join(cls.bases)})" if cls.bases else ""
     header = [*(f"@{d}" for d in cls.decorators), f"class {cls.name}{bases}:"]
     imports = [*record.info.imports, ""] if record.info.imports else []
-    hooks = [m for m in cls.methods if m.name in (methods or [])]
-    body = ["\n\n".join(_as_in_class(m.code, cls.code) for m in hooks)] if hooks else []
+    names = class_own_helpers(cls, set(methods or []) | (also or set()), test_prefix)
+    picked = [m for m in cls.methods if m.name in names]  # in the class's own order
+    body = ["\n\n".join(_as_in_class(m.code, cls.code) for m in picked)] if picked else []
     return "\n".join([*imports, *header, *body])
+
+
+_SELF_NAME = re.compile(r"\bself\.(\w+)")
+
+
+def _methods_in(source: str) -> set[str]:
+    """Names of the methods of the classes in ``source`` (the scaffold)."""
+    import ast
+
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return set()
+    return {
+        n.name
+        for node in tree.body
+        if isinstance(node, ast.ClassDef)
+        for n in node.body
+        if isinstance(n, ast.FunctionDef)
+    }
+
+
+def class_own_helpers(cls: ClassInfo, wanted: set[str], test_prefix: str = "test") -> set[str]:
+    """``wanted`` methods of the class, and the class's own non-test methods they reach
+    through ``self.<name>`` (properties too), transitively."""
+    own = {m.name: m for m in cls.methods}
+    found: set[str] = set()
+    queue = [n for n in wanted if n in own]
+    while queue:
+        name = queue.pop()
+        if name in found:
+            continue
+        found.add(name)
+        for used in _SELF_NAME.findall(own[name].code):
+            if used in own and used not in found and not used.startswith(test_prefix):
+                queue.append(used)
+    return found
 
 
 def _as_in_class(method_code: str, class_code: str) -> str:

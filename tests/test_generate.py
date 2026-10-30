@@ -782,3 +782,77 @@ def test_priority_may_come_from_the_tests_next_to_the_new_one(
         update={"markers": settings.markers.model_copy(update={"priority_from": "neighbours"})}
     )
     assert marker_values(draft, by_neighbours, template, index)["priority"] == most != "p0"
+
+
+def test_a_scaffold_brings_the_classs_own_helpers_its_setup_and_the_new_tests_need(
+    tmp_path: Path,
+) -> None:
+    """Found in the real trial: a new module copied its template class's setup, which called a
+    method that class defines itself; the new class isn't a subclass, so it didn't exist."""
+    from ticket2test.generate.generator import class_scaffold
+
+    repo = tmp_path / "repo"
+    (repo / "tests").mkdir(parents=True)
+    (repo / "tests" / "test_a.py").write_text(
+        "from framework.base import Base\n\n\nclass TestA(Base):\n"
+        "    def setup(self):\n        self._prepare()\n\n"
+        "    def _prepare(self):\n        self._login()\n\n"
+        "    def _login(self):\n        pass\n\n"
+        "    def _check_row(self, row):\n        pass\n\n"
+        "    def _unused(self):\n        pass\n\n"
+        "    def test_one(self):\n        self._check_row(1)\n",
+        encoding="utf-8",
+    )
+    settings = _settings(tmp_path)
+    index, _, _ = update_index(repo, settings)
+    chunk = next(c for c in index.chunks if c.symbol_name == "test_one")
+    shell = class_scaffold(chunk, index, ["setup"]) or ""
+    assert all(f"def {m}(" in shell for m in ("setup", "_prepare", "_login"))  # the chain
+    assert "def _check_row(" not in shell and "def _unused(" not in shell
+    assert "def test_one(" not in shell  # tests never come along
+    called = class_scaffold(chunk, index, ["setup"], also={"_check_row"}) or ""
+    assert "def _check_row(" in called and "def _unused(" not in called
+
+
+def test_an_expected_backend_result_built_in_code_is_flagged(
+    index: IndexData, tmp_path: Path
+) -> None:
+    """Found in the real trial: the expected log row was built in the test's code, while the
+    template keeps it in its entry's expectation section."""
+    from ticket2test.models.generated import GeneratedTest, TemplateEntryRef
+    from ticket2test.validate.validator import validate_generated
+
+    def generated(body: str) -> GeneratedTest:
+        return GeneratedTest(
+            code=(
+                "from framework.base_test import BaseTest\n\n\nclass TestRulesNew(BaseTest):\n"
+                f"   def test_rules_new(self):\n{body}"
+            ),
+            file_name="tests/rules/test_rules_new.py",
+            data_file_name="tests/rules/test_rules_new.json",
+            data_entries=[],
+            data_format="array",
+            test_ids=["test_rules_new"],
+            template_entry_ref=TemplateEntryRef(chunk_id=TEMPLATE_CHUNK, entry_key=TEMPLATE_ID),
+            ticket_id="X",
+            draft_ref="X/d1",
+            retrieved_chunk_ids=[],
+            prompt_version="t",
+            provider="fake",
+            model="fake",
+            attempts=1,
+            context_tokens=0,
+        )
+
+    settings = _settings(tmp_path)
+    in_code = (
+        '      expected = {"method": "GET", "path": "/api/x", "response": [{"name": "a"}]}\n'
+        "      self.check.assertEqual(expected, self.api.last())\n"
+    )
+    found = validate_generated(generated(in_code), index.catalog, settings, index=index)
+    flagged = [f for f in found.findings if f.check == "expectations_in_code"]
+    assert len(flagged) == 1 and flagged[0].severity == "warning"
+    assert "targets" in flagged[0].message
+    plain = "      self.verify_targets()\n"
+    found = validate_generated(generated(plain), index.catalog, settings, index=index)
+    assert not [f for f in found.findings if f.check == "expectations_in_code"]

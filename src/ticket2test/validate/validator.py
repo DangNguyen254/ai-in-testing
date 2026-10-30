@@ -1017,6 +1017,61 @@ def _convention_file(s: Subject) -> str:
     return s.generated.file_name
 
 
+def check_expectations_in_code(s: Subject) -> Iterator[Finding]:
+    """A generated test builds an expected backend result in code, while the test it was built
+    from keeps it in an expectation section of its entry (warning). The suite's way: backend
+    expectations in the data, read by the section's helper; UI expectations in the code."""
+    ref = s.generated.template_entry_ref
+    if ref is None or s.index is None or s.tree is None:
+        return
+    chunk = next((c for c in s.index.chunks if c.id == ref.chunk_id), None)
+    base = chunk.data_entries.get(ref.entry_key) if chunk is not None else None
+    if not isinstance(base, dict):
+        return
+    sections = [k for k in s.settings.data.section_helpers() if k in base]
+    fields = {key for k in sections for key in _keys_in(base[k])}
+    if len(fields) < _MIN_EXPECTED_FIELDS:
+        return
+    for _, fn in s.tests:
+        for node in ast.walk(fn):
+            if not isinstance(node, ast.Dict):
+                continue
+            keys = {
+                k.value
+                for k in node.keys
+                if isinstance(k, ast.Constant) and isinstance(k.value, str)
+            }
+            if len(keys) >= _MIN_EXPECTED_FIELDS and len(keys & fields) * 2 > len(keys):
+                shared = ", ".join(sorted(keys & fields))
+                yield _f(
+                    "expectations_in_code",
+                    f"builds an expected backend result in code ({shared}); "
+                    f"the test it was built from keeps it in its entry's {', '.join(sections)} "
+                    "section, read by that section's helper: put it in the entry instead",
+                    severity="warning",
+                    test=fn.name,
+                    line=node.lineno,
+                )
+                break
+
+
+_MIN_EXPECTED_FIELDS = 3
+
+
+def _keys_in(value: Any) -> set[str]:
+    """Every dict key inside a value (lists and nested dicts followed)."""
+    found: set[str] = set()
+    stack = [value]
+    while stack:
+        item = stack.pop()
+        if isinstance(item, dict):
+            found.update(str(k) for k in item)
+            stack.extend(item.values())
+        elif isinstance(item, list):
+            stack.extend(item)
+    return found
+
+
 def retired_tests(s: Subject) -> set[str]:
     """Tests switched off for good: ``@pytest.mark.skip`` or ``skipif(True, ...)`` on the test
     or its class."""
@@ -1503,6 +1558,7 @@ CHECKS: list[tuple[str, Check]] = [
     ("seeded_names", check_seeded_names),
     ("capabilities", check_capability_gates),
     ("claims", check_claims),
+    ("expectations_in_code", check_expectations_in_code),
     ("hooks", check_hooks),
     ("page_locators", check_page_locators),
     ("raw_driver", check_raw_driver),
