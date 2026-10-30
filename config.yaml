@@ -326,6 +326,10 @@ guides:                          # area guides: one strong-model call per area (
   dir: null                      # default: output/guides/<repo folder name>
   use_in_generation: true        # the ticket's area guide goes into the generation context
   max_context_tokens: 1500       # how much of the guide may go there
+  framework: true                # also the framework guide (_framework): built with the areas, read with each
+  framework_prompt: guide_framework_v1
+  framework_max_input_tokens: 40000   # base classes, shared helpers, fixtures, data overview
+  framework_context_tokens: 1200 # how much of it goes into the generation context
   # USD per million tokens: for estimates, and when the provider reports no cost. Anthropic
   # first-party API prices as cached in the claude-api reference on 2026-10-06 (Haiku 5.5: up
   # to 100K-token prompts). Check your provider's price list.

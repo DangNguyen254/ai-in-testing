@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ticket2test.config import Settings
+from ticket2test.guides.framework import FRAMEWORK
 from ticket2test.guides.render import guide_context
 from ticket2test.guides.run import guides_dir, load_guide
 from ticket2test.index.indexer import IndexData
@@ -25,8 +26,9 @@ def area_guide_text(
     folder = guides_dir(repo_root, settings)
     names = [sub_area(area, f) for f in (files or [])] + [area]
     guide = next((g for n in names if (g := load_guide(folder, n)) is not None), None)
+    framework = _framework_text(folder, settings) if settings.guides.framework else ""
     if guide is None:
-        return "", ""
+        return (framework, FRAMEWORK) if framework else ("", "")
     area = guide.area
     changed = [
         path
@@ -36,4 +38,17 @@ def area_guide_text(
     text = guide_context(
         guide, settings.guides.max_context_tokens, settings.context.chars_per_token
     )
-    return text, f"{area} (stale: {len(changed)} file(s) changed)" if changed else area
+    label = f"{area} (stale: {len(changed)} file(s) changed)" if changed else area
+    if framework:
+        return f"{framework}\n\n{text}", f"{FRAMEWORK} + {label}"
+    return text, label
+
+
+def _framework_text(folder: Path, settings: Settings) -> str:
+    """The framework guide for the context (``guides.framework_context_tokens``), if built."""
+    guide = load_guide(folder, FRAMEWORK)
+    if guide is None:
+        return ""
+    return guide_context(
+        guide, settings.guides.framework_context_tokens, settings.context.chars_per_token
+    )

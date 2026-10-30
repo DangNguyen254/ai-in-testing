@@ -24,7 +24,8 @@ from ticket2test.guides.budget import (
     save_calibration,
 )
 from ticket2test.guides.check import check_guide
-from ticket2test.guides.inputs import pick_material
+from ticket2test.guides.framework import FRAMEWORK, framework_digest, framework_material
+from ticket2test.guides.inputs import Material, pick_material
 from ticket2test.index.indexer import IndexData
 from ticket2test.llm.base import LLMClient, LLMError, LLMRequest, Message
 from ticket2test.llm.factory import model_name
@@ -100,28 +101,51 @@ def run_guides(
     meter = UsageMeter(client) if client is not None and not estimate_only else None
     guard = BudgetGuard(meter, model, settings, budget, calibration) if meter is not None else None
     built = 0
-    for area in ordered:
-        material = pick_material(area, index, settings)
-        user = _user(prompt, area, material.text)
-        tokens_in = estimate_tokens(prompt.system + user, settings.context.chars_per_token)
+    jobs: list[tuple[str, int, str, dict[str, str], PromptTemplate, Material, AreaSummary | None]]
+    jobs = []
+    if cfg.framework and (areas is None or FRAMEWORK in areas):  # first: every area reads it
+        material, sources = framework_material(suite_map, index, settings)
+        framework_prompt = load_prompt(cfg.framework_prompt, settings.paths.prompts_dir)
+        digest = framework_digest(sources, settings)
+        jobs.append(
+            (FRAMEWORK, suite_map.overview.tests, digest, sources, framework_prompt, material, None)
+        )
+    for summary in ordered:
+        material = pick_material(summary, index, settings)
+        jobs.append(
+            (
+                summary.name,
+                summary.tests,
+                summary.digest,
+                summary.sources,
+                prompt,
+                material,
+                summary,
+            )
+        )
+    for name, tests, digest, sources, used_prompt, material, area in jobs:
+        user = used_prompt.render_user(
+            area=name if area else "the shared framework", material=material.text
+        )
+        tokens_in = estimate_tokens(used_prompt.system + user, settings.context.chars_per_token)
         worst = call_cost(
             tokens_in + calibration.overhead_tokens, calibration.output_tokens, model, settings
         )
         item = GuidePlanItem(
-            area=area.name,
-            tests=area.tests,
+            area=name,
+            tests=tests,
             status="planned",
             input_tokens_estimate=tokens_in,
             max_output_tokens=calibration.output_tokens,
             cost_estimate_usd=worst,
         )
         run.items.append(item)
-        stored = load_guide(folder, area.name)
+        stored = load_guide(folder, name)
         if (
             not force
             and stored is not None
-            and stored.digest == area.digest
-            and stored.prompt_version == prompt.version
+            and stored.digest == digest
+            and stored.prompt_version == used_prompt.version
             and stored.model == model
         ):
             item.status = "up_to_date"
@@ -138,7 +162,7 @@ def run_guides(
         started = time.monotonic()
         before, spent_before = meter.usage, guard.spent_usd
         try:
-            guide = _write(guard, prompt, user, model, settings)
+            guide = _write(guard, used_prompt, user, model, settings)
         except BudgetExceeded as exc:
             item.status = "over_budget" if meter.usage == before else "failed"
             item.note = str(exc)[:300]
@@ -156,11 +180,11 @@ def run_guides(
             save_guide(
                 folder,
                 AreaGuide(
-                    area=area.name,
-                    digest=area.digest,
-                    sources=area.sources,
+                    area=name,
+                    digest=digest,
+                    sources=sources,
                     model=model,
-                    prompt_version=prompt.version,
+                    prompt_version=used_prompt.version,
                     built_at=datetime.now(UTC),
                     input_pieces=material.pieces,
                     input_tokens_estimate=tokens_in,
@@ -193,10 +217,6 @@ def save_guide(folder: Path, guide: AreaGuide) -> None:
     path = guide_path(folder, guide.area)
     path.write_text(guide.model_dump_json(indent=2), encoding="utf-8")
     path.with_suffix(".md").write_text(render_guide(guide), encoding="utf-8")
-
-
-def _user(prompt: PromptTemplate, area: AreaSummary, material: str) -> str:
-    return prompt.render_user(area=area.name, material=material)
 
 
 def _write(

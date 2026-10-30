@@ -35,7 +35,8 @@ def _settings(tmp_path: Path, **guides: Any) -> Settings:
     return Settings.model_validate(
         {
             "paths": {"cache_dir": str(tmp_path / "cache")},
-            "guides": {"dir": str(tmp_path / "guides"), **guides},
+            # the framework guide is one more item: off here, tested on its own
+            "guides": {"dir": str(tmp_path / "guides"), "framework": False, **guides},
         }
     )
 
@@ -385,3 +386,41 @@ def test_cli_estimate_and_refused_budget(tmp_path: Path) -> None:
         app, ["guides", str(STANDIN), "--estimate", "--budget", "80", "--out", str(out)], env=env
     )
     assert refused.exit_code == 2 and "max_budget_usd" in refused.output
+
+
+def test_the_framework_guide_is_built_first_and_read_with_every_area(
+    index: IndexData, suite_map: SuiteMap, tmp_path: Path
+) -> None:
+    """Asked for after the real trial: what every area shares (base classes, shared helpers,
+    fixtures, how data is loaded) gets one guide, built before the areas and read next to the
+    ticket's area guide."""
+    from ticket2test.guides.framework import FRAMEWORK, framework_material
+
+    settings = _settings(tmp_path, framework=True)
+    folder = settings.guides.dir
+    assert folder is not None
+    material, sources = framework_material(suite_map, index, settings)
+    assert material.pieces[0].startswith("Suite overview")
+    assert any(p.startswith("Base class ") for p in material.pieces)
+    assert sources and all(path in index.files for path in sources)
+    assert "Seed sections" in material.text
+
+    fake = PricedFake(_replies(2), cost=0.02)
+    run = _run(index, suite_map, settings, fake, areas=[FRAMEWORK, "rules"])
+    assert [(i.area, i.status) for i in run.items] == [(FRAMEWORK, "built"), ("rules", "built")]
+    assert "Area: the shared framework" in fake.requests[0].messages[1].content
+    stored = load_guide(folder, FRAMEWORK)
+    assert stored is not None and stored.prompt_version == "guide_framework_v1"
+    # unchanged: skipped; asked for areas only: not built
+    again = PricedFake([], cost=0.02)
+    run = _run(index, suite_map, settings, again, areas=[FRAMEWORK])
+    assert [i.status for i in run.items] == ["up_to_date"] and again.requests == []
+    run = _run(index, suite_map, settings, PricedFake(_replies(1), cost=0.02), areas=["agent"])
+    assert [i.area for i in run.items] == ["agent"]
+
+    text, label = area_guide_text("rules", STANDIN, index, settings)
+    assert label == f"{FRAMEWORK} + rules" and text.index("_framework") < text.index("`rules`")
+    alone, label = area_guide_text("nowhere", STANDIN, index, settings)
+    assert label == FRAMEWORK and alone
+    off = _settings(tmp_path, framework=False)
+    assert area_guide_text("rules", STANDIN, index, off)[1] == "rules"

@@ -27,12 +27,12 @@ _QUOTED = re.compile(r"""["']([^"'\n]{1,60})["']""")
 
 
 def check_guide(
-    guide: GuideOutput, area: AreaSummary, index: IndexData
+    guide: GuideOutput, area: AreaSummary | None, index: IndexData
 ) -> tuple[GuideOutput, list[str], list[str]]:
     """The guide without unknown refs, the removed refs (with reasons), and unverified
     mentions."""
     known = _Known(index)
-    area_classes = {c.name for c in area.classes}
+    area_classes = {c.name for c in area.classes} if area is not None else set()
     removed: list[str] = []
 
     def keep(refs: list[GuideRef], kind: str, ok: Callable[[str], bool]) -> list[GuideRef]:

@@ -716,6 +716,12 @@ class GuideSettings(_Section):
     dir: Path | None = None  # default: <output_dir>/guides/<repo folder name>
     use_in_generation: bool = True  # put the ticket's area guide into the generation context
     max_context_tokens: int = Field(default=1500, ge=200)  # of the guide, in that context
+    # The framework guide (guides/framework.py): one more call, built with the areas (or with
+    # --area _framework), read next to every area's guide.
+    framework: bool = True
+    framework_prompt: str = "guide_framework_v1"
+    framework_max_input_tokens: int = Field(default=40000, ge=1000)
+    framework_context_tokens: int = Field(default=1200, ge=200)
     # USD per million tokens, used for estimates and when the provider reports no cost.
     # Anthropic first-party API prices, as cached in the claude-api reference on 2026-10-06
     # (Haiku 5.5: prompts up to 100K tokens). Check your provider's price list.
