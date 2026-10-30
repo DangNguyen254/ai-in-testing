@@ -229,3 +229,26 @@ def test_a_member_the_model_says_it_needs_is_a_checked_gap(
     found = {v.piece.name: (v.piece.source, v.status) for v in outcome.missing}
     assert found["fetch_delivered_file"] == ("noted", "missing")
     assert found["check"][1] == "exists"  # checked by code: it isn't missing at all
+
+
+def test_a_noted_member_of_the_new_class_goes_on_a_class_the_repo_has(
+    setup: tuple[Settings, IndexData],
+) -> None:
+    """Found in the real trial: the model named its own new class as the owner of the helpers
+    it needed; that class isn't in the repo, so every gap came back "owner unknown" and no
+    proposal ran. A new module's class -> its first base; a method patch -> the target class."""
+    from ticket2test.generate.pipeline import _owned_in_repo
+
+    _, index = setup
+    noted = [
+        MissingHint(kind="helper", owner="TestFilesBlocklist", name="fetch_file", needed_for="x"),
+        MissingHint(kind="helper", owner="BaseTest", name="other", needed_for="y"),
+        MissingHint(kind="helper", owner="nav.files.policy", name="chain", needed_for="z"),
+    ]
+    pieces = from_hints(noted, source="noted")
+    module = _generated(GAP_CODE, ENTRIES)
+    fixed = _owned_in_repo(pieces, module, index)
+    assert [p.owner for p in fixed] == ["BaseTest", "BaseTest", "nav.files.policy"]
+    patched = module.model_copy(update={"reuse_kind": "method", "reuse_target": "TestFilesViewer"})
+    renamed = [p.model_copy(update={"owner": "TestModelsOwnName"}) for p in pieces[:1]]
+    assert [p.owner for p in _owned_in_repo(renamed, patched, index)] == ["TestFilesViewer"]

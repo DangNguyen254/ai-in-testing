@@ -249,7 +249,9 @@ def generate_reusing(
         pieces += from_hints(retrieval.investigation.missing)
     if outcome.generated is not None:  # what the model said it needed and left out
         seen = {(p.owner, p.name) for p in pieces}
-        noted = from_hints(outcome.generated.noted_missing, source="noted")
+        noted = _owned_in_repo(
+            from_hints(outcome.generated.noted_missing, source="noted"), outcome.generated, index
+        )
         pieces += [p for p in noted if (p.owner, p.name) not in seen]
     outcome.missing = check_pieces(pieces, index, settings)
     gaps = [v for v in outcome.missing if v.status in ("missing", "close_match")]
@@ -281,6 +283,37 @@ def generate_reusing(
             update = {"review_checklist": checklist}
             outcome.generated = outcome.generated.model_copy(update=update)
     return outcome
+
+
+def _owned_in_repo(
+    pieces: list[MissingPiece], generated: GeneratedTest, index: IndexData
+) -> list[MissingPiece]:
+    """A member the model says its own new class needs belongs on a class that exists: the
+    class the method went into (a method patch; the model names the class it wrote), else the
+    new class's first base class. The new class's name isn't in the repo, so as owner it could
+    never be checked or proposed. Owners the repo has, and chains, stay as they are."""
+    import ast
+
+    repo = {c.name for c in index.catalog.classes.values()}
+    try:
+        tree = ast.parse(generated.code)
+    except SyntaxError:
+        return pieces
+    classes = {n.name: n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)}
+    fixed: list[MissingPiece] = []
+    for piece in pieces:
+        name = piece.owner.rsplit(".", 1)[-1] if piece.owner else ""
+        if not name or "." in piece.owner or name in repo:
+            fixed.append(piece)
+            continue
+        owner = ""
+        if generated.reuse_kind == "method" and generated.reuse_target:
+            owner = generated.reuse_target
+        elif name in classes:
+            bases = [ast.unparse(b) for b in classes[name].bases]
+            owner = next((b for b in bases if b.rsplit(".", 1)[-1] not in classes), "")
+        fixed.append(piece.model_copy(update={"owner": owner}) if owner else piece)
+    return fixed
 
 
 _DEVIATION_WORDS = {
