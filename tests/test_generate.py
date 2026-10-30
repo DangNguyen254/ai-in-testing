@@ -856,3 +856,44 @@ def test_an_expected_backend_result_built_in_code_is_flagged(
     plain = "      self.verify_targets()\n"
     found = validate_generated(generated(plain), index.catalog, settings, index=index)
     assert not [f for f in found.findings if f.check == "expectations_in_code"]
+
+
+def test_a_value_spelled_differently_from_the_suites_is_flagged(
+    index: IndexData, tmp_path: Path
+) -> None:
+    """Found in the real trial: the ticket wrote "prompt injection" where the suite writes
+    ``prompt_injection``, and the entry took the ticket's spelling."""
+    from ticket2test.knowledge.vocabulary import entry_values
+    from ticket2test.models.generated import GeneratedTest, TemplateEntryRef
+    from ticket2test.validate.validator import validate_generated
+
+    settings = _settings(tmp_path)
+    chunk = next(c for c in index.chunks if c.id == TEMPLATE_CHUNK)
+    base = chunk.data_entries[TEMPLATE_ID]
+    known = next(
+        v for v in entry_values(chunk, base, index, settings) if "." not in v.key and v.values
+    )
+    entry = {**base, "test_id": "test_rules_new", known.key: known.values[0].name.upper()}
+    generated = GeneratedTest(
+        code=(
+            "from framework.base_test import BaseTest\n\n\nclass TestRulesNew(BaseTest):\n"
+            "   def test_rules_new(self):\n      self.verify_targets()\n"
+        ),
+        file_name="tests/rules/test_rules_new.py",
+        data_file_name="tests/rules/test_rules_new.json",
+        data_entries=[entry],
+        data_format="array",
+        test_ids=["test_rules_new"],
+        template_entry_ref=TemplateEntryRef(chunk_id=TEMPLATE_CHUNK, entry_key=TEMPLATE_ID),
+        ticket_id="X",
+        draft_ref="X/d1",
+        retrieved_chunk_ids=[],
+        prompt_version="t",
+        provider="fake",
+        model="fake",
+        attempts=1,
+        context_tokens=0,
+    )
+    found = validate_generated(generated, index.catalog, settings, index=index)
+    flagged = [f for f in found.findings if f.check == "known_spelling"]
+    assert len(flagged) == 1 and known.values[0].name in flagged[0].message, flagged

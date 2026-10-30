@@ -994,3 +994,36 @@ def test_data_handed_to_a_check_through_a_local_counts_for_the_claims() -> None:
     claim = [("expected outcome", "The verdict event is logged")]
     assert find_gaps(claim, checks, entries, {})  # the call names no data key
     assert not find_gaps(claim, checks, entries, {}, data=locals_)
+
+
+def test_a_key_a_helper_reads_through_its_parameter_default_is_read(tmp_path: Path) -> None:
+    """Found in the real trial: ``def login(self, target, user="agent_user"):
+    self.params[user]`` reads ``agent_user`` when called without ``user``; it was taken as
+    unread and removed from the new entry, so the test would fail on the missing key."""
+    from ticket2test.generate.generator import first_party
+
+    repo = tmp_path / "repo"
+    (repo / "tests").mkdir(parents=True)
+    code = (
+        "class TestArea:\n"
+        '   def login(self, target, user="agent_user"):\n'
+        "      return self.params[user]\n\n"
+        "   def test_area_one(self):\n      self.login(1)\n\n"
+        '   def test_area_two(self):\n      self.login(1, "other_user")\n'
+    )
+    (repo / "tests" / "test_area.py").write_text(code, encoding="utf-8")
+    settings = Settings.model_validate({"paths": {"cache_dir": str(tmp_path / "cache")}})
+    index, _, _ = update_index(repo, settings)
+    report = _validate(
+        (settings, index, first_party(index, settings)),
+        code=code,
+        entries=[
+            {"test_id": "test_area_one", "agent_user": "a"},
+            {"test_id": "test_area_two", "other_user": "b"},
+        ],
+        file_name="tests/test_area.py",
+        test_ids=["test_area_one", "test_area_two"],
+    )
+    found = [f.render() for f in report.findings if "agent_user" in f.message]
+    found += [f.render() for f in report.findings if "other_user" in f.message]
+    assert not found, found

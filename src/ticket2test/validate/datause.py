@@ -182,6 +182,7 @@ class Resolver:
         """Adds what the methods (and the ``self.<method>()`` calls they make) read to
         ``total``."""
         visited: set[int] = set()  # by node: a base's setup has the class's setup's name
+        sites: dict[str, list[tuple[list[ast.expr], dict[str, ast.expr]]]] = {}
         while queue and len(visited) < _MAX_METHODS:
             current = queue.pop()
             if id(current) in visited:
@@ -190,6 +191,9 @@ class Resolver:
             seen.add(current.name)
             reads = self._reads(current)
             total.add(reads)
+            total.keys |= _keys_by_parameter(current, reads.key_names, sites.get(current.name))
+            for name, args, keywords in reads.self_call_sites:
+                sites.setdefault(name, []).append((args, keywords))
             for name in reads.self_calls:
                 found = self.method(cls, name)
                 if found is not None and id(found) not in visited:
@@ -449,3 +453,34 @@ def _walk(node: ast.AST) -> Iterator[ast.AST]:
     yield node
     for child in ast.iter_child_nodes(node):
         yield from _walk(child)
+
+
+def _keys_by_parameter(
+    function: ast.FunctionDef,
+    names: set[str],
+    calls: list[tuple[list[ast.expr], dict[str, ast.expr]]] | None,
+) -> set[str]:
+    """Keys a method reads through a parameter (``def login(self, t, user="agent_user"):
+    self.params[user]``): the string each call passes for it, or its default when a call leaves
+    it out (or no call was seen, as for a hook)."""
+    params = [a.arg for a in [*function.args.posonlyargs, *function.args.args]][1:]  # no self
+    defaults = dict(
+        zip(
+            params[len(params) - len(function.args.defaults) :],
+            function.args.defaults,
+            strict=True,
+        )
+    )
+    found: set[str] = set()
+    for name in names & set(params):
+        default = defaults.get(name)
+        position = params.index(name)
+        given: list[ast.expr | None] = [
+            keywords.get(name, args[position] if position < len(args) else None)
+            for args, keywords in calls or [([], {})]
+        ]
+        for value in given:
+            value = default if value is None else value
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                found.add(value.value)
+    return found

@@ -1017,6 +1017,51 @@ def _convention_file(s: Subject) -> str:
     return s.generated.file_name
 
 
+_SPELLING = re.compile(r"[\s_\-]+")
+
+
+def check_known_spelling(s: Subject) -> Iterator[Finding]:
+    """A new entry's value differs from a value the suite uses for the same key only in case,
+    spaces, ``_`` or ``-`` (warning): a ticket's loose wording ("prompt injection") copied in
+    where the suite writes ``prompt_injection``. Known values: the template folder's entries."""
+    from ticket2test.knowledge.vocabulary import entry_values
+    from ticket2test.suitemap.build import leaves
+
+    ref = s.generated.template_entry_ref
+    if ref is None or s.index is None:
+        return
+    chunk = next((c for c in s.index.chunks if c.id == ref.chunk_id), None)
+    base = chunk.data_entries.get(ref.entry_key) if chunk is not None else None
+    if chunk is None or not isinstance(base, dict):
+        return
+    id_field = s.settings.data.id_field
+    new = set(s.generated.new_test_ids) or set(s.generated.test_ids)
+    ours = [e for e in s.entries if str(e.get(id_field, "")) in new]
+    known = {
+        v.key: [c.name for c in v.values]
+        for v in entry_values(
+            chunk, {k: v for e in ours for k, v in e.items()}, s.index, s.settings
+        )
+    }
+    reported: set[tuple[str, str]] = set()
+    for entry in ours:
+        for path, value in leaves(entry, "", 0):
+            names = known.get(path)
+            if not isinstance(value, str) or not names or value in names:
+                continue
+            loose = _SPELLING.sub("", value).lower()
+            match = next((n for n in names if _SPELLING.sub("", n).lower() == loose), None)
+            if match is not None and (path, value) not in reported:
+                reported.add((path, value))
+                yield _f(
+                    "known_spelling",
+                    f"{path} is {value!r}, but the suite writes {match!r}: use the suite's "
+                    "spelling unless the ticket means a new value",
+                    "warning",
+                    test=str(entry.get(id_field, "")),
+                )
+
+
 def check_expectations_in_code(s: Subject) -> Iterator[Finding]:
     """A generated test builds an expected backend result in code, while the test it was built
     from keeps it in an expectation section of its entry (warning). The suite's way: backend
@@ -1564,6 +1609,7 @@ CHECKS: list[tuple[str, Check]] = [
     ("capabilities", check_capability_gates),
     ("claims", check_claims),
     ("expectations_in_code", check_expectations_in_code),
+    ("known_spelling", check_known_spelling),
     ("hooks", check_hooks),
     ("page_locators", check_page_locators),
     ("raw_driver", check_raw_driver),

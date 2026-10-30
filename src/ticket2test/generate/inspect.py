@@ -113,6 +113,13 @@ class EntryReads:
     passed: list[tuple[str, int | str, str]] = field(default_factory=list)
     # ``Base.setup(self)`` and ``super().setup()``: (the class named, or "super"; the method)
     base_calls: set[tuple[str, str]] = field(default_factory=set)
+    # names used as the key (``self.params[user]``): the function's parameters among them read
+    # the key their callers pass, or the parameter's default
+    key_names: set[str] = field(default_factory=set)
+    # ``self.<method>(...)`` calls: (method, positional arguments, keyword arguments)
+    self_call_sites: list[tuple[str, list[ast.expr], dict[str, ast.expr]]] = field(
+        default_factory=list
+    )
 
     def add(self, other: EntryReads) -> None:
         self.keys |= other.keys
@@ -151,6 +158,8 @@ def entry_reads(nodes: Iterable[ast.AST], roots: set[str], helpers: Iterable[str
                     reads.optional.add(node.slice.value)
                 if id(node) in tried:  # try: params["k"] ... except KeyError: a missing key
                     reads.guarded.add(node.slice.value)
+            elif isinstance(node.slice, ast.Name):
+                reads.key_names.add(node.slice.id)
         elif isinstance(node, ast.Compare) and _key_check(node, roots):
             reads.guarded.add(node.left.value)  # type: ignore[attr-defined]
         elif isinstance(node, ast.Call):
@@ -168,6 +177,13 @@ def entry_reads(nodes: Iterable[ast.AST], roots: set[str], helpers: Iterable[str
                 reads.optional.add(node.args[0].value)
             elif name.startswith("self.") and name.count(".") == 1:
                 reads.self_calls.add(name.removeprefix("self."))
+                reads.self_call_sites.append(
+                    (
+                        name.removeprefix("self."),
+                        list(node.args),
+                        {k.arg: k.value for k in node.keywords if k.arg},
+                    )
+                )
             elif _is_super_call(node.func):
                 reads.base_calls.add(("super", node.func.attr))  # type: ignore[attr-defined]
             elif (
