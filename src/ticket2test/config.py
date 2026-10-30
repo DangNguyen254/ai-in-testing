@@ -265,6 +265,8 @@ class RerankSettings(_Section):
     definition_weight: float = Field(default=0.2, ge=0.0)  # defines a verified identifier
     test_link_weight: float = Field(default=0.15, ge=0.0)  # a test of a top source chunk
     path_weight: float = Field(default=0.15, ge=0.0)  # ticket words in the file path
+    # In a folder or class the glossary maps the ticket's words to (knowledge.glossary).
+    glossary_weight: float = Field(default=0.25, ge=0.0)
 
 
 class InvestigatorSettings(_Section):

@@ -29,8 +29,11 @@ def rerank(
     ticket_text: str,
     k: int,
     settings: RerankSettings,
+    places: Sequence[str] = (),
 ) -> list[Ranked]:
-    """``candidates``: (chunk, fused score, reason details). Returns the selected top ``k``."""
+    """``candidates``: (chunk, fused score, reason details). Returns the selected top ``k``.
+    ``places``: folders and ``path::Class`` keys the glossary maps the ticket to; chunks there
+    are lifted (a reorder: they must have been found by the ticket's own words)."""
     if not candidates:
         return []
     top_fused = max(score for _, score, _ in candidates) or 1.0
@@ -52,6 +55,8 @@ def rerank(
             overlap = len(ticket_words & path_words - {"tests", "test", "src"})
             if overlap:
                 features["path"] = settings.path_weight * min(overlap, 2) / 2
+            if places and in_places(chunk, places):
+                features["glossary"] = settings.glossary_weight
         score = sum(features.values())
         scored.append(
             Ranked(chunk, fused, round(score, 6), {k_: round(v, 4) for k_, v in features.items()})
@@ -61,6 +66,20 @@ def rerank(
     if not settings.enabled:
         return scored[:k]
     return _select(scored, k, settings.max_chunks_per_file, settings.min_tests)
+
+
+def in_places(chunk: Chunk, places: Sequence[str]) -> bool:
+    """The chunk is in one of the folders, or is (or belongs to) one of the ``path::Class``."""
+    keys = {f"{chunk.file_path}::{chunk.symbol_name}"}
+    if chunk.class_name:
+        keys.add(f"{chunk.file_path}::{chunk.class_name}")
+    for place in places:
+        if "::" in place:
+            if place in keys:
+                return True
+        elif chunk.file_path.startswith(place.strip("/") + "/"):
+            return True
+    return False
 
 
 def _select(ranked: list[Ranked], k: int, per_file: int, min_tests: int) -> list[Ranked]:

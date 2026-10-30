@@ -109,7 +109,11 @@ def test_the_glossary_steers_search_and_the_area_choice(
     index: IndexData, glossary_file: Path, tmp_path: Path
 ) -> None:
     """A ticket in the tracker's words only: its component names no folder, its text no code."""
-    ticket = _ticket(components=["Asset Handover"], labels=["Story"])
+    ticket = _ticket(
+        title="Partner handover breaks after the upgrade",
+        components=["Asset Handover"],
+        labels=["Story"],
+    )
     plain = Settings.model_validate({"paths": {"cache_dir": str(tmp_path / "c1")}})
     with_glossary = Settings.model_validate(
         {
@@ -122,8 +126,9 @@ def test_the_glossary_steers_search_and_the_area_choice(
     after = retrieve(ticket, index, with_glossary)
     assert after.glossary_terms == ["Asset Handover"]
     assert after.glossary_folders == ["tests/files"]
-    assert "TestFilesDownloads" in after.identifiers  # the mapped class is searched by name
     assert any(h.file_path.startswith("tests/files/") for h in after.hits[:3])
+    # the ticket's words found nothing there, so the glossary's words were searched as well
+    assert any(r.detail.startswith("query=glossary") for h in after.hits for r in h.reasons)
     choice = choose_domain(after, index, with_glossary, ticket)
     assert choice.domain is not None and choice.domain.name == "files"
     assert "glossary" in choice.reason and not choice.uncertain
@@ -143,3 +148,25 @@ def test_a_mapped_name_the_suite_no_longer_has_is_logged_as_stale(
     retrieve(_ticket(labels=["Gone Feature"]), index, settings)
     unmapped = (tmp_path / "glossary-unmapped.txt").read_text(encoding="utf-8")
     assert "stale\tGone Feature: class tests/gone/test_gone.py::TestGone" in unmapped
+
+
+def test_when_the_tickets_words_find_the_place_the_glossary_only_reorders(
+    index: IndexData, glossary_file: Path, tmp_path: Path
+) -> None:
+    """Found on the real suite: added glossary results crowded out the exact test the ticket's
+    own words had found. With words that already reach a mapped place, nothing is added: results
+    there are lifted in the ranking."""
+    ticket = _ticket(
+        title="An executable download is blocked by the download policy",
+        components=["Asset Handover"],
+    )
+    settings = Settings.model_validate(
+        {
+            "paths": {"cache_dir": str(tmp_path / "c")},
+            "knowledge": {"glossary": str(glossary_file)},
+        }
+    )
+    result = retrieve(ticket, index, settings)
+    assert not any(r.detail.startswith("query=glossary") for h in result.hits for r in h.reasons)
+    lifted = [h for h in result.hits if "glossary" in h.rank_features]
+    assert lifted and all(h.file_path.startswith("tests/files/") for h in lifted)

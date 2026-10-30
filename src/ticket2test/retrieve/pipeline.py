@@ -42,7 +42,7 @@ from ticket2test.prompts import load_prompt
 from ticket2test.retrieve.investigator import investigate
 from ticket2test.retrieve.llm_steps import request_followups, rewrite_query
 from ticket2test.retrieve.query import candidate_identifiers, ticket_text, verify_identifiers
-from ticket2test.retrieve.rerank import Ranked, rerank
+from ticket2test.retrieve.rerank import Ranked, in_places, rerank
 from ticket2test.retrieve.shape import shape_of_draft, shape_of_test
 
 log = logging.getLogger(__name__)
@@ -309,23 +309,34 @@ def retrieve(
         prompt_versions.append(prompt.version)
 
     matched = _glossary_terms(ticket, index, settings)
-    from_glossary = [c.rsplit("::", 1)[-1] for t in matched for c in t.classes]
+    places = (
+        [p for t in matched for p in [*t.folders, *t.classes]]
+        if settings.knowledge.use_in_search
+        else []
+    )
     guessed = candidate_identifiers(text) + (rewrite.identifiers if rewrite else [])
-    guessed += from_glossary if settings.knowledge.use_in_search else []
     identifiers, rejected = verify_identifiers(guessed, retriever.catalog)
+
+    def ranked_top(current: dict[str, _Candidate]) -> list[Ranked]:
+        return _final(current, identifiers, text, settings, places)
 
     lists: list[RankedList] = [retriever.bm25(text, "query=ticket")]
     if rewrite is not None and rewrite.terms:
         lists.append(retriever.bm25(" ".join(rewrite.terms), "query=rewrite"))
-    glossary_words = _glossary_words(matched) if settings.knowledge.use_in_search else ""
-    if glossary_words:  # the suite's own words for what the ticket names
-        lists.append(retriever.bm25(glossary_words, "query=glossary"))
     lists.extend(retriever.grep(name) for name in identifiers)
 
     pool = _build_pool(retriever, lists)
     rounds = 0
     searches_run = ["bm25: <ticket text>"] + (["bm25: <rewrite terms>"] if rewrite else [])
-    searches_run += ["bm25: <glossary terms>"] if glossary_words else []
+    if places and not any(in_places(r.chunk, places) for r in ranked_top(pool)):
+        # the ticket's own words missed every place the glossary names: search in its words
+        fallback = [retriever.grep(c.rsplit("::", 1)[-1]) for t in matched for c in t.classes]
+        words = _glossary_words(matched)
+        if words:
+            fallback.append(retriever.bm25(words, "query=glossary"))
+        lists.extend(fallback)
+        pool = _build_pool(retriever, lists)
+        searches_run.append("bm25: <glossary terms> (the ticket's words found none of its places)")
     searches_run += [f"grep: {name}" for name in identifiers]
     investigation: Investigation | None = None
     if use_llm and cfg.investigator.enabled:
@@ -336,7 +347,7 @@ def retrieve(
             prompt,
             retriever,
             text,
-            _describe(_final(pool, identifiers, text, settings)),
+            _describe(ranked_top(pool)),
             settings,
         )
         llm_calls += investigation.llm_calls
@@ -352,16 +363,14 @@ def retrieve(
         assert client is not None
         prompt = load_prompt(cfg.followup_prompt, settings.paths.prompts_dir)
         for round_no in range(1, cfg.max_followup_rounds + 1):
-            if not _is_thin(
-                _final(pool, identifiers, text, settings), cfg.top_k, cfg.followup_min_tests
-            ):
+            if not _is_thin(ranked_top(pool), cfg.top_k, cfg.followup_min_tests):
                 break
             response = request_followups(
                 client,
                 prompt,
                 text,
                 searches_run,
-                _describe(_final(pool, identifiers, text, settings)),
+                _describe(ranked_top(pool)),
                 settings,
             )
             llm_calls += response.attempts
@@ -379,7 +388,7 @@ def retrieve(
                 break
 
     templates = retriever.templates(pool, draft, ticket.components)
-    final = _final(pool, identifiers, text, settings)
+    final = ranked_top(pool)
     if investigation is not None:  # what the investigator kept stays, even below the top_k
         in_final = {r.chunk.id for r in final}
         final += [
@@ -454,11 +463,20 @@ def _run_followups(
 
 
 def _final(
-    pool: dict[str, _Candidate], identifiers: list[str], text: str, settings: Settings
+    pool: dict[str, _Candidate],
+    identifiers: list[str],
+    text: str,
+    settings: Settings,
+    places: list[str] | None = None,
 ) -> list[Ranked]:
     candidates = [(c.chunk, c.score, [r.detail for r in c.reasons]) for c in pool.values()]
     return rerank(
-        candidates, identifiers, text, settings.retrieval.top_k, settings.retrieval.rerank
+        candidates,
+        identifiers,
+        text,
+        settings.retrieval.top_k,
+        settings.retrieval.rerank,
+        places or (),
     )
 
 

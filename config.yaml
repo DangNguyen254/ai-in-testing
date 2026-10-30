@@ -144,6 +144,7 @@ retrieval:
     definition_weight: 0.2
     test_link_weight: 0.15
     path_weight: 0.15
+    glossary_weight: 0.25        # in a folder or class the glossary maps the ticket's words to
   investigator:                  # bounded agent; replaces the follow-up rounds when enabled
     enabled: false
     prompt: investigator_v3
