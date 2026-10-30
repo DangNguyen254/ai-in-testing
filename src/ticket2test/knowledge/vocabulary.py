@@ -52,6 +52,8 @@ def draft_vocabulary(ticket: Ticket, settings: Settings) -> DraftVocabulary:
         lines.append("Values the suite's data uses in those areas (key path: values):")
         lines += [f"  - {v.key}: {', '.join(c.name for c in v.values)}" for v in values]
     components = list(dict.fromkeys(m for t in terms for m in t.markers))
+    if not components:  # the entries list none: the component markers the suite uses there
+        components = _map_components(terms, settings)
     return DraftVocabulary("\n".join(lines), components, [t.term for t in terms])
 
 
@@ -71,26 +73,56 @@ def _term_line(term: Term) -> str:
     return f'- "{term.term}" in the suite: ' + ("; ".join(parts) or "(no details)")
 
 
-def _map_values(terms: list[Term], settings: Settings) -> list[KeyValues]:
-    """Low-cardinality known values of the areas under the matched folders (from map.json)."""
+def _term_folders(terms: list[Term]) -> list[str]:
+    return [f.strip("/") for t in terms for f in t.folders] + [
+        str(PurePosixPath(c.split("::", 1)[0]).parent) for t in terms for c in t.classes
+    ]
+
+
+def _matched_areas(terms: list[Term], settings: Settings) -> list[Any]:
+    """The suite map's areas under the matched terms' folders (and their classes' folders)."""
     from ticket2test.suitemap import load_map
 
     folder = map_dir(settings)
     suite_map = load_map(folder) if folder is not None else None
-    wanted = [f.strip("/") for t in terms for f in t.folders] + [
-        str(PurePosixPath(c.split("::", 1)[0]).parent) for t in terms for c in t.classes
-    ]
+    wanted = _term_folders(terms)
     if suite_map is None or not wanted:
         return []
-    k = settings.knowledge
-    found: dict[str, KeyValues] = {}
-    for area in suite_map.areas:
-        if not any(
+    return [
+        area
+        for area in suite_map.areas
+        if any(
             a == w or a.startswith(w + "/") or w.startswith(a + "/")
             for a in area.folders
             for w in wanted
-        ):
-            continue
+        )
+    ]
+
+
+_MAX_COMPONENTS = 3
+
+
+def _map_components(terms: list[Term], settings: Settings) -> list[str]:
+    """The component marker values the tests in the matched areas use, most common first."""
+    sep = settings.markers.value_separator
+    counts: dict[str, int] = {}
+    for area in _matched_areas(terms, settings):
+        for marker in area.markers:
+            name, _, args = marker.name.partition("=")
+            if name != "component" or not args:
+                continue
+            for value in args.split(sep) if sep else [args]:
+                if value.strip():
+                    counts[value.strip()] = counts.get(value.strip(), 0) + marker.count
+    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    return [name for name, _ in ranked[:_MAX_COMPONENTS]]
+
+
+def _map_values(terms: list[Term], settings: Settings) -> list[KeyValues]:
+    """Low-cardinality known values of the areas under the matched folders (from map.json)."""
+    k = settings.knowledge
+    found: dict[str, KeyValues] = {}
+    for area in _matched_areas(terms, settings):
         for v in area.data_values:
             if not v.free_text and v.values and v.distinct <= k.max_vocabulary_values:
                 found.setdefault(v.key, v)

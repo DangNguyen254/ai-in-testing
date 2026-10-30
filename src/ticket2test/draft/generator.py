@@ -68,6 +68,8 @@ def generate_drafts(
     components = list(markers.components) or vocabulary.components
     if "{{components}}" in prompt.user:  # from draft_v3 on
         values["components"] = ", ".join([*components, UNKNOWN]) if components else "(not given)"
+    if "{{priority_guide}}" in prompt.user:  # from draft_v5 on
+        values["priority_guide"] = settings.draft.priority_guide
     if "{{vocabulary}}" in prompt.user:  # from draft_v4 on
         values["vocabulary"] = scrub(vocabulary.text).text if vocabulary.text else "(none)"
     user = prompt.render_user(**values)

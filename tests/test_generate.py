@@ -754,3 +754,33 @@ def test_convention_sections_widen_from_the_file_to_the_suite(
         update={"data": settings.data.model_copy(update={"required_sections": ["site"]})}
     )
     assert "site" in convention_sections("tests/rules/test_rules.py", index, required).keys
+
+
+def test_priority_may_come_from_the_tests_next_to_the_new_one(
+    index: IndexData, tmp_path: Path
+) -> None:
+    """A team may want the priority its neighbours use, whatever the ticket suggests."""
+    from collections import Counter
+
+    from ticket2test.generate.generator import marker_values
+
+    template = {c.id: c for c in index.chunks}[TEMPLATE_CHUNK]
+    neighbours = Counter(
+        str(m.args[0])
+        for c in index.chunks
+        if c.kind == "test"
+        and c.file_path == template.file_path
+        and c.class_name == template.class_name
+        for m in c.markers
+        if m.name == "priority" and m.args
+    )
+    most = neighbours.most_common(1)[0][0]
+    draft = _draft().model_copy(
+        update={"markers": _draft().markers.model_copy(update={"priority": "p0"})}
+    )
+    settings = _settings(tmp_path)
+    assert marker_values(draft, settings, template, index)["priority"] == "p0"  # the default
+    by_neighbours = settings.model_copy(
+        update={"markers": settings.markers.model_copy(update={"priority_from": "neighbours"})}
+    )
+    assert marker_values(draft, by_neighbours, template, index)["priority"] == most != "p0"

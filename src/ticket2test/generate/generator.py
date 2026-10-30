@@ -786,13 +786,43 @@ def marker_values(
         return next((str(m.args[0]) for m in template.markers if m.name == name and m.args), None)
 
     known = index.catalog.markers
-    values = {"priority": draft.markers.priority, "project": settings.markers.project}
+    priority = draft.markers.priority
+    if settings.markers.priority_from == "neighbours":
+        priority = neighbour_priority(template, index) or priority
+    values = {"priority": priority, "project": settings.markers.project}
     for name, drafted in (("component", draft.markers.component), ("suite", draft.markers.suite)):
         match = next((v for v in known.get(name, []) if v.lower() == drafted.lower()), None)
         chosen = match or template_value(name)
         if chosen:
             values[name] = chosen
     return values
+
+
+def neighbour_priority(template: Chunk, index: IndexData) -> str | None:
+    """The priority most tests next to the template use: in its class, else its file, else its
+    folder (ties: the first found)."""
+    folder = str(PurePosixPath(template.file_path).parent)
+    tests = [c for c in index.chunks if c.kind == "test" and not c.inherited_from]
+    scopes = [
+        [
+            c
+            for c in tests
+            if c.file_path == template.file_path and c.class_name == template.class_name
+        ],
+        [c for c in tests if c.file_path == template.file_path],
+        [c for c in tests if str(PurePosixPath(c.file_path).parent) == folder],
+    ]
+    for scope in scopes:
+        counts: dict[str, int] = {}
+        for chunk in scope:
+            value = next(
+                (str(m.args[0]) for m in chunk.markers if m.name == "priority" and m.args), None
+            )
+            if value:
+                counts[value] = counts.get(value, 0) + 1
+        if counts:
+            return max(counts, key=lambda v: counts[v])
+    return None
 
 
 def _markers_text(

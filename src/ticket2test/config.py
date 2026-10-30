@@ -96,6 +96,9 @@ class MarkerSettings(_Section):
     # Some suites join several values in one marker argument ("rules,profiles"); each part is
     # checked on its own. Empty: values are taken whole.
     value_separator: str = ","
+    # Where a generated test's priority comes from: the draft's (from the ticket), or the
+    # priority most tests next to it use (its class, else its file, else its folder).
+    priority_from: Literal["draft", "neighbours"] = "draft"
 
 
 class EvalSettings(_Section):
@@ -105,7 +108,17 @@ class EvalSettings(_Section):
 
 
 class DraftSettings(_Section):
-    prompt_version: str = "draft_v4"
+    prompt_version: str = "draft_v5"
+    # How the draft chooses a priority (draft_v5 on): the team's own convention, e.g. "p2 for
+    # most tests; p1 only for release-blocking core flows or a vulnerability in the product".
+    priority_guide: str = (
+        "The first allowed priority is the highest. Use the highest only for a defect that "
+        "breaks a core flow for most users, loses data, or is a vulnerability in the "
+        "product under test itself (a bypass, exposed data, escalated privileges); a "
+        "security feature working or failing like any other feature is not by itself a "
+        "vulnerability. Use the middle values for incorrect behavior with a workaround, and"
+        " the lowest for cosmetic or rare issues."
+    )
     # Comments go into the prompt in order until this many characters; the rest are dropped.
     max_comment_chars: int = Field(default=20000, ge=0)
     # A partial draft with open questions (draft/skeleton.py), one extra LLM call: "auto" when

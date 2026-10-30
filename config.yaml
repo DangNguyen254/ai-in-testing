@@ -32,7 +32,9 @@ llm:
     model: ""                  # required when provider is gemini
 
 draft:
-  prompt_version: draft_v4
+  prompt_version: draft_v5
+  # How the draft picks a priority (the team's convention); default: the generic guide in config.py
+  # priority_guide: "p2 for most tests; p1 only for release-blocking core flows or a product vulnerability"
   max_comment_chars: 20000
   skeleton: auto                 # partial draft + open questions: auto (insufficient, or no explicit
                                  # steps/expected section in the ticket) | always | never
@@ -45,6 +47,7 @@ markers:                       # generic placeholders; set real values per envir
   project: example-project
   required: [priority, project, component, suite]
   value_separator: ","           # joined values ("a,b") are checked part by part; "" = whole
+  priority_from: draft           # draft | neighbours (the priority most tests next to it use)
 
 eval:
   ticket_id_pattern: '\b[A-Z][A-Z0-9]+-\d+\b'   # Jira-style: KEY-123
