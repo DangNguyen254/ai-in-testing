@@ -330,14 +330,19 @@ def test_a_method_patch(setup: tuple[Settings, IndexData]) -> None:
     )
     kept = {k: v for k, v in base.items() if k not in ("decision", "targets")}  # not read
     entry = {**kept, "test_id": "test_files_archive_encrypted_members", "members": ["a.txt"]}
+    copied = "The new class is a copy of TestFilesArchives's scaffold, not a subclass, ..."
     generated = method_patch(
-        _generated(GENERATED_CLASS, [entry]),
+        _generated(GENERATED_CLASS, [entry]).model_copy(
+            update={"review_checklist": ["Confirm the save flow.", copied]}
+        ),
         _decision("method", "TestFilesArchives", path),
         index,
         settings,
         STANDIN,
     )
     assert generated.reuse_kind == "method" and generated.file_name == path
+    # the method joins the class itself: the new-module copy note is dropped (real trial)
+    assert generated.review_checklist == ["Confirm the save flow."]
     assert generated.data_entries[-1]["test_id"] == "test_files_archive_encrypted_members"
     assert "test_files_archive_encrypted_members" in generated.test_ids
     assert [p.path for p in generated.patches] == [path, path.replace(".py", ".json")]

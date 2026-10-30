@@ -183,6 +183,10 @@ def prepare_generation(
     )
 
 
+# A new module only: dropped when the method is spliced into the template's own class.
+SCAFFOLD_COPY_NOTE = "The new class is a copy of "
+
+
 def assemble(
     setup: GenerationSetup,
     response: GenerationResponse,
@@ -246,7 +250,7 @@ def assemble(
     checklist = list(dict.fromkeys([*gen.review_checklist_defaults, *response.review_checklist]))
     if shell_helpers:
         checklist.append(
-            f"The new class is a copy of {setup.template_chunk.class_name}'s scaffold, not a "
+            f"{SCAFFOLD_COPY_NOTE}{setup.template_chunk.class_name}'s scaffold, not a "
             f"subclass, so its own methods {', '.join(shell_helpers)} were copied in too. "
             "Consider a shared base class for them instead of the copy."
         )

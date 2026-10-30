@@ -36,7 +36,7 @@ from typing import Any
 
 from ticket2test.config import Settings
 from ticket2test.generate.entries import EntryError, delete_path, function_of, parse_path
-from ticket2test.generate.generator import first_party
+from ticket2test.generate.generator import SCAFFOLD_COPY_NOTE, first_party
 from ticket2test.generate.reuse import ReuseDecision
 from ticket2test.index.datafile import function_data_path, layout_of, module_data_path
 from ticket2test.index.indexer import IndexData
@@ -801,6 +801,10 @@ def method_patch(
             "new_test_ids": new_ids,
             "reuse_kind": "method",
             "reuse_target": class_name,
+            # the method joins the class itself: nothing was copied from its scaffold
+            "review_checklist": [
+                c for c in generated.review_checklist if not c.startswith(SCAFFOLD_COPY_NOTE)
+            ],
             "reuse_reasons": list(decision.reasons),
             "patches": [p.record() for p in patches],
         }
