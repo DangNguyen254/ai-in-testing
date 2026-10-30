@@ -1040,7 +1040,11 @@ def check_known_spelling(s: Subject) -> Iterator[Finding]:
     known = {
         v.key: [c.name for c in v.values]
         for v in entry_values(
-            chunk, {k: v for e in ours for k, v in e.items()}, s.index, s.settings
+            chunk,
+            {k: v for e in ours for k, v in e.items()},
+            s.index,
+            s.settings,
+            for_context=False,
         )
     }
     reported: set[tuple[str, str]] = set()

@@ -147,13 +147,19 @@ def _safe(name: str) -> str:
 
 
 def entry_values(
-    template: Chunk, entry: dict[str, Any], index: IndexData, settings: Settings
+    template: Chunk,
+    entry: dict[str, Any],
+    index: IndexData,
+    settings: Settings,
+    for_context: bool = True,
 ) -> list[KeyValues]:
     """For the keys the template entry uses: the values the entries of tests in the template's
-    folder give them (free text and keys with many values left out)."""
+    folder give them (free text and keys with many values left out). ``for_context``: for the
+    generation context (``knowledge.use_in_generation``, at most ``max_vocabulary_keys`` keys);
+    False: every key, for checks in code."""
     from ticket2test.suitemap.build import known_values, leaves
 
-    if not settings.knowledge.use_in_generation:
+    if for_context and not settings.knowledge.use_in_generation:
         return []
     folder = str(PurePosixPath(template.file_path).parent)
     entries = [
@@ -165,11 +171,12 @@ def entry_values(
     ]
     paths = {p for p, _ in leaves(entry, "", 0)}
     k = settings.knowledge
-    return [
+    found = [
         v
-        for v in known_values(entries, settings)
+        for v in known_values(entries, settings, keys=paths)
         if v.key in paths and not v.free_text and v.values and v.distinct <= k.max_vocabulary_values
-    ][: k.max_vocabulary_keys]
+    ]
+    return found[: k.max_vocabulary_keys] if for_context else found
 
 
 def render_entry_values(values: list[KeyValues]) -> str:

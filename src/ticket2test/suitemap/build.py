@@ -532,9 +532,13 @@ _MAX_DEPTH = 5  # nesting followed into entries (a.b.c...)
 _FREE_TEXT_SHARE = 0.6  # distinct values / occurrences above this (with many values): free text
 
 
-def known_values(entries: Iterable[dict[str, Any]], settings: Settings) -> list[KeyValues]:
+def known_values(
+    entries: Iterable[dict[str, Any]], settings: Settings, keys: set[str] | None = None
+) -> list[KeyValues]:
     """Per key path, the distinct short values the entries use, most common first. A key whose
-    values nearly all differ (generated names, payloads) is marked free text, not listed."""
+    values nearly all differ (generated names, payloads) is marked free text, not listed.
+    ``keys``: only these paths, all of them (the map's cap, ``map.max_value_keys``, keeps the
+    most common paths, which in big policy blocks can leave out the one a test needs)."""
     m = settings.map
     values: dict[str, Counter[str]] = {}
     holders: Counter[str] = Counter()
@@ -543,7 +547,7 @@ def known_values(entries: Iterable[dict[str, Any]], settings: Settings) -> list[
     for entry in entries:
         seen: set[str] = set()
         for path, leaf in leaves(entry, "", 0):
-            if path == id_field:
+            if path == id_field or (keys is not None and path not in keys):
                 continue
             seen.add(path)
             if isinstance(leaf, str) and len(leaf) > m.max_value_chars:
@@ -554,7 +558,8 @@ def known_values(entries: Iterable[dict[str, Any]], settings: Settings) -> list[
                 counter[_value_text(leaf)] += 1
         holders.update(seen)
     found: list[KeyValues] = []
-    for path, count in sorted(holders.items(), key=lambda kv: (-kv[1], kv[0]))[: m.max_value_keys]:
+    ranked = sorted(holders.items(), key=lambda kv: (-kv[1], kv[0]))
+    for path, count in ranked if keys is not None else ranked[: m.max_value_keys]:
         counter = values.get(path, Counter())
         occurrences = sum(counter.values())
         free = len(counter) > m.max_values_per_key and len(counter) > _FREE_TEXT_SHARE * occurrences

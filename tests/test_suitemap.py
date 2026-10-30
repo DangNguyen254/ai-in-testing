@@ -236,3 +236,25 @@ def test_a_test_defined_twice_doesnt_break_large_area_splitting(tmp_path: Path) 
     index, _, _ = update_index(repo, settings)
     built = build_map(index, settings)
     assert {a.name for a in built.areas} == {"area/test_a", "area/test_b"}
+
+
+def test_known_values_for_given_keys_are_not_cut_by_the_maps_cap() -> None:
+    """Found in the real trial: big policy blocks have more key paths than ``max_value_keys``,
+    so the path a check needed (a category inside the expectation) was cut and its known value
+    ``prompt_injection`` never compared with the entry's "prompt injection"."""
+    from ticket2test.suitemap.build import known_values
+
+    settings = Settings.model_validate({"map": {"max_value_keys": 5}})
+    entries = [
+        {
+            **{f"policy.k{i}": "on" for i in range(10)},
+            "targets": [{"category": "prompt_injection"}],
+        }
+        for _ in range(3)
+    ]
+    capped = {v.key for v in known_values(entries, settings)}
+    assert "targets[].category" not in capped and len(capped) == 5
+    wanted = known_values(entries, settings, keys={"targets[].category"})
+    assert [(v.key, [c.name for c in v.values]) for v in wanted] == [
+        ("targets[].category", ["prompt_injection"])
+    ]
