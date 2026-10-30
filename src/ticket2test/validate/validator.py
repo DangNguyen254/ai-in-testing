@@ -1062,6 +1062,63 @@ def check_known_spelling(s: Subject) -> Iterator[Finding]:
                 )
 
 
+_MIN_UNSUPPORTED_CHARS = 4  # shorter values ("on", "a1") are too generic to judge
+_MAX_UNSUPPORTED_SHOWN = 5
+
+
+def check_unsupported_values(s: Subject) -> Iterator[Finding]:
+    """A new entry's string value that nothing supports (warning): not in the draft (so not in
+    the ticket), not in the template entry, not in any entry of the template's folder. Such a
+    value was made up by the model, e.g. a page payload the codebase doesn't hold: only the
+    person can give the real one. Values with a ``{placeholder}`` are resolved by the suite."""
+    from ticket2test.suitemap.build import leaves
+
+    ref = s.generated.template_entry_ref
+    if ref is None or s.index is None or s.draft is None:
+        return
+    chunk = next((c for c in s.index.chunks if c.id == ref.chunk_id), None)
+    if chunk is None:
+        return
+    folder = chunk.file_path.rsplit("/", 1)[0]
+    suite = {
+        value
+        for c in s.index.chunks
+        if c.kind == "test" and c.file_path.rsplit("/", 1)[0] == folder
+        for e in c.data_entries.values()
+        for _, value in leaves(e, "", 0)
+        if isinstance(value, str)
+    }
+    draft = s.draft.model_dump_json().lower()
+    id_field = s.settings.data.id_field
+    new = set(s.generated.new_test_ids) or set(s.generated.test_ids)
+    for entry in s.entries:
+        test_id = str(entry.get(id_field, ""))
+        if test_id not in new:
+            continue
+        made_up = list(
+            dict.fromkeys(
+                path
+                for path, value in leaves({k: v for k, v in entry.items() if k != id_field}, "", 0)
+                if isinstance(value, str)
+                and len(value.strip()) >= _MIN_UNSUPPORTED_CHARS
+                and "{" not in value
+                and value not in suite
+                and value.strip().lower() not in draft
+            )
+        )
+        if made_up:
+            shown = ", ".join(made_up[:_MAX_UNSUPPORTED_SHOWN])
+            more = len(made_up) - _MAX_UNSUPPORTED_SHOWN
+            yield _f(
+                "unsupported_values",
+                f"{shown}{f' (+{more} more)' if more > 0 else ''}: not from the ticket, the "
+                "template or the suite's entries, so the model made it up. Put the real value "
+                "in the ticket or draft and rerun, or replace it in the entry",
+                "warning",
+                test=test_id,
+            )
+
+
 def check_expectations_in_code(s: Subject) -> Iterator[Finding]:
     """A generated test builds an expected backend result in code, while the test it was built
     from keeps it in an expectation section of its entry (warning). The suite's way: backend
@@ -1610,6 +1667,7 @@ CHECKS: list[tuple[str, Check]] = [
     ("claims", check_claims),
     ("expectations_in_code", check_expectations_in_code),
     ("known_spelling", check_known_spelling),
+    ("unsupported_values", check_unsupported_values),
     ("hooks", check_hooks),
     ("page_locators", check_page_locators),
     ("raw_driver", check_raw_driver),

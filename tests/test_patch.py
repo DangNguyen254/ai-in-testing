@@ -216,7 +216,10 @@ def test_a_variant_planned_by_the_llm(setup: tuple[Settings, IndexData]) -> None
     assert entry["policy"]["dlp"][0]["pattern"] == "CUST-\\d{6}"
     assert entry["site"]["files"][2]["content"] == "Customer CUST-123456 export"
     assert "Confirm the content is scanned as text." in generated.review_checklist
-    assert validate_patch(generated, index, settings, STANDIN, draft).findings == []
+    findings = validate_patch(generated, index, settings, STANDIN, draft).findings
+    # the planned file content is the model's own: flagged for the person, nothing else
+    assert [(f.check, f.severity) for f in findings] == [("unsupported_values", "warning")]
+    assert findings[0].message.startswith("site.files[].content:")
 
 
 def test_llm_plans_are_checked(setup: tuple[Settings, IndexData]) -> None:
