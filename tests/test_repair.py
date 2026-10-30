@@ -99,13 +99,15 @@ def test_a_good_first_reply_needs_no_repair(
     assert result.report.ok and result.report.repairs == 0 and len(fake.requests) == 1
 
 
-def test_warnings_alone_never_trigger_a_repair(
+def test_warnings_outside_the_repair_checks_never_trigger_a_repair(
     index: IndexData,
     retrieval: RetrievalResult,
     tmp_path: Path,
 ) -> None:
     draft = _draft(expected_outcome="An audit entry is written for the delete.")
-    result, fake = _run(index, retrieval, tmp_path, [_reply(), _reply()], draft=draft)
+    result, fake = _run(
+        index, retrieval, tmp_path, [_reply(), _reply()], draft=draft, warning_checks=[]
+    )
     assert result.report.ok and result.report.warnings and len(fake.requests) == 1
 
 
@@ -119,3 +121,26 @@ def test_an_unusable_repair_reply_keeps_the_last_version(
     assert not result.report.ok and result.report.repairs == 1
     assert "rules.rule_count" in result.generated.code
     assert result.llm_calls == 4 and len(fake.requests) == 4
+
+
+def test_an_outcome_no_check_covers_gets_one_repair_round(
+    index: IndexData,
+    retrieval: RetrievalResult,
+    tmp_path: Path,
+) -> None:
+    """Found in the real trial: "page content still delivered" was never checked, and as a
+    warning it never reached a repair round. Warnings of ``repair.warning_checks`` start one
+    round (``max_warning_rounds``); a round that brings errors back is undone."""
+    draft = _draft(expected_outcome="An audit entry is written for the delete.")
+    result, fake = _run(index, retrieval, tmp_path, [_reply(), _reply(), _reply()], draft)
+    assert result.report.ok and result.llm_calls == 2 and result.report.repairs == 1
+    turn = fake.requests[1].messages[-1].content
+    assert "Findings to address" in turn and "audit entry" in turn
+    assert "Validator errors:\n(none)" in turn
+    # off: no round for warnings
+    result, fake = _run(index, retrieval, tmp_path, [_reply()], draft, warning_checks=[])
+    assert result.llm_calls == 1 and result.report.repairs == 0
+    # the round breaks the test: the version before it is kept
+    result, fake = _run(index, retrieval, tmp_path, [_reply(), _reply(BAD_CODE)], draft)
+    assert result.report.ok and "rules.total_count" in result.generated.code
+    assert result.llm_calls == 2

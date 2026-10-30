@@ -1196,6 +1196,44 @@ def _always_skips(decorator: ast.expr) -> bool:
     return False
 
 
+def check_unread_subkeys(s: Subject) -> Iterator[Finding]:
+    """A new test reads a section itself (``target = params["targets"][0]``) but neither it nor
+    the helpers it hands the section to read some of its keys (warning): data no check uses,
+    often a value made up for a check the test doesn't make."""
+    from ticket2test.validate import subkeys
+
+    d = s.settings.data
+    conventions = (
+        convention_sections(_convention_file(s), s.index, s.settings).keys
+        if s.index is not None
+        else []
+    )
+    new = set(s.generated.new_test_ids) or set(s.generated.test_ids)
+    for cls, fn in s.tests:
+        entries = [e for e in s.entries_for(fn.name) if str(e.get(d.id_field, "")) in new]
+        if not entries:
+            continue
+        skip = subkeys.consumed_elsewhere(
+            s.uses.get(fn.name),
+            d.seed_sections,
+            d.per_entry_keys,
+            conventions,
+            d.section_helpers(),
+        )
+        if skip is None:
+            continue
+        reads = subkeys.section_reads(fn, cls, s.resolver, d.access)
+        for entry in entries:
+            for section, keys in subkeys.unread_subkeys(entry, reads, skip).items():
+                yield _f(
+                    "unread_subkeys",
+                    f"{section}: {sorted(keys)} never read by the test or the helpers it hands "
+                    f"{section} to: remove them, or add the check that reads them",
+                    "warning",
+                    test=str(entry.get(d.id_field, "")),
+                )
+
+
 def check_data_keys(s: Subject) -> Iterator[Finding]:
     """Keys the test reads exist in each entry; every key is read or consumed (rule 1)."""
     d = s.settings.data
@@ -1481,7 +1519,8 @@ def check_claims(s: Subject) -> Iterator[Finding]:
             sections,
             ignore,
             actions=actions,
-            data=claims.data_locals(fn, s.settings.data.access),
+            data=(data := claims.data_locals(fn, s.settings.data.access)),
+            handed=_handed(s, cls, s.checks.get(fn.name, []), data),
         )
         for gap in gaps:
             yield _f(
@@ -1490,6 +1529,16 @@ def check_claims(s: Subject) -> Iterator[Finding]:
                 "warning",
                 test=fn.name,
             )
+
+
+def _handed(
+    s: Subject, cls: ast.ClassDef | None, checks: list[CheckCall], data: dict[str, str]
+) -> dict[int, dict[str, set[str] | None]]:
+    """Per check call, the keys its helper reads of each data local it is given."""
+    from ticket2test.validate.subkeys import call_reads
+
+    access = s.settings.data.access
+    return {id(c.node): call_reads(c.node, cls, s.resolver, data, access) for c in checks}
 
 
 def check_draft_outcome(s: Subject) -> Iterator[Finding]:
@@ -1501,9 +1550,12 @@ def check_draft_outcome(s: Subject) -> Iterator[Finding]:
         for p in [*s.settings.data.access, s.settings.validation.assertion_object]
     )
     all_checks = [c for _, fn in s.tests for c in s.checks.get(fn.name, [])]
-    data = {
-        k: v for _, fn in s.tests for k, v in claims.data_locals(fn, s.settings.data.access).items()
-    }
+    data: dict[str, str] = {}
+    handed: dict[int, dict[str, set[str] | None]] = {}
+    for cls, fn in s.tests:
+        own = claims.data_locals(fn, s.settings.data.access)
+        data.update(own)
+        handed.update(_handed(s, cls, s.checks.get(fn.name, []), own))
     gaps = claims.find_gaps(
         [("expected outcome", s.draft.expected_outcome)],
         all_checks,
@@ -1511,6 +1563,7 @@ def check_draft_outcome(s: Subject) -> Iterator[Finding]:
         s.settings.data.section_helpers(),
         ignore,
         data=data,
+        handed=handed,
     )
     for gap in gaps:
         yield _f("claims", f"{gap.source} claims {gap.clause!r}: {gap.reason}", "warning")
@@ -1660,6 +1713,7 @@ CHECKS: list[tuple[str, Check]] = [
     ("style", check_style),
     ("ids", check_ids_and_entries),
     ("data_keys", check_data_keys),
+    ("unread_subkeys", check_unread_subkeys),
     ("data_file", check_data_file),
     ("data_shape", check_data_shape),
     ("seeded_names", check_seeded_names),

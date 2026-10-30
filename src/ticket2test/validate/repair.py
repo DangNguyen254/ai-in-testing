@@ -1,9 +1,11 @@
 """Generate a test, validate it, and repair it from validator errors (capped).
 
 The repair continues the generation conversation: the previous reply goes back as the
-assistant's turn, followed by the validator errors (prompt ``repair_v1``). Only ``error``
-findings trigger a repair; warnings are listed for the model but never block. The loop runs at
-most ``repair.max_attempts`` rounds, then returns the last version with its report.
+assistant's turn, followed by the validator findings (prompt ``repair_v2``). Errors start a
+repair; so do warnings of ``repair.warning_checks`` (an expected outcome no check covers), at
+most ``repair.max_warning_rounds`` times, and a round started by warnings alone that brings
+errors back is undone. Other warnings are listed for the model but never block. The loop runs
+at most ``repair.max_attempts`` rounds, then returns the last version with its report.
 """
 
 from __future__ import annotations
@@ -29,7 +31,7 @@ from ticket2test.models.retrieval import RetrievalResult
 from ticket2test.prompts import PromptTemplate, load_prompt
 from ticket2test.security import scrub_text
 from ticket2test.style import format_entries
-from ticket2test.validate.report import ValidationReport
+from ticket2test.validate.report import Finding, ValidationReport
 from ticket2test.validate.validator import module_imports, validate_generated
 
 
@@ -98,11 +100,18 @@ def generate_with_repair(
     messages = list(setup.request.messages)
     last_reply = result.response.text
     history: list[list[str]] = []
-    while not report.ok and len(history) < settings.repair.max_attempts:
-        history.append([f.render() for f in report.errors])
+    warning_rounds = 0
+    while len(history) < settings.repair.max_attempts:
+        required = _required(report, settings)
+        if report.ok and (not required or warning_rounds >= settings.repair.max_warning_rounds):
+            break
+        if report.ok:
+            warning_rounds += 1
+        before = (generated, as_checked, report, last_reply)
+        history.append([f.render() for f in [*report.errors, *required]])
         messages += [
             Message(role="assistant", content=last_reply),
-            Message(role="user", content=_repair_turn(prompt, report)),
+            Message(role="user", content=_repair_turn(prompt, report, required)),
         ]
         request = setup.request.model_copy(update={"messages": tuple(messages)})
         try:
@@ -121,6 +130,9 @@ def generate_with_repair(
         generated = assemble(setup, result.value, calls, provider, model, masker_of(client))
         as_checked, report = judged(generated)
         pieces = _pieces(as_checked, index, settings, pieces)
+        if before[2].ok and not report.ok:  # a round for warnings broke it: keep the last one
+            generated, as_checked, report, last_reply = before
+            break
 
     report.repairs = len(history)
     report.history = history
@@ -147,8 +159,23 @@ def _pieces(
     return merged
 
 
-def _repair_turn(prompt: PromptTemplate, report: ValidationReport) -> str:
-    errors = "\n".join(f"- {f.render()}" for f in report.errors)
-    warnings = "\n".join(f"- {f.render()}" for f in report.warnings) or "(none)"
-    user = prompt.render_user(errors=scrub_text(errors), warnings=scrub_text(warnings))
+def _required(report: ValidationReport, settings: Settings) -> list[Finding]:
+    """Warnings that start a repair round (``repair.warning_checks``)."""
+    return [f for f in report.warnings if f.check in settings.repair.warning_checks]
+
+
+def _repair_turn(
+    prompt: PromptTemplate, report: ValidationReport, required: list[Finding] | None = None
+) -> str:
+    required = required or []
+    errors = "\n".join(f"- {f.render()}" for f in report.errors) or "(none)"
+    must = "\n".join(f"- {f.render()}" for f in required) or "(none)"
+    others = [f for f in report.warnings if f not in required]
+    warnings = "\n".join(f"- {f.render()}" for f in others) or "(none)"
+    values = {"errors": scrub_text(errors), "warnings": scrub_text(warnings)}
+    if "{{required}}" in prompt.user:
+        values["required"] = scrub_text(must)
+    elif required:  # an older prompt: the findings go with the warnings
+        values["warnings"] = scrub_text("\n".join(x for x in (must, warnings) if x != "(none)"))
+    user = prompt.render_user(**values)
     return f"{prompt.system}\n\n{user}"

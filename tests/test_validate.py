@@ -1027,3 +1027,92 @@ def test_a_key_a_helper_reads_through_its_parameter_default_is_read(tmp_path: Pa
     found = [f.render() for f in report.findings if "agent_user" in f.message]
     found += [f.render() for f in report.findings if "other_user" in f.message]
     assert not found, found
+
+
+def test_keys_inside_a_section_the_test_reads_itself_must_be_read(tmp_path: Path) -> None:
+    """Found in the real trial: ``targets[0].snippets`` (a made-up payload) was in the new
+    entry, but the test never called the helper that reads it."""
+    import ast
+
+    from ticket2test.generate.generator import first_party
+    from ticket2test.validate.subkeys import section_reads, unread_subkeys
+
+    code = (
+        "class TestArea:\n"
+        "   def open_page(self, target):\n"
+        '      self.driver.get(target["url"])\n\n'
+        "   def _verify_log(self, row):\n"
+        '      return row.get("expected")\n\n'
+        "   def verify_payload(self, snippets):\n"
+        "      return snippets\n\n"
+        "   def test_area_one(self):\n"
+        '      target = self.params["targets"][0]\n'
+        "      self.open_page(target)\n"
+        "      self._verify_log(target)\n"
+    )
+    tree = ast.parse(code)
+    cls = tree.body[0]
+    assert isinstance(cls, ast.ClassDef)
+    fn = cls.body[-1]
+    assert isinstance(fn, ast.FunctionDef)
+
+    class Methods:
+        def method(self, c: ast.ClassDef, name: str) -> ast.FunctionDef | None:
+            return next(
+                (n for n in c.body if isinstance(n, ast.FunctionDef) and n.name == name), None
+            )
+
+    reads = section_reads(fn, cls, Methods(), ["self.params", "params"])  # type: ignore[arg-type]
+    assert reads == {"targets": {"url", "expected"}}
+    entry = {"targets": [{"url": "u", "expected": {}, "snippets": ["x"]}]}
+    assert unread_subkeys(entry, reads, set()) == {"targets": {"snippets"}}
+    assert unread_subkeys(entry, reads, {"targets"}) == {}  # consumed elsewhere: not judged
+    # handed to something that can't be followed: the whole section counts as used
+    whole = ast.parse(code.replace("self._verify_log(target)", "log_check(target)")).body[0]
+    assert isinstance(whole, ast.ClassDef)
+    last = whole.body[-1]
+    assert isinstance(last, ast.FunctionDef)
+    assert section_reads(last, whole, Methods(), ["self.params"]) == {"targets": None}  # type: ignore[arg-type]
+
+    repo = tmp_path / "repo"
+    (repo / "tests").mkdir(parents=True)
+    (repo / "tests" / "test_area.py").write_text(code, encoding="utf-8")
+    settings = Settings.model_validate({"paths": {"cache_dir": str(tmp_path / "cache")}})
+    index, _, _ = update_index(repo, settings)
+    report = _validate(
+        (settings, index, first_party(index, settings)),
+        code=code,
+        entries=[{"test_id": "test_area_one", **entry}],
+        file_name="tests/test_area.py",
+        test_ids=["test_area_one"],
+    )
+    found = [f.message for f in report.findings if f.check == "unread_subkeys"]
+    assert len(found) == 1 and "['snippets']" in found[0], found
+
+
+def test_a_check_helper_given_a_data_local_counts_only_the_keys_it_reads() -> None:
+    """Found in the real trial: ``self._verify_log(target)`` made every value of ``target``
+    (the page URL, the payload) count as checked, so "page content still delivered" passed."""
+    import ast
+
+    from ticket2test.validate.claims import data_locals, find_gaps
+    from ticket2test.validate.code import check_calls
+
+    fn = ast.parse(
+        'def test_x(self):\n    target = self.params["targets"][0]\n    self._verify_log(target)\n'
+    ).body[0]
+    assert isinstance(fn, ast.FunctionDef)
+    data = data_locals(fn, ["self.params", "params"])
+    checks = check_calls(fn, "self.check", set(), check_helpers=["_verify_*"])
+    entries = [
+        {
+            "test_id": "test_x",
+            "targets": [{"url": "https://example.com/content-page", "expected": {"verdict": "x"}}],
+        }
+    ]
+    claim = [("expected outcome", "The page content is still delivered")]
+    assert not find_gaps(claim, checks, entries, {}, data=data)  # unknown helper: the whole
+    handed = {id(checks[0].node): {"target": {"expected"}}}
+    assert find_gaps(claim, checks, entries, {}, data=data, handed=handed)
+    verdict = [("expected outcome", "The verdict is logged")]
+    assert not find_gaps(verdict, checks, entries, {}, data=data, handed=handed)

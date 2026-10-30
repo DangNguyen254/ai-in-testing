@@ -64,6 +64,7 @@ from ticket2test.security import scrub, scrub_code
 from ticket2test.security.masking import Masker
 from ticket2test.style import FormatError, format_json, format_python
 from ticket2test.style.local import detect_python_style
+from ticket2test.validate.subkeys import without_keys
 
 
 class GenerationError(LLMError):
@@ -568,10 +569,47 @@ def strip_unread(
     if use is None:
         return entry, []
     unread, _conflict = unconsumed_keys(entry, use, setup.validation_context)
-    if not unread:
-        return entry, []
     kept = {k: v for k, v in entry.items() if k not in unread}
-    return kept, [f"removed unread {sorted(unread)} from {test_id}"]
+    notes = [f"removed unread {sorted(unread)} from {test_id}"] if unread else []
+    for section, keys in _unread_subkeys(kept, use, function_of(test_id), code, setup).items():
+        kept[section] = without_keys(kept[section], keys)
+        notes.append(f"removed unread {section} keys {sorted(keys)} from {test_id}")
+    return kept, notes
+
+
+def _unread_subkeys(
+    entry: dict[str, Any], use: Any, function: str, code: str, setup: GenerationSetup
+) -> dict[str, set[str]]:
+    """Keys inside a section the test reads itself that neither it nor the helpers it hands
+    the section to read (see ``validate.subkeys``)."""
+    import ast
+
+    from ticket2test.validate import subkeys
+    from ticket2test.validate.datause import Resolver
+
+    data = setup.settings.data
+    skip = subkeys.consumed_elsewhere(
+        use,
+        data.seed_sections,
+        data.per_entry_keys,
+        list(setup.conventions.keys),
+        data.section_helpers(),
+    )
+    if skip is None:
+        return {}
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return {}
+    module = module_name(setup.template_chunk.file_path, setup.settings.index.import_roots)
+    resolver = Resolver(tree, module, setup.index, data.access, set(data.helper_patterns()))
+    for cls in [None, *resolver.classes()]:
+        body = tree.body if cls is None else cls.body
+        fn = next((n for n in body if isinstance(n, ast.FunctionDef) and n.name == function), None)
+        if fn is not None:
+            reads = subkeys.section_reads(fn, cls, resolver, data.access)
+            return subkeys.unread_subkeys(entry, reads, skip)
+    return {}
 
 
 def resolved_uses(code: str, setup: GenerationSetup) -> dict[str, Any]:

@@ -240,8 +240,10 @@ validation:                     # deterministic checks of generated tests (Phase
   constant_properties: [page_size]
 
 repair:
-  max_attempts: 3                 # repair rounds after the first generation (errors only)
-  prompt_version: repair_v1
+  max_attempts: 3                 # repair rounds after the first generation
+  prompt_version: repair_v2
+  warning_checks: [claims, unread_subkeys]   # these warnings also start a round
+  max_warning_rounds: 1           # at most this many rounds started by warnings alone
 
 sandbox:                          # `pytest --collect-only` in a container (Hard Constraint 3)
   runtime: docker                 # docker | podman (or T2T_SANDBOX__RUNTIME)

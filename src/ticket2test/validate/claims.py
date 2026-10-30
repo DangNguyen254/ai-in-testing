@@ -164,15 +164,20 @@ def evidence(
     sections: dict[str, list[str]],
     ignore: frozenset[str] = frozenset(),
     data: dict[str, str] | None = None,
+    handed: dict[str, set[str] | None] | None = None,
 ) -> set[str]:
     """Words a check touches. ``ignore``: attribute names that carry no meaning (``params``).
-    ``data``: locals bound to data reads (``data_locals``): their key's values count."""
+    ``data``: locals bound to data reads (``data_locals``): the values they give the check
+    count, only the keys it reads (``row["url"]``), or for a helper given the local, the keys
+    the helper reads (``handed``: local -> keys, from ``subkeys.call_reads``)."""
     words: set[str] = set()
     node = check.node
+    parents = {id(c): p for p in ast.walk(node) for c in ast.iter_child_nodes(p)}
     for inner in ast.walk(node):
         if isinstance(inner, ast.Name) and data and inner.id in data:
+            keys = _keys_given(inner, node, parents, handed or {})
             for entry in entries:
-                words.update(_words(json.dumps(entry.get(data[inner.id], ""))))
+                words.update(_section_words(entry.get(data[inner.id]), keys))
         if isinstance(inner, ast.Attribute) and inner.attr not in ignore:
             # local variable names are not evidence
             words.update(norm(w) for w in split_identifier(inner.attr))
@@ -191,6 +196,49 @@ def evidence(
                     blocks = [entry, *(t for t in entry.get("tenants", []) if isinstance(t, dict))]
                     for block in blocks:
                         words.update(_words(json.dumps(block.get(section, ""))))
+    return words
+
+
+def _keys_given(
+    name: ast.Name,
+    call: ast.Call,
+    parents: dict[int, ast.AST],
+    handed: dict[str, set[str] | None],
+) -> set[str] | None:
+    """The keys of a data local a check uses: one subscript or ``.get`` key, or for an argument
+    of the check call the keys its helper reads; None: the whole value."""
+    expr: ast.AST = name
+    parent = parents.get(id(expr))
+    while (  # an item: row[0]
+        isinstance(parent, ast.Subscript)
+        and parent.value is expr
+        and isinstance(parent.slice, ast.Constant)
+        and isinstance(parent.slice.value, int)
+    ):
+        expr, parent = parent, parents.get(id(parent))
+    if isinstance(parent, ast.Subscript) and parent.value is expr:
+        key = parent.slice
+        return {key.value} if isinstance(key, ast.Constant) and isinstance(key.value, str) else None
+    if isinstance(parent, ast.Attribute) and parent.attr == "get":
+        outer = parents.get(id(parent))
+        first = outer.args[0] if isinstance(outer, ast.Call) and outer.args else None
+        if isinstance(first, ast.Constant) and isinstance(first.value, str):
+            return {first.value}
+        return None
+    if parent is call and name.id in handed:
+        return handed[name.id]
+    return None
+
+
+def _section_words(value: Any, keys: set[str] | None) -> set[str]:
+    if keys is None:
+        return _words(json.dumps(value if value is not None else ""))
+    items = [value] if isinstance(value, dict) else value if isinstance(value, list) else []
+    words: set[str] = set()
+    for item in items:
+        if isinstance(item, dict):
+            for key in keys & set(item):
+                words.update(_words(key.replace("_", " ")) | _words(json.dumps(item[key])))
     return words
 
 
@@ -219,14 +267,19 @@ def find_gaps(
     ignore: frozenset[str] = frozenset(),
     actions: set[str] | None = None,
     data: dict[str, str] | None = None,
+    handed: dict[int, dict[str, set[str] | None]] | None = None,
 ) -> list[Gap]:
     """``claims``: (source, text) pairs. Returns the clauses no check covers.
 
     ``ignore``: attribute names that carry no meaning (the data access and assertion object).
     ``actions``: words of the page-object steps the test uses (evidence for a name claim).
-    ``data``: locals bound to data reads (``data_locals``).
+    ``data``: locals bound to data reads (``data_locals``); ``handed``: per check call (by
+    ``id`` of its node), the keys its helper reads of each data local it is given.
     """
-    per_check = [(c, evidence(c, entries, sections, ignore, data)) for c in checks]
+    per_check = [
+        (c, evidence(c, entries, sections, ignore, data, (handed or {}).get(id(c.node))))
+        for c in checks
+    ]
     gaps: list[Gap] = []
     for source, claim in claims:
         for clause in clauses(claim):

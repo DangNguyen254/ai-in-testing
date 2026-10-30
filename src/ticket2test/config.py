@@ -512,7 +512,12 @@ class ValidateSettings(_Section):
 
 class RepairSettings(_Section):
     max_attempts: int = Field(default=3, ge=0)
-    prompt_version: str = "repair_v1"
+    prompt_version: str = "repair_v2"
+    # Warnings of these checks also start a repair round (errors always do): an expected outcome
+    # no check covers, data no check reads. At most ``max_warning_rounds`` such rounds (within
+    # ``max_attempts``); a round that brings errors back is undone.
+    warning_checks: list[str] = Field(default_factory=lambda: ["claims", "unread_subkeys"])
+    max_warning_rounds: int = Field(default=1, ge=0)
 
 
 class SandboxSettings(_Section):
