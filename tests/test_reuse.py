@@ -477,3 +477,46 @@ def test_a_draft_component_must_be_one_of_the_suites() -> None:
             "markers"
         ]["properties"]["component"]
     )
+
+
+def test_the_templates_class_takes_the_method_when_the_ticket_names_its_feature(
+    setup: tuple[Settings, IndexData],
+) -> None:
+    """Found in the real trial: the closest template was the person's own test, but its class
+    missed the bar (its name no longer matched the draft's words), so a new module was built
+    from another class. When the ticket itself names the feature (a glossary folder or its
+    component), the template's class takes the method at the lower bar; a ticket that names
+    nothing still gets a new module (printing has no tests in the stand-in)."""
+    from ticket2test.models.retrieval import TemplateRef
+
+    settings, index = setup
+    draft, _ = SCENARIOS["module"]
+    ticket = Ticket(
+        id=draft.ticket_id,
+        title=draft.intent,
+        description=" ".join(draft.steps) + " " + draft.expected_outcome,
+        source=SourceInfo(system="jira", ref=draft.ticket_id),
+    )
+    retrieval = retrieve(ticket, index, settings, None, draft)
+    choice = choose_domain(retrieval, index, settings, ticket, draft)
+    assert decide(draft, retrieval, index, settings, choice).kind == "module"
+    backed = retrieval.model_copy(update={"glossary_folders": ["tests/files"]})
+    decision = decide(draft, backed, index, settings, choice)
+    assert decision.kind == "method" and decision.target == "TestFilesDownloads"
+    assert decision.reasons[-1].startswith("new method in TestFilesDownloads")
+    # a module is scaffolded from the template's class, not from the best word match
+    archives = next(
+        c for c in index.chunks if c.class_name == "TestFilesArchives" and c.data_entries
+    )
+    weak = retrieval.model_copy(
+        update={
+            "templates": [
+                TemplateRef(
+                    chunk_id=archives.id, entry_key=next(iter(archives.data_entries)), why="t"
+                ),
+                *retrieval.templates,
+            ]
+        }
+    )
+    decision = decide(draft, weak, index, settings, choice)
+    assert decision.kind == "module" and decision.target == "TestFilesArchives"

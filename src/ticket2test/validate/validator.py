@@ -1006,6 +1006,17 @@ def module_testcases(tree: ast.Module) -> list[str]:
     return found
 
 
+def _convention_file(s: Subject) -> str:
+    """The file whose conventions apply: for a generated test, the file its entries were built
+    from (the template's), the same scope generation copied them from; else its own file."""
+    ref = s.generated.template_entry_ref
+    if ref is not None and s.index is not None:
+        chunk = next((c for c in s.index.chunks if c.id == ref.chunk_id), None)
+        if chunk is not None:
+            return chunk.file_path
+    return s.generated.file_name
+
+
 def retired_tests(s: Subject) -> set[str]:
     """Tests switched off for good: ``@pytest.mark.skip`` or ``skipif(True, ...)`` on the test
     or its class."""
@@ -1039,7 +1050,7 @@ def check_data_keys(s: Subject) -> Iterator[Finding]:
         "expectation_sections": d.section_helpers(),
         "allowed_expectation_sets": d.allowed_expectation_sets,
         "convention_keys": (
-            convention_sections(s.generated.file_name, s.index, s.settings).keys
+            convention_sections(_convention_file(s), s.index, s.settings).keys
             if s.index is not None
             else []
         ),

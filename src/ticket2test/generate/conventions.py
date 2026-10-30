@@ -5,7 +5,8 @@ The scope widens until there is enough data: the entries of the target file, the
 in its folder, then of the whole suite. A section counts when at least ``data.convention_share``
 of the entries in the scope have it (and the scope has ``data.convention_min_entries``).
 ``data.required_sections`` are added always. The id field, expectation sections and per-entry
-keys are not conventions: they belong to each test.
+keys are not conventions: they belong to each test; nor is a key the tests read in their own code
+(that is test data the new test reads only if its own steps need it).
 """
 
 from __future__ import annotations
@@ -59,7 +60,16 @@ def convention_sections(test_file: str, index: IndexData, settings: Settings) ->
             for key in entry:
                 if key not in own:
                     counts[key] = counts.get(key, 0) + 1
-        keys = [k for k, n in counts.items() if n >= d.convention_share * len(entries)]
+        code = [
+            c.code
+            for c in index.chunks
+            if c.kind == "test" and not c.inherited_from and inside(c.file_path)
+        ]
+        keys = [
+            k
+            for k, n in counts.items()
+            if n >= d.convention_share * len(entries) and not _read_by_tests(k, code)
+        ]
         found = Conventions(name, {k: _nearest(k, entries) for k in sorted(keys)})
         break
     for key in d.required_sections:
@@ -70,6 +80,13 @@ def convention_sections(test_file: str, index: IndexData, settings: Settings) ->
                 found.values[key] = value
                 found.scope = found.scope or "the suite"
     return found
+
+
+def _read_by_tests(key: str, code: list[str]) -> bool:
+    """The tests read the key in their own code (``params["key"]``, ``.get("key")``): it is test
+    data, not a convention the framework consumes."""
+    quoted = (f'"{key}"', f"'{key}'")
+    return any(q in text for text in code for q in quoted)
 
 
 def _nearest(key: str, entries: list[dict[str, Any]]) -> Any:

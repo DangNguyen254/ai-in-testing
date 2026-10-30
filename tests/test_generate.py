@@ -744,10 +744,8 @@ def test_convention_sections_widen_from_the_file_to_the_suite(
 
     settings = _settings(tmp_path)
     assert convention_sections("tests/rules/test_rules.py", index, settings).keys == ["settings"]
-    assert convention_sections("tests/files/test_files_downloads.py", index, settings).keys == [
-        "file",
-        "site",
-    ]
+    downloads = convention_sections("tests/files/test_files_downloads.py", index, settings)
+    assert downloads.keys == ["site"]  # every entry has "file" too, but the tests read it
     new = convention_sections("tests/brand_new/test_new.py", index, settings)
     assert new.scope == "the suite"  # no entries in that file or folder yet
     required = settings.model_copy(

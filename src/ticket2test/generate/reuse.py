@@ -231,15 +231,26 @@ def decide(
     if scores:
         target, score = max(scores.items(), key=lambda kv: (kv[1], kv[0]))
         matching = _component_match(scores, retrieval.ticket_components, index, settings)
-        if home in scores and qualifies(home):
+        home_chosen = False
+        backed = home is not None and (  # the ticket itself names the template's feature
+            home in matching
+            or any(
+                home.split("::", 1)[0].startswith(f.strip("/") + "/")
+                for f in retrieval.glossary_folders
+            )
+        )
+        if home in scores and (
+            qualifies(home) or (backed and scores[home] >= reuse.method_named_min)
+        ):
             # the closest template's own class: its helpers, module objects and data style
-            # are what the new method is built from (another class may lack them)
+            # are what the new method is built from (another class may lack them). When the
+            # ticket names its feature (glossary or component), its name need not match.
             if home != target:
                 decision.reasons.append(
                     f"{home.split('::', 1)[1]}: the closest template test is in this class "
                     f"(class match {scores[home]:.2f}; best match was {score:.2f})"
                 )
-            target, score = home, scores[home]
+            target, score, home_chosen = home, scores[home], True
         elif matching and target not in matching:
             better = max(matching, key=lambda k: (scores[k], k))
             if scores[better] >= reuse.method_named_min:
@@ -250,7 +261,7 @@ def decide(
                 target, score = better, max(scores[better], reuse.method_min)
         path, name = target.split("::", 1)
         named = named_words(target)
-        if score >= reuse.method_min or (named and score >= reuse.method_named_min):
+        if home_chosen or score >= reuse.method_min or (named and score >= reuse.method_named_min):
             decision.kind, decision.target, decision.target_file = "method", name, path
             if target in gated:
                 decision.review_notes.append(gated[target])
@@ -264,15 +275,17 @@ def decide(
     else:
         decision.reasons.append(f"no method: no {kind} test class in the domain")
 
+    eligible = [
+        c
+        for c in candidates
+        if c.class_name
+        and (kind == "hybrid" or c.kind == kind)
+        and f"{c.file_path}::{c.class_name}" not in excluded
+    ]
+    # scaffolded from the closest template's class when it is eligible, else the best flow
     template = next(
-        (
-            c
-            for c in candidates
-            if c.class_name
-            and (kind == "hybrid" or c.kind == kind)
-            and f"{c.file_path}::{c.class_name}" not in excluded
-        ),
-        candidates[0],
+        (c for c in eligible if f"{c.file_path}::{c.class_name}" == home),
+        eligible[0] if eligible else candidates[0],
     )
     decision.target, decision.target_file = template.class_name, template.file_path
     decision.reasons.append(
