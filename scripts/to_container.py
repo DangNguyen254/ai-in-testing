@@ -3,10 +3,12 @@
     python scripts/to_container.py <container> [--target /root/work/ai-prj]
 
 Only committed files go (``git archive HEAD``): no virtual environment, ``.env``, ``.scratch``
-or git history. An empty ``.scratch`` is created again, since the tool writes its working files
-there. The copy in the container is removed and written again; the target must be a
-folder named ``ai-prj`` (or ``ai-prj-<something>``), so a typo can't point the removal at
-another folder, such as the real repo next to it. Nothing is read from the container. A
+or git history. The previous copy's ``.scratch`` is kept (an empty one is made the first time),
+since the tool writes its working files there. The new copy is written to ``<target>.new`` and
+then swapped in by renaming, so a run still going in the old copy keeps working (in
+``<target>.old``, removed by the next copy). The target must be a folder named ``ai-prj`` (or
+``ai-prj-<something>``), so a typo can't point a removal at another folder, such as the real
+repo next to it. Nothing is read from the container. A
 ``.copied-from`` file in the copy records the commit.
 
 Standard library only, so it runs with any Python on the host.
@@ -41,10 +43,18 @@ def container_command(runtime: str, container: str, user: str, target: str, sha:
         raise ValueError("the container and user names may only use letters, digits, . _ -")
     if not re.fullmatch(r"[0-9a-f]{7,40}", sha):
         raise ValueError(f"unexpected commit id {sha!r}")
+    new, old = f"{target}.new", f"{target}.old"
     script = (
-        f"rm -rf '{target}' && mkdir -p '{target}' && tar -x -C '{target}' "
-        f"&& printf '%s\\n' {sha} > '{target}/.copied-from' "
-        f"&& mkdir -p '{target}/.scratch'"  # git-ignored, so not in the archive; tools write here
+        # the new copy is built next to the old one, keeping the old one's .scratch (git-ignored,
+        # so not in the archive; tools write their working files there) ...
+        f"rm -rf '{new}' && mkdir -p '{new}' && tar -x -C '{new}' "
+        f"&& printf '%s\\n' {sha} > '{new}/.copied-from' "
+        f"&& {{ cp -a '{target}/.scratch' '{new}/.scratch' 2>/dev/null "
+        f"|| mkdir -p '{new}/.scratch'; }} "
+        # ... then swapped in by renaming: a run still going keeps working in the old folder
+        # (now .old), which the next copy removes
+        f"&& rm -rf '{old}' && {{ mv '{target}' '{old}' 2>/dev/null || true; }} "
+        f"&& mv '{new}' '{target}'"
     )
     return [runtime, "exec", "-i", "--user", user, container, "sh", "-c", script]
 
