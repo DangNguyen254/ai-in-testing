@@ -49,14 +49,10 @@ def test_the_container_command() -> None:
     assert command[:7] == ["podman", "exec", "-i", "--user", "root", "test-runner", "sh"]
     assert "-t" not in command  # a terminal would garble the tar stream
     shell = command[-1]
-    # built next to the old copy, then swapped in: a run still going keeps its folder
-    assert shell.startswith("rm -rf '/root/work/ai-prj.new' && mkdir -p '/root/work/ai-prj.new'")
-    assert "tar -x -C '/root/work/ai-prj.new'" in shell and "abc1234def56" in shell
-    assert "cp -a '/root/work/ai-prj/.scratch' '/root/work/ai-prj.new/.scratch'" in shell
-    assert shell.endswith(
-        "mv '/root/work/ai-prj' '/root/work/ai-prj.old' 2>/dev/null || true; }"
-        " && mv '/root/work/ai-prj.new' '/root/work/ai-prj'"
-    )
+    # replaced in place, keeping .scratch; the earlier swap's leftovers go
+    assert shell.startswith("rm -rf '/root/work/ai-prj.new' '/root/work/ai-prj.old'")
+    assert "! -name .scratch -exec rm -rf {} +" in shell
+    assert "tar -x -C '/root/work/ai-prj'" in shell and "abc1234def56" in shell
     with pytest.raises(ValueError):
         script.container_command("podman", "x; rm", "root", "/root/work/ai-prj", "abc1234")
     with pytest.raises(ValueError):
