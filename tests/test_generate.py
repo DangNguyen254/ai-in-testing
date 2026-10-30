@@ -697,3 +697,25 @@ def test_the_repair_loop_judges_attempts_with_the_given_check(
         "fake-model", CONVENTIONS, check=lambda attempt: None,
     )  # fmt: skip
     assert fallback.report.checks_run  # None: judged as a module, the usual validators ran
+
+
+def test_the_context_lists_the_suites_values_for_the_entrys_keys(
+    index: IndexData, retrieval: RetrievalResult, tmp_path: Path
+) -> None:
+    """Found in the real trial: changed fields got guessed values. The context now shows the
+    values the tests in the template's folder use for the keys of its entry."""
+    settings = _settings(tmp_path, max_tokens=30000)
+    template = {c.id: c for c in index.chunks}[TEMPLATE_CHUNK]
+    built = build_generation_context(
+        _draft(), retrieval, index, settings, template, TEMPLATE_ID, CONVENTIONS
+    )
+    piece = next(p for p in built.pieces if p.title.startswith("Known values in this area"))
+    assert '`policy.rules[].action`: "allow", "deny", "log"' in piece.body
+    assert "`policy.rules[].name`" not in piece.body  # many different names: left out
+    off = settings.model_copy(
+        update={"knowledge": settings.knowledge.model_copy(update={"use_in_generation": False})}
+    )
+    plain = build_generation_context(
+        _draft(), retrieval, index, off, template, TEMPLATE_ID, CONVENTIONS
+    )
+    assert not any(p.title.startswith("Known values") for p in plain.pieces)

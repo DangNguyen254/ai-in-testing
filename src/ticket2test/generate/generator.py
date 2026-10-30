@@ -28,6 +28,7 @@ from ticket2test.index.catalog import SymbolCatalog
 from ticket2test.index.datafile import function_data_path, layout_of, module_data_path
 from ticket2test.index.extract import module_name
 from ticket2test.index.indexer import IndexData
+from ticket2test.knowledge.vocabulary import entry_values, render_entry_values
 from ticket2test.llm.base import LLMClient, LLMError, LLMRequest, Message
 from ticket2test.llm.factory import model_name
 from ticket2test.llm.masking import masker_of
@@ -656,6 +657,17 @@ def build_generation_context(
             class_scaffold(template_chunk, index, settings.generate.scaffold_methods),
         )
     )
+
+    known = entry_values(template_chunk, template_chunk.data_entries[entry_key], index, settings)
+    if known:  # the suite's own values, so a changed field gets one of them, not a guess
+        pieces.append(
+            Piece(
+                "Known values in this area for the template entry's keys",
+                "Values the data of the tests in this folder uses for these keys. When the "
+                "test's case refers to one of them, use the suite's value exactly; don't invent "
+                "other values.\n" + render_entry_values(known),
+            )
+        )
 
     # The base test class (and its in-repo bases), so inherited helpers are visible.
     used: set[str] = {template_chunk.id}

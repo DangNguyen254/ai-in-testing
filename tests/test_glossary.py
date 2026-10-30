@@ -248,3 +248,59 @@ def test_in_a_folder_with_several_features_a_class_lifts_only_its_own(tmp_path: 
 
     assert lifted("Alpha Feature") == {"alpha_one", "alpha_two"}  # its feature, not beta's
     assert lifted("Plain Feature") == {"plain"}  # no component markers: just the class
+
+
+def test_the_draft_gets_the_suites_words_for_what_the_ticket_names(
+    index: IndexData, tmp_path: Path
+) -> None:
+    """The draft runs before retrieval: the glossary terms the ticket names, and the known values
+    of their areas from the suite map, translate the ticket's words into the suite's."""
+    import json
+
+    from ticket2test.draft import generate_drafts
+    from ticket2test.llm import FakeLLMClient
+    from ticket2test.suitemap import build_map, write_map
+
+    glossary = tmp_path / "glossary.yaml"
+    glossary.write_text(
+        "terms:\n"
+        "  - term: Rule Book\n    status: confirmed\n"
+        "    folders: [tests/rules]\n    markers: [rules]\n"
+        "    data:\n      - key: policy.rules[].action\n        values: [deny]\n",
+        encoding="utf-8",
+    )
+    settings = Settings.model_validate(
+        {
+            "paths": {"cache_dir": str(tmp_path / "c")},
+            "knowledge": {"glossary": str(glossary), "map_dir": str(tmp_path / "map")},
+            "draft": {"skeleton": "never"},
+        }
+    )
+    write_map(build_map(index, settings), tmp_path / "map", 10)
+    item = {
+        "kind": "primary",
+        "intent": "A refused rule stays refused after publishing.",
+        "markers": {"priority": "p2", "component": "Rules", "suite": "regression"},
+        "test_kind": "ui",
+        "deployment_type": "both",
+        "preconditions": [],
+        "steps": ["Add a rule that refuses traffic", "Publish"],
+        "expected_outcome": "The rule's action is deny.",
+        "variants": [],
+    }
+    reply = json.dumps({"status": "ok", "missing_info": [], "reason": "r", "drafts": [item]})
+    fake = FakeLLMClient([reply])
+    ticket = _ticket(
+        title="A refused rule comes back allowed",
+        components=["Rule Book"],
+        description="Steps: add a refusing rule and publish. Expected: it stays refused.",
+        steps_to_reproduce=["Add a refusing rule", "Publish"],
+        expected="It stays refused.",
+    )
+    result = generate_drafts(ticket, fake, settings, provider="fake", model="m")
+    prompt = fake.requests[0].messages[-1].content
+    assert '- "Rule Book" in the suite: tested in tests/rules' in prompt
+    assert "policy.rules[].action = deny" in prompt  # the glossary's value
+    assert "  - policy.rules[].action: allow, deny, log" in prompt  # the area's known values
+    assert "Allowed components: rules, unknown" in prompt  # the term's marker as the choice
+    assert result.drafts[0].markers.component == "rules"

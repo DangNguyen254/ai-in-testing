@@ -74,13 +74,13 @@ def test_ok_path_builds_traceable_drafts() -> None:
 
     assert result.status == "ok"
     assert result.attempts == 1
-    assert result.prompt_version == "draft_v3"
+    assert result.prompt_version == "draft_v4"
     assert (result.provider, result.model) == ("fake", "fake-model")
     assert [d.kind for d in result.drafts] == ["primary", "edge_case"]  # primary first
     assert [d.id for d in result.drafts] == ["encode/httpx#1482/d1", "encode/httpx#1482/d2"]
     first = result.drafts[0]
     assert first.ticket_id == "encode/httpx#1482"
-    assert first.prompt_version == "draft_v3"
+    assert first.prompt_version == "draft_v4"
     assert first.markers.priority == "p1"
     assert first.test_kind == "api"
     assert first.deployment_type == "both"

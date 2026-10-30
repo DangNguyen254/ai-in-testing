@@ -56,8 +56,13 @@ the matched terms' classes are searched by name, their chains, markers, keys and
 search, and their folders decide the area when they point at one (or nudge it among several).
 Retrieval records the matched terms and folders. Ticket words the glossary doesn't know, and
 mapped folders or classes the suite no longer has, go to `knowledge.unmapped_log` (default
-`<glossary>-unmapped.txt`) for the next update. *Still to build:* the draft and generation parts
-below.
+`<glossary>-unmapped.txt`) for the next update. *Draft and generation built too:* the draft (prompt `draft_v4`) gets a
+"suite vocabulary for this ticket" block: the matched terms with their folders, classes,
+component markers and data values, plus the known values of their areas from the suite map; the
+terms' component markers become the draft's component choices. The generation context lists the
+known values, in the template's folder, of the keys its entry uses (from the index; free text and
+keys with many values left out). Switches and limits: `knowledge.use_in_draft`,
+`use_in_generation`, `map_dir`, `max_vocabulary_values`, `max_vocabulary_keys`.
 - Draft: known values become the choices the draft picks from (actions, modes, verdicts,
   components); the glossary translates ticket words into suite words.
 - Query rewrite and search: ticket words are expanded with their glossary terms.

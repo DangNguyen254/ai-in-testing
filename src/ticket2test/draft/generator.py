@@ -7,6 +7,7 @@ from typing import Any
 
 from ticket2test.config import Settings
 from ticket2test.draft.support import support_for
+from ticket2test.knowledge.vocabulary import draft_vocabulary
 from ticket2test.llm.base import LLMClient, LLMRequest, Message
 from ticket2test.llm.factory import model_name
 from ticket2test.llm.masking import masker_of, unmask_model
@@ -62,10 +63,13 @@ def generate_drafts(
         "priorities": ", ".join(markers.priorities),
         "suites": ", ".join([*markers.suites, UNKNOWN]),
     }
+    vocabulary = draft_vocabulary(ticket, settings)
+    # the suite's list, else the component markers of the glossary terms the ticket names
+    components = list(markers.components) or vocabulary.components
     if "{{components}}" in prompt.user:  # from draft_v3 on
-        values["components"] = (
-            ", ".join([*markers.components, UNKNOWN]) if markers.components else "(not given)"
-        )
+        values["components"] = ", ".join([*components, UNKNOWN]) if components else "(not given)"
+    if "{{vocabulary}}" in prompt.user:  # from draft_v4 on
+        values["vocabulary"] = scrub(vocabulary.text).text if vocabulary.text else "(none)"
     user = prompt.render_user(**values)
     request = LLMRequest(
         messages=(
@@ -75,7 +79,7 @@ def generate_drafts(
         temperature=settings.llm.temperature,
         seed=settings.llm.seed,
         max_output_tokens=settings.llm.max_output_tokens,
-        json_schema=draft_schema(markers.priorities, markers.suites, markers.components),
+        json_schema=draft_schema(markers.priorities, markers.suites, components),
         model=model_name(settings, "draft"),
     )
     result = complete_structured(
@@ -93,7 +97,7 @@ def generate_drafts(
     )
     response, output_redactions = _scrub_output(restored)
     drafts = [
-        _to_stored(item, ticket, index, prompt.version, markers.components)
+        _to_stored(item, ticket, index, prompt.version, components)
         for index, item in enumerate(_primary_first(response.drafts), start=1)
     ]
     drafted = DraftResult(

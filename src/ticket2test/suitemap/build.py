@@ -542,7 +542,7 @@ def known_values(entries: Iterable[dict[str, Any]], settings: Settings) -> list[
     id_field = settings.data.id_field
     for entry in entries:
         seen: set[str] = set()
-        for path, leaf in _leaves(entry, "", 0):
+        for path, leaf in leaves(entry, "", 0):
             if path == id_field:
                 continue
             seen.add(path)
@@ -571,18 +571,18 @@ def known_values(entries: Iterable[dict[str, Any]], settings: Settings) -> list[
     return found
 
 
-def _leaves(value: Any, path: str, depth: int) -> Iterable[tuple[str, Any]]:
+def leaves(value: Any, path: str, depth: int) -> Iterable[tuple[str, Any]]:
     """(key path, scalar) pairs: dict keys joined by ".", list items as "[]"."""
     if isinstance(value, dict):
         if depth >= _MAX_DEPTH:
             return
         for key, item in value.items():
-            yield from _leaves(item, f"{path}.{key}" if path else str(key), depth + 1)
+            yield from leaves(item, f"{path}.{key}" if path else str(key), depth + 1)
     elif isinstance(value, list):
         if depth >= _MAX_DEPTH:
             return
         for item in value:
-            yield from _leaves(item, f"{path}[]", depth + 1)
+            yield from leaves(item, f"{path}[]", depth + 1)
     elif path:
         yield path, value
 

@@ -32,7 +32,7 @@ llm:
     model: ""                  # required when provider is gemini
 
 draft:
-  prompt_version: draft_v3
+  prompt_version: draft_v4
   max_comment_chars: 20000
   skeleton: auto                 # partial draft + open questions: auto (insufficient, or no explicit
                                  # steps/expected section in the ticket) | always | never
@@ -281,8 +281,13 @@ security:
 knowledge:                       # the suite's vocabulary (docs/knowledge-plan.md); private files
   glossary: null                 # tracker-to-suite glossary (YAML, docs/glossary-prompt.md)
   unmapped_log: null             # default: <glossary>-unmapped.txt next to it
-  use_in_search: true            # matched terms' classes, chains and values join the search
+  use_in_search: true            # matched terms' folders lift results in the search
   use_in_domain: true            # matched terms' folders steer the area choice
+  use_in_draft: true             # the draft gets the matched terms' suite words and values
+  use_in_generation: true        # the context gets the known values of the entry's keys
+  map_dir: null                  # suite map for known values; default output/map/<repo folder>
+  max_vocabulary_values: 12      # keys with more distinct values are left out
+  max_vocabulary_keys: 15        # keys listed, most common first
 
 map:                             # suite map: area summaries from the index (no LLM)
   max_items: 15                  # per list in an area summary

@@ -105,7 +105,7 @@ class EvalSettings(_Section):
 
 
 class DraftSettings(_Section):
-    prompt_version: str = "draft_v3"
+    prompt_version: str = "draft_v4"
     # Comments go into the prompt in order until this many characters; the rest are dropped.
     max_comment_chars: int = Field(default=20000, ge=0)
     # A partial draft with open questions (draft/skeleton.py), one extra LLM call: "auto" when
@@ -717,8 +717,15 @@ class KnowledgeSettings(_Section):
     # Ticket words the glossary doesn't know and mapped names the suite no longer has, for the
     # next update. Default: <glossary>-unmapped.txt next to the glossary.
     unmapped_log: Path | None = None
-    use_in_search: bool = True  # matched terms' classes, chains and values join the search
+    use_in_search: bool = True  # matched terms' folders lift results in the search
     use_in_domain: bool = True  # matched terms' folders steer the area choice
+    use_in_draft: bool = True  # the draft gets the matched terms' suite words and values
+    use_in_generation: bool = True  # the context gets the known values of the entry's keys
+    # The suite map the draft reads known values from (``ticket2test map``). Default:
+    # <output_dir>/map/<folder name of paths.repo>.
+    map_dir: Path | None = None
+    max_vocabulary_values: int = Field(default=12, ge=1)  # keys with more values are left out
+    max_vocabulary_keys: int = Field(default=15, ge=1)  # keys listed, most common first
 
 
 class PathSettings(_Section):
