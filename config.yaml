@@ -312,7 +312,7 @@ map:                             # suite map: area summaries from the index (no 
   max_value_keys: 80             # data key paths listed per area (most common first)
 
 guides:                          # area guides: one strong-model call per area (no exploring)
-  prompt: guide_v1
+  prompt: guide_v2
   max_budget_usd: 50.0           # hard ceiling; --budget can go lower, never higher
   max_input_tokens: 20000        # per area: the area summary + code picked by the tool
   max_piece_tokens: 3000         # a page object larger than this goes in as an outline
