@@ -24,6 +24,7 @@ from typing import Literal
 
 from ticket2test.config import Settings
 from ticket2test.gaps import check_pieces, from_generated, from_hints
+from ticket2test.generate.coverage import judge_coverage
 from ticket2test.generate.domain import choose_domain
 from ticket2test.generate.patch import (
     PatchError,
@@ -35,7 +36,8 @@ from ticket2test.generate.patch import (
 from ticket2test.generate.reuse import ReuseDecision, decide
 from ticket2test.guides.context import area_guide_text
 from ticket2test.index.indexer import IndexData
-from ticket2test.llm.base import LLMClient
+from ticket2test.llm.base import LLMClient, LLMError
+from ticket2test.llm.structured import StructuredOutputError
 from ticket2test.models.draft import TestCaseDraft
 from ticket2test.models.gaps import GapVerdict, MissingPiece
 from ticket2test.models.generated import GeneratedTest, ReuseKind
@@ -65,6 +67,56 @@ class ReuseOutcome:
     first_generated: GeneratedTest | None = None  # the test before regenerating, if replaced
 
 
+def _check_coverage(
+    outcome: ReuseOutcome,
+    draft: TestCaseDraft,
+    index: IndexData,
+    settings: Settings,
+    client: LLMClient,
+    conventions: str | None,
+) -> tuple[ReuseKind, str | None]:
+    """The model's look at whether the closest existing test already does it (when on):
+    covered stops generation; partial adds what that test lacks to the context and the
+    checklist. A failed call changes nothing (noted)."""
+    decision = outcome.decision
+    if not settings.generate.reuse.coverage_check:
+        return outcome.kind, conventions
+    try:
+        coverage = judge_coverage(draft, decision, index, settings, client)
+    except (LLMError, StructuredOutputError) as exc:
+        outcome.notes.append(f"coverage check failed ({exc}); generating")
+        return outcome.kind, conventions
+    if coverage is None or coverage.verdict == "not_covered" or coverage.candidate is None:
+        if coverage is not None:
+            decision.reasons.append(f"coverage check: not covered ({coverage.reason})")
+        return outcome.kind, conventions
+    found = coverage.candidate
+    if coverage.verdict == "covered":
+        decision.kind, decision.target, decision.target_file = (
+            "covered",
+            found.chunk_id,
+            found.file_path,
+        )
+        decision.test_id = found.test
+        decision.reasons.append(
+            f"covered by {found.test} (coverage check: {coverage.reason}); run with --as to "
+            "generate anyway"
+        )
+        outcome.kind = "covered"
+        return "covered", conventions
+    missing = "; ".join(coverage.missing) or "(not named)"
+    decision.reasons.append(f"partly covered by {found.test}: lacks {missing}")
+    decision.review_notes.append(
+        f"{found.test} already does most of this scenario ({coverage.reason}). The new test "
+        f"should add what it lacks: {missing}. Consider extending {found.test} instead."
+    )
+    text = (
+        f"## Already partly covered\n\nThe existing test {found.test} ({found.file_path}) "
+        f"already does most of this draft. The new test must add what it lacks: {missing}."
+    )
+    return outcome.kind, f"{conventions}\n\n{text}" if conventions else text
+
+
 def _generate_reusing(
     draft: TestCaseDraft,
     retrieval: RetrievalResult,
@@ -90,6 +142,8 @@ def _generate_reusing(
             conventions = f"{conventions}\n\n{text}" if conventions else text
     if mode != "auto" and mode != decision.kind:
         outcome.notes.append(f"--as {mode} (decided: {decision.kind})")
+    if mode == "auto" and kind not in ("covered", "out_of_scope") and not choice.uncertain:
+        kind, conventions = _check_coverage(outcome, draft, index, settings, client, conventions)
     if kind in ("covered", "out_of_scope"):  # nothing to generate
         return outcome
 

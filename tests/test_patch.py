@@ -618,3 +618,48 @@ def test_a_patch_also_writes_only_its_new_parts(
     assert "test_files_archive_view_members" not in code  # only the new method
     entries = json_.loads((tmp_path / "new_entries.json").read_text(encoding="utf-8"))
     assert [e["test_id"] for e in entries] == ["test_files_archive_encrypted_members"]
+
+
+def test_the_coverage_check_stops_a_covered_draft_and_steers_a_partial_one(
+    setup: tuple[Settings, IndexData],
+) -> None:
+    """Found in a real trial: the generating model saw that an existing test did the scenario
+    step for step, while the word match ("not covered") never could. With
+    ``reuse.coverage_check``, one call before generation judges the closest tests."""
+    from tests.test_reuse import SCENARIOS
+    from ticket2test.generate.pipeline import generate_reusing
+
+    settings, index = setup
+    on = settings.model_copy(
+        update={
+            "generate": settings.generate.model_copy(
+                update={
+                    "reuse": settings.generate.reuse.model_copy(update={"coverage_check": True})
+                }
+            )
+        }
+    )
+    draft = SCENARIOS["method"][0]
+    retrieval = _ticketed(on, index, draft)
+
+    def answer(verdict: str, test: str | None, missing: list[str]) -> str:
+        return json.dumps(
+            {"verdict": verdict, "test": test, "missing": missing, "reason": "same steps"}
+        )
+
+    fake = FakeLLMClient([answer("covered", "T1", [])])
+    outcome = generate_reusing(draft, retrieval, index, on, fake, "fake", "m", STANDIN)
+    assert outcome.kind == "covered" and outcome.generated is None and len(fake.requests) == 1
+    assert outcome.decision.test_id and "coverage check: same steps" in outcome.decision.reasons[-1]
+    shown = fake.requests[0].messages[-1].content
+    assert "## T1:" in shown and "```python" in shown
+    # a label it wasn't shown: ignored, generation goes on (here: no reply left, so it fails)
+    fake = FakeLLMClient([answer("covered", "T9", [])])
+    with pytest.raises(Exception, match="exhausted"):
+        generate_reusing(draft, retrieval, index, on, fake, "fake", "m", STANDIN)
+    # partial: what the test lacks reaches the generation context
+    fake = FakeLLMClient([answer("partial", "T1", ["the encrypted archive case"])])
+    with pytest.raises(Exception, match="exhausted"):
+        generate_reusing(draft, retrieval, index, on, fake, "fake", "m", STANDIN)
+    context = fake.requests[1].messages[-1].content
+    assert "Already partly covered" in context and "the encrypted archive case" in context

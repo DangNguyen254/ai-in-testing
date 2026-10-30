@@ -186,6 +186,9 @@ generate:
   reuse:                          # covered / variant / method / module decision
     candidates: 8
     covered_min: 0.8
+    coverage_check: false          # true: one LLM call before generation, is the draft already covered?
+    coverage_candidates: 3         # closest tests shown to it, whole (code + one entry)
+    coverage_min_flow: 0.15
     variant_min: 0.6
     method_min: 0.4
     method_named_min: 0.25         # ... when the class is named after the draft's subject

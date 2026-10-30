@@ -273,6 +273,14 @@ def run(
             "or the method name); repeatable. Works on a copy; the repo is never changed."
         ),
     ] = None,
+    coverage_check: Annotated[
+        bool | None,
+        typer.Option(
+            "--coverage-check/--no-coverage-check",
+            help="With --continue: ask the model first whether an existing test already covers "
+            "the draft (default: generate.reuse.coverage_check, off).",
+        ),
+    ] = None,
 ) -> None:
     """One ticket end to end, in two halves with a review between them.
 
@@ -343,6 +351,7 @@ def run(
         conventions=None,
         out=None,
         reuse_as="auto",
+        coverage_check=coverage_check,
     )
 
 
@@ -659,6 +668,14 @@ def generate(
             "code); or force variant, method or module.",
         ),
     ] = "auto",
+    coverage_check: Annotated[
+        bool | None,
+        typer.Option(
+            "--coverage-check/--no-coverage-check",
+            help="Ask the model first whether an existing test already covers the draft; "
+            "covered: nothing is generated (default: generate.reuse.coverage_check, off).",
+        ),
+    ] = None,
 ) -> None:
     """Generate a test from a draft and retrieval results, reusing the suite first.
 
@@ -686,6 +703,10 @@ def generate(
 
     state: AppState = ctx.obj
     settings = state.settings
+    if coverage_check is not None:  # this run only: the flag over the config
+        reuse = settings.generate.reuse.model_copy(update={"coverage_check": coverage_check})
+        generate_settings = settings.generate.model_copy(update={"reuse": reuse})
+        settings = settings.model_copy(update={"generate": generate_settings})
     try:
         drafts = DraftResult.model_validate_json(draft_file.read_text(encoding="utf-8"))
         retrieval = RetrievalResult.model_validate_json(retrieval_file.read_text(encoding="utf-8"))

@@ -41,6 +41,7 @@ LLMStep = Literal[
     "variant_plan",
     "guide",
     "propose",
+    "coverage",
 ]
 
 
@@ -346,6 +347,13 @@ class ReuseSettings(_Section):
 
     candidates: int = Field(default=8, ge=1)  # domain tests compared with the draft
     covered_min: float = Field(default=0.8, ge=0.0, le=1.0)  # flow match for "already covered"
+    # One LLM call before generation (generate/coverage.py): the closest candidates' code and
+    # data against the draft, since the word match rarely reaches covered_min on real tickets.
+    # Off by default (on: ``--coverage-check`` or the config); off, the word match alone decides.
+    coverage_check: bool = False
+    coverage_candidates: int = Field(default=3, ge=1)  # shown to the model, whole
+    coverage_min_flow: float = Field(default=0.15, ge=0.0, le=1.0)  # weaker ones aren't shown
+    coverage_prompt: str = "coverage_v1"
     variant_min: float = Field(default=0.6, ge=0.0, le=1.0)  # flow match for "new variant"
     method_min: float = Field(default=0.4, ge=0.0, le=1.0)  # class match for "new method"
     # ... or this much when the class is named after the draft's subject (generate/reuse.py)
