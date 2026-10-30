@@ -144,7 +144,8 @@ retrieval:
     definition_weight: 0.2
     test_link_weight: 0.15
     path_weight: 0.15
-    glossary_weight: 0.25        # in a folder or class the glossary maps the ticket's words to
+    glossary_weight: 0.25        # in a folder a confirmed glossary entry maps the ticket to
+    glossary_proposed_weight: 0.1  # ... an entry only proposed (not checked by a person yet)
   investigator:                  # bounded agent; replaces the follow-up rounds when enabled
     enabled: false
     prompt: investigator_v3

@@ -170,3 +170,35 @@ def test_when_the_tickets_words_find_the_place_the_glossary_only_reorders(
     assert not any(r.detail.startswith("query=glossary") for h in result.hits for r in h.reasons)
     lifted = [h for h in result.hits if "glossary" in h.rank_features]
     assert lifted and all(h.file_path.startswith("tests/files/") for h in lifted)
+
+
+@pytest.mark.parametrize(("status", "lift"), [("confirmed", 0.25), ("proposed", 0.1)])
+def test_a_class_stands_for_its_folder_and_checked_entries_lift_more(
+    index: IndexData, tmp_path: Path, status: str, lift: float
+) -> None:
+    """Found on the real suite: an entry naming one class lifted only that class, and the
+    ticket's tests in a sibling class of the same feature dropped. An entry nobody checked yet
+    may be wrong, so it lifts less."""
+    glossary = tmp_path / "glossary.yaml"
+    glossary.write_text(
+        "terms:\n"
+        "  - term: Asset Handover\n"
+        f"    status: {status}\n"
+        "    classes: [tests/files/test_files_downloads.py::TestFilesDownloads]\n",
+        encoding="utf-8",
+    )
+    settings = Settings.model_validate(
+        {"paths": {"cache_dir": str(tmp_path / "c")}, "knowledge": {"glossary": str(glossary)}}
+    )
+    ticket = _ticket(
+        title="A scanned file with a data leak rule is blocked", components=["Asset Handover"]
+    )
+    result = retrieve(ticket, index, settings)
+    assert result.glossary_folders == ["tests/files"]
+    lifted = {
+        h.file_path: h.rank_features["glossary"]
+        for h in result.hits
+        if "glossary" in h.rank_features
+    }
+    assert any(not p.endswith("test_files_downloads.py") for p in lifted)  # the sibling classes
+    assert set(lifted.values()) == {lift}

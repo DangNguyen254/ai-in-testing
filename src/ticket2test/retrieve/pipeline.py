@@ -42,7 +42,7 @@ from ticket2test.prompts import load_prompt
 from ticket2test.retrieve.investigator import investigate
 from ticket2test.retrieve.llm_steps import request_followups, rewrite_query
 from ticket2test.retrieve.query import candidate_identifiers, ticket_text, verify_identifiers
-from ticket2test.retrieve.rerank import Ranked, in_places, rerank
+from ticket2test.retrieve.rerank import Ranked, in_place, rerank
 from ticket2test.retrieve.shape import shape_of_draft, shape_of_test
 
 log = logging.getLogger(__name__)
@@ -274,6 +274,30 @@ def _glossary_terms(ticket: Ticket, index: IndexData, settings: Settings) -> lis
     return matched  # a stale folder or class simply matches nothing
 
 
+def term_folders(term: Term) -> list[str]:
+    """The term's folders, and the folder of each class it names: a ticket names a feature, so
+    a mapped class stands for its folder (the feature's other classes count too)."""
+    folders = [f.strip("/") for f in term.folders]
+    folders += [str(PurePosixPath(c.split("::", 1)[0]).parent) for c in term.classes]
+    return list(dict.fromkeys(f for f in folders if f and f != "."))
+
+
+def _glossary_places(terms: list[Term], settings: Settings) -> list[tuple[str, float]]:
+    """(folder, lift) per matched term: the full lift for an entry a person confirmed, a smaller
+    one for an entry only proposed; a folder named by both keeps the larger."""
+    rerank_cfg = settings.retrieval.rerank
+    lifts: dict[str, float] = {}
+    for term in terms:
+        weight = (
+            rerank_cfg.glossary_weight
+            if term.status == "confirmed"
+            else rerank_cfg.glossary_proposed_weight
+        )
+        for folder in term_folders(term):
+            lifts[folder] = max(lifts.get(folder, 0.0), weight)
+    return list(lifts.items())
+
+
 def _glossary_words(terms: list[Term]) -> str:
     """Search words from matched terms: class names, chains, component markers, data keys and
     values (identifiers are split into words by the search itself)."""
@@ -309,11 +333,7 @@ def retrieve(
         prompt_versions.append(prompt.version)
 
     matched = _glossary_terms(ticket, index, settings)
-    places = (
-        [p for t in matched for p in [*t.folders, *t.classes]]
-        if settings.knowledge.use_in_search
-        else []
-    )
+    places = _glossary_places(matched, settings) if settings.knowledge.use_in_search else []
     guessed = candidate_identifiers(text) + (rewrite.identifiers if rewrite else [])
     identifiers, rejected = verify_identifiers(guessed, retriever.catalog)
 
@@ -328,7 +348,7 @@ def retrieve(
     pool = _build_pool(retriever, lists)
     rounds = 0
     searches_run = ["bm25: <ticket text>"] + (["bm25: <rewrite terms>"] if rewrite else [])
-    if places and not any(in_places(r.chunk, places) for r in ranked_top(pool)):
+    if places and not any(in_place(r.chunk, f) for r in ranked_top(pool) for f, _ in places):
         # the ticket's own words missed every place the glossary names: search in its words
         fallback = [retriever.grep(c.rsplit("::", 1)[-1]) for t in matched for c in t.classes]
         words = _glossary_words(matched)
@@ -426,7 +446,7 @@ def retrieve(
         llm_calls=llm_calls,
         prompt_versions=prompt_versions,
         glossary_terms=[t.term for t in matched],
-        glossary_folders=list(dict.fromkeys(f for t in matched for f in t.folders)),
+        glossary_folders=list(dict.fromkeys(f for t in matched for f in term_folders(t))),
         ticket_components=list(ticket.components),
         ticket_labels=list(ticket.labels),
     )
@@ -467,7 +487,7 @@ def _final(
     identifiers: list[str],
     text: str,
     settings: Settings,
-    places: list[str] | None = None,
+    places: list[tuple[str, float]] | None = None,
 ) -> list[Ranked]:
     candidates = [(c.chunk, c.score, [r.detail for r in c.reasons]) for c in pool.values()]
     return rerank(
