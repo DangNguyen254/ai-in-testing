@@ -20,7 +20,9 @@ class MissingPiece(BaseModel):
     owner: str  # a class (name or qualname), a page-object chain, or "" for a module function
     name: str = Field(min_length=1, max_length=120)
     needed_for: str = Field(max_length=300)  # the test line or draft step that needs it
-    source: Literal["generated", "investigator"]
+    # generated: the code calls it; investigator: a retrieval hint; noted: the generating model
+    # said the test needs it (and left the check out)
+    source: Literal["generated", "investigator", "noted"]
 
 
 class GapVerdict(BaseModel):

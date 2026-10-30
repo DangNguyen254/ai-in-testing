@@ -247,6 +247,10 @@ def generate_reusing(
     pieces += [p for p in outcome.attempt_pieces if (p.owner, p.name) not in seen]
     if retrieval.investigation is not None:
         pieces += from_hints(retrieval.investigation.missing)
+    if outcome.generated is not None:  # what the model said it needed and left out
+        seen = {(p.owner, p.name) for p in pieces}
+        noted = from_hints(outcome.generated.noted_missing, source="noted")
+        pieces += [p for p in noted if (p.owner, p.name) not in seen]
     outcome.missing = check_pieces(pieces, index, settings)
     gaps = [v for v in outcome.missing if v.status in ("missing", "close_match")]
     if gaps and settings.proposals.enabled:

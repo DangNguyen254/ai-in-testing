@@ -1,4 +1,4 @@
-"""Code generation (generate_v4) with the fake LLM: entries from the base entry, checks with
+"""Code generation (generate_v5) with the fake LLM: entries from the base entry, checks with
 retry, formatting, context budget, traceability."""
 
 from __future__ import annotations
@@ -201,7 +201,7 @@ def test_generates_a_traceable_code_and_data_pair(
     assert ref is not None and (ref.chunk_id, ref.entry_key) == (TEMPLATE_CHUNK, TEMPLATE_ID)
     assert ref.chunk_id in generated.retrieved_chunk_ids
     assert generated.ticket_id == "STND-104" and generated.draft_ref == "STND-104/d1"
-    assert generated.prompt_version == "generate_v4"
+    assert generated.prompt_version == "generate_v5"
     assert (generated.provider, generated.model, generated.attempts) == ("fake", "fake-model", 1)
     assert generated.context_tokens > 0
     assert [p.test_id for p in generated.entry_plans] == list(IDS)

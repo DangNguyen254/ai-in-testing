@@ -372,7 +372,7 @@ class ReuseSettings(_Section):
 
 
 class GenerateSettings(_Section):
-    prompt_version: str = "generate_v4"
+    prompt_version: str = "generate_v5"
     # Team conventions for tests (Markdown). Always placed in the context when set.
     conventions_doc: Path | None = None
     # Always on the reviewer checklist: things only a real run can confirm.

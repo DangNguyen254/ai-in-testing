@@ -193,3 +193,39 @@ def test_a_page_opened_by_a_dotted_path_is_checked(setup: tuple[Settings, IndexD
     assert verdict.piece.name == "browser_tab_title"
     assert verdict.owner_class == "framework.pages.exceptions.ExceptionListPage"
     assert from_generated(_generated(source, []), index, settings) == []  # the real one is fine
+
+
+def test_a_member_the_model_says_it_needs_is_a_checked_gap(
+    setup: tuple[Settings, IndexData], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Found in the real trial: the model left a content check out because no helper fetched
+    the delivered file, and said so only in the checklist, so no gap and no proposal followed.
+    generate_v5's ``missing`` list makes it a gap candidate, checked by code."""
+    from tests.test_patch import _ticketed
+    from tests.test_reuse import SCENARIOS
+    from ticket2test.generate import pipeline
+    from ticket2test.generate.reuse import ReuseDecision
+    from ticket2test.llm import FakeLLMClient
+
+    settings, index = setup
+    draft = SCENARIOS["method"][0]
+    retrieval = _ticketed(settings, index, draft)
+    decision = ReuseDecision("module", "files", False, None, None)
+    noted = [
+        MissingHint(
+            kind="helper", owner="BaseTest", name="fetch_delivered_file", needed_for="content"
+        ),
+        MissingHint(kind="helper", owner="BaseTest", name="check", needed_for="exists already"),
+    ]
+
+    def fake(*args: object, **kwargs: object) -> pipeline.ReuseOutcome:
+        generated = _generated(GAP_CODE, ENTRIES).model_copy(update={"noted_missing": noted})
+        return pipeline.ReuseOutcome(kind="module", decision=decision, generated=generated)
+
+    monkeypatch.setattr(pipeline, "_generate_reusing", fake)
+    outcome = pipeline.generate_reusing(
+        draft, retrieval, index, settings, FakeLLMClient([]), "f", "m", STANDIN
+    )
+    found = {v.piece.name: (v.piece.source, v.status) for v in outcome.missing}
+    assert found["fetch_delivered_file"] == ("noted", "missing")
+    assert found["check"][1] == "exists"  # checked by code: it isn't missing at all

@@ -14,6 +14,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, model_validator
 
 from ticket2test.models.chunk import DataFormat
+from ticket2test.models.retrieval import MissingHint
 
 # Validation context keys (set by the generator).
 CTX_TEST_PREFIX = "test_function_prefix"
@@ -107,6 +108,9 @@ class GenerationResponse(BaseModel):
     entries: list[EntryPlan]
     review_checklist: list[str]  # things only a real run can confirm
     notes: str
+    # Members the test needs that the context doesn't have (generate_v5): checked by code
+    # like any gap candidate (gaps/), and proposed when proposals are on.
+    missing: list[MissingHint] = Field(default_factory=list, max_length=5)
 
     @model_validator(mode="after")
     def _consistent(self, info: ValidationInfo) -> GenerationResponse:
@@ -297,3 +301,4 @@ class GeneratedTest(BaseModel):
     # The ids this output adds (a patch's test_ids list the whole patched file); empty: test_ids.
     new_test_ids: list[str] = Field(default_factory=list)
     run_report: dict[str, Any] | None = None  # from a real run's log (`ticket2test results`)
+    noted_missing: list[MissingHint] = Field(default_factory=list)  # the model's `missing`

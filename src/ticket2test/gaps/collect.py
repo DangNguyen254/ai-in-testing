@@ -9,6 +9,7 @@ judge that something doesn't exist; it only tried to use it.
 from __future__ import annotations
 
 import ast
+from typing import Literal
 
 from ticket2test.config import Settings
 from ticket2test.index.indexer import IndexData
@@ -76,10 +77,12 @@ def from_generated(
     return list(pieces.values())
 
 
-def from_hints(hints: list[MissingHint]) -> list[MissingPiece]:
+def from_hints(
+    hints: list[MissingHint], source: Literal["investigator", "noted"] = "investigator"
+) -> list[MissingPiece]:
     return [
         MissingPiece(
-            kind=h.kind, owner=h.owner, name=h.name, needed_for=h.needed_for, source="investigator"
+            kind=h.kind, owner=h.owner, name=h.name, needed_for=h.needed_for, source=source
         )
         for h in hints
     ]

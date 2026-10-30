@@ -296,6 +296,7 @@ def assemble(
         notes=notes,
         review_checklist=checklist,
         entry_plans=plans,
+        noted_missing=list(response.missing),
     )
 
 
