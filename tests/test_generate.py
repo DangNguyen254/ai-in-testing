@@ -719,3 +719,38 @@ def test_the_context_lists_the_suites_values_for_the_entrys_keys(
         _draft(), retrieval, index, off, template, TEMPLATE_ID, CONVENTIONS
     )
     assert not any(p.title.startswith("Known values") for p in plain.pieces)
+
+
+def test_sections_every_entry_of_the_file_has_are_copied_by_code(
+    index: IndexData, retrieval: RetrievalResult, tmp_path: Path
+) -> None:
+    """Found in the real trial: the model left out a config block and a login user every entry
+    of the file has. Such sections are the file's convention: code copies them, and the
+    reviewer is told which and from where."""
+    plans = [_plan(i, sections=["policy", "delete_name", "targets"]) for i in IDS]  # no settings
+    generated = _generate(index, retrieval, tmp_path, FakeLLMClient([_reply(plans=plans)]))
+    base = _base(index)
+    assert all(e["settings"] == base["settings"] for e in generated.data_entries)
+    note = next(c for c in generated.review_checklist if c.startswith("Every entry in"))
+    assert "this file has settings" in note and "added by code: settings" in note
+    report = generated.validation_report or {}
+    assert not [f for f in report.get("findings", []) if "settings" in f.get("message", "")]
+
+
+def test_convention_sections_widen_from_the_file_to_the_suite(
+    index: IndexData, tmp_path: Path
+) -> None:
+    from ticket2test.generate.conventions import convention_sections
+
+    settings = _settings(tmp_path)
+    assert convention_sections("tests/rules/test_rules.py", index, settings).keys == ["settings"]
+    assert convention_sections("tests/files/test_files_downloads.py", index, settings).keys == [
+        "file",
+        "site",
+    ]
+    new = convention_sections("tests/brand_new/test_new.py", index, settings)
+    assert new.scope == "the suite"  # no entries in that file or folder yet
+    required = settings.model_copy(
+        update={"data": settings.data.model_copy(update={"required_sections": ["site"]})}
+    )
+    assert "site" in convention_sections("tests/rules/test_rules.py", index, required).keys

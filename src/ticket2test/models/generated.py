@@ -26,6 +26,7 @@ CTX_DATA_ACCESS = "data_access"
 CTX_EXPECTATIONS = "expectation_sections"  # section -> helper that reads it
 CTX_EXPECTATION_SETS = "allowed_expectation_sets"  # sections an entry may carry together
 CTX_SEED_SECTIONS = "seed_sections"
+CTX_CONVENTION_KEYS = "convention_keys"  # sections (nearly) every entry of the file has
 CTX_TICKET_ID = "ticket_id"
 CTX_INHERITED_IDS = "inherited_ids"  # ids of tests the template class inherits
 
@@ -203,6 +204,7 @@ def unconsumed_keys(
         for section, h in ctx.get(CTX_EXPECTATIONS, {}).items()
     }
     fixed = {ctx.get(CTX_ID_FIELD, "id"), *ctx.get(CTX_SEED_SECTIONS, [])}
+    fixed |= set(ctx.get(CTX_CONVENTION_KEYS, []))  # the file's convention: consumed
     fixed |= set(ctx.get(CTX_PER_ENTRY_KEYS, []))
     read = (use.keys | use.optional_keys) if use else frozenset()
     helpers = use.helpers if use else frozenset()

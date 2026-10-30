@@ -195,6 +195,12 @@ class DataSettings(_Section):
     # (``*.validate_api_response``), or a seeding call that checks its responses.
     expectation_sections: dict[str, str | list[str]] = Field(default_factory=_default_sections)
     # Per-entry overrides that a new entry never inherits from its base entry.
+    # Sections (nearly) every entry of a file has: copied into a new entry by code, and counted
+    # as consumed (generate/conventions.py). The scope widens from the file to its folder to the
+    # suite until it has convention_min_entries entries.
+    convention_share: float = Field(default=0.9, gt=0.0, le=1.0)
+    convention_min_entries: int = Field(default=3, ge=1)
+    required_sections: list[str] = Field(default_factory=list)  # always copied, if found
     per_entry_keys: list[str] = Field(default_factory=lambda: ["priority", "skip"])
 
     def section_helpers(self) -> dict[str, list[str]]:

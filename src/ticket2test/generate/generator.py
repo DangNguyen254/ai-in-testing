@@ -9,7 +9,7 @@ the base entry, re-labelling, and formatting code and data to the suite's style 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -22,6 +22,7 @@ from ticket2test.generate.context import (
     chunk_piece,
     template_piece,
 )
+from ticket2test.generate.conventions import Conventions, convention_sections, with_conventions
 from ticket2test.generate.entries import build_entry, function_of
 from ticket2test.generate.inspect import data_use
 from ticket2test.index.catalog import SymbolCatalog
@@ -40,6 +41,7 @@ from ticket2test.models.generated import (
     CTX_BASE_ENTRY,
     CTX_BASE_ID,
     CTX_CLASS_PREFIX,
+    CTX_CONVENTION_KEYS,
     CTX_DATA_ACCESS,
     CTX_EXPECTATION_SETS,
     CTX_EXPECTATIONS,
@@ -104,6 +106,7 @@ class GenerationSetup:
     context: BuiltContext
     prompt_version: str
     input_redactions: int
+    conventions: Conventions = field(default_factory=Conventions)  # sections every entry has
 
 
 def prepare_generation(
@@ -119,6 +122,7 @@ def prepare_generation(
     base_entry = template_chunk.data_entries[entry_key]
     layout: DataFormat = template_chunk.data_format or data.format
 
+    conventions_ = convention_sections(template_chunk.file_path, index, settings)
     context = build_generation_context(
         draft, retrieval, index, settings, template_chunk, entry_key, conventions
     )
@@ -161,6 +165,7 @@ def prepare_generation(
             CTX_EXPECTATIONS: data.section_helpers(),
             CTX_EXPECTATION_SETS: data.allowed_expectation_sets,
             CTX_SEED_SECTIONS: data.seed_sections,
+            CTX_CONVENTION_KEYS: conventions_.keys,
             CTX_TICKET_ID: draft.ticket_id,
             CTX_INHERITED_IDS: [
                 i for c in _inherited_chunks(template_chunk, index) for i in c.test_ids
@@ -171,6 +176,7 @@ def prepare_generation(
         base_entry=base_entry,
         layout=layout,
         context=context,
+        conventions=conventions_,
         prompt_version=prompt.version,
         input_redactions=draft_scrub.redacted + context_scrub.redacted,
     )
@@ -209,6 +215,7 @@ def assemble(
     plans, fixes = rekey_plans(list(response.entries), code, setup)
     fixes += [shell_note] if shell_note else []
     entries: list[dict[str, Any]] = []
+    conventional: set[str] = set()  # convention sections the plans left out, added by code
     output_redactions = code_scrub.redacted
     for plan in sorted(plans, key=lambda p: order.get(p.test_id, len(order))):
         entry = build_entry(
@@ -221,6 +228,8 @@ def assemble(
             per_entry_keys=data.per_entry_keys,
             test_prefix=settings.index.test_function_prefix,
         )
+        entry, copied = with_conventions(entry, setup.base_entry, setup.conventions)
+        conventional.update(copied)
         entry, removed = strip_unread(entry, code, setup)
         fixes += removed
         cleaned, redacted = _scrub_json(entry)
@@ -234,6 +243,13 @@ def assemble(
     folder = PurePosixPath(setup.template_chunk.file_path).parent
     file_name = str(folder / f"{response.module_name}.py")
     checklist = list(dict.fromkeys([*gen.review_checklist_defaults, *response.review_checklist]))
+    if conventional:  # the plans left them out: say what code added (copied by the model: no note)
+        checklist.append(
+            f"Every entry in {setup.conventions.scope} has "
+            f"{', '.join(setup.conventions.keys)}: the new entries carry them too (added by "
+            f"code: {', '.join(sorted(conventional))}), with the base entry's values (or the "
+            "nearest sibling's). Confirm the values fit this test."
+        )
     data_file_name = module_data_path(file_name, settings.index)
     tpl = setup.template_chunk
     if order and layout_of(tpl.file_path, tpl.symbol_name, tpl.data_file, settings.index) == (

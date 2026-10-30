@@ -19,6 +19,7 @@ from pathlib import PurePosixPath
 from typing import Any, TypeVar
 
 from ticket2test.config import Settings
+from ticket2test.generate.conventions import convention_sections
 from ticket2test.generate.entries import function_of
 from ticket2test.generate.inspect import DataUse, computed_test_ids, data_use
 from ticket2test.index.catalog import ClassEntry, SymbolCatalog, import_map
@@ -1037,6 +1038,11 @@ def check_data_keys(s: Subject) -> Iterator[Finding]:
         "per_entry_keys": d.per_entry_keys,
         "expectation_sections": d.section_helpers(),
         "allowed_expectation_sets": d.allowed_expectation_sets,
+        "convention_keys": (
+            convention_sections(s.generated.file_name, s.index, s.settings).keys
+            if s.index is not None
+            else []
+        ),
     }
     defaults = s.defaults
     retired = retired_tests(s)

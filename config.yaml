@@ -93,6 +93,11 @@ data:                            # per-test JSON data files (reading accepts bot
     targets: self.verify_targets
     interactions: self.verify_interactions
   per_entry_keys: [priority, skip]       # never inherited from the base entry
+  # Sections (nearly) every entry of a file has (e.g. a login user, a config block): copied into
+  # new entries by code and counted as consumed; the scope widens file -> folder -> suite.
+  convention_share: 0.9
+  convention_min_entries: 3
+  required_sections: []                  # always copied when an entry in the suite has them
   defaults_row: true                     # a first entry without the id field holds defaults
   defaults_merge: shallow                # shallow | shallow_if_set (empty keeps the default) | deep
   allowed_expectation_sets: []           # sections an entry may carry together, e.g. [[targets, interactions]]
