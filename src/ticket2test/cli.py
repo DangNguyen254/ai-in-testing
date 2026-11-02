@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Annotated, Any
 
 import typer
@@ -179,7 +179,14 @@ def _without_tests(state: AppState, repo: Path, hide: list[str], stem: str) -> P
     index, _, _ = update_index(repo, settings)
     tests = [c for c in index.chunks if c.kind == "test" and not c.inherited_from]
     ids: set[str] = set()
+    files = [h.strip().lstrip("./") for h in hide if h.strip().endswith(".py") and "::" not in h]
+    for path in files:
+        if path not in index.files:
+            typer.echo(f"Error: no indexed file {path!r} for --hide", err=True)
+            raise typer.Exit(code=2)
     for wanted in hide:
+        if wanted.strip().lstrip("./") in files:
+            continue
         exact = manifest_test_to_chunk_id(wanted) if "::" in wanted else None
         found = {
             c.id for c in tests if c.id == exact or (exact is None and c.symbol_name == wanted)
@@ -189,8 +196,15 @@ def _without_tests(state: AppState, repo: Path, hide: list[str], stem: str) -> P
             raise typer.Exit(code=2)
         ids |= found
     dest = settings.paths.cache_dir / "run-hidden" / stem
-    typer.echo(f"Hiding {len(ids)} test(s): working on a copy of the repo in {dest}")
-    return leave_one_out_repo(repo, index, ids, settings, dest, only_indexed=True)
+    shown = f"{len(ids)} test(s)" + (f" and {len(files)} file(s)" if files else "")
+    typer.echo(f"Hiding {shown}: working on a copy of the repo in {dest}")
+    copy = leave_one_out_repo(repo, index, ids, settings, dest, only_indexed=True)
+    for path in files:  # the whole file goes, with its data file(s)
+        data = {c.data_file for c in tests if c.file_path == path and c.data_file}
+        data.add(str(PurePosixPath(path).with_suffix(settings.index.data_file_suffix)))
+        for name in [path, *data]:
+            (copy / name).unlink(missing_ok=True)
+    return copy
 
 
 def _write_new_parts(folder: Path, generated: Any, settings: Any) -> list[Path]:
@@ -270,7 +284,8 @@ def run(
         list[str] | None,
         typer.Option(
             help="With --continue: a test the tool must not see (pytest id path::Class::test, "
-            "or the method name); repeatable. Works on a copy; the repo is never changed."
+            "or the method name), or a whole test file (its path in the repo, ending in .py: "
+            "the file and its data go); repeatable. Works on a copy; the repo is never changed."
         ),
     ] = None,
     coverage_check: Annotated[

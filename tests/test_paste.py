@@ -323,3 +323,25 @@ def test_hiding_a_test_copies_only_indexed_files_and_survives_link_loops(
     assert "def test_keep" in code and "def test_hide" not in code
     assert (copy / "tests" / "test_a.json").is_file()
     assert not (copy / "notes.txt").exists()  # only what the tool reads
+
+
+def test_hiding_a_whole_test_file_removes_it_and_its_data_from_the_copy(tmp_path: Path) -> None:
+    """Asked for after the trial: hide whole test files (the person's own and the older one) to
+    see whether the tool can still write the test without them."""
+    from ticket2test.cli import AppState, _without_tests
+
+    repo = tmp_path / "repo"
+    (repo / "tests").mkdir(parents=True)
+    for name in ("a", "b"):
+        (repo / "tests" / f"test_{name}.py").write_text(
+            f"class TestThing{name.upper()}:\n    def test_{name}(self):\n        pass\n",
+            encoding="utf-8",
+        )
+        (repo / "tests" / f"test_{name}.json").write_text("[]", encoding="utf-8")
+    settings = Settings.model_validate({"paths": {"cache_dir": str(tmp_path / "cache")}})
+    copy = _without_tests(
+        AppState(settings=settings, debug_log=False), repo, ["tests/test_a.py"], "T-1"
+    )
+    assert not (copy / "tests" / "test_a.py").exists()
+    assert not (copy / "tests" / "test_a.json").exists()
+    assert (copy / "tests" / "test_b.py").is_file() and (repo / "tests" / "test_a.py").is_file()
