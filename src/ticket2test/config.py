@@ -336,7 +336,7 @@ class RetrievalSettings(_Section):
 
 
 class ContextSettings(_Section):
-    max_tokens: int = Field(default=12000, ge=1)
+    max_tokens: int = Field(default=16000, ge=1)
     # Token estimate without a tokenizer: ceil(chars / chars_per_token). 3.0 over-counts for
     # typical code and English, so the real count stays under the budget.
     chars_per_token: float = Field(default=3.0, gt=0)

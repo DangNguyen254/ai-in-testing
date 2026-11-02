@@ -165,7 +165,7 @@ retrieval:
     results_per_search: 8
 
 context:
-  max_tokens: 12000
+  max_tokens: 16000
   chars_per_token: 3.0           # token estimate = ceil(chars / 3.0); over-counts on purpose
 
 generate:

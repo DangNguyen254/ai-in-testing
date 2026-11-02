@@ -65,7 +65,7 @@ Rules for every agent: its tools are the project's own functions (read-only over
 | `llm.max_retries_on_bad_json` | 2 |
 | `retrieval.top_k` | 10 |
 | `retrieval.max_followup_rounds` | 2 |
-| `context.max_tokens` | 12000 |
+| `context.max_tokens` | 16000 |
 | `repair.max_attempts` | 3 |
 | `sandbox.timeout_seconds` | 120 |
 

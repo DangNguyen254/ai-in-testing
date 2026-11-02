@@ -20,7 +20,7 @@ def test_defaults_match_documented_limits() -> None:
     assert s.llm.max_retries_on_bad_json == 2
     assert s.retrieval.top_k == 10
     assert s.retrieval.max_followup_rounds == 2
-    assert s.context.max_tokens == 12000
+    assert s.context.max_tokens == 16000
     assert s.repair.max_attempts == 3
     assert s.sandbox.timeout_seconds == 120
     assert s.llm.temperature == 0.0
