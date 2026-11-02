@@ -7,7 +7,8 @@ the guides for every area of the suite map, with its own tools, in the format th
 How it fits:
 
 - Run it in Claude Code inside the environment that has the target suite (read-only), the
-  suite map (`ticket2test map`) and the guides folder. Replace the four paths below first.
+  suite map (`ticket2test map`) and the guides folder. Paste it as is: it finds the paths
+  itself (from the map), so nothing names the target repo here.
 - It writes `<area>.authored.json` per area into the guides folder, plus
   `_framework.authored.json` for the shared framework. At generation, an authored guide wins
   over the built one; its names are checked against the index when it is loaded (unknown ones
@@ -24,15 +25,18 @@ that writes new tests from tickets. That model reads the guide for the ticket's 
 framework guide) next to two or three similar tests, every time. Your guide must tell it what
 those examples alone would not. You have tools: use them to read the actual code. Never guess.
 
-Paths (read-only unless said otherwise):
-- SUITE = <path to the test suite folder, e.g. .../service/test>
-- AREAS = <path to the suite map's area files, e.g. .../output/map/<repo>/areas>   (one <area>.md per area)
-- OVERVIEW = <path to the suite map's overview.md>
-- GUIDES = <path to the guides folder, e.g. .../output/guides/<repo>>             (you write here, only here)
+Paths. Work them out first, then say them back in one line before you start:
+- OUT = /root/work/t2t-private/output   (the tool's output folder)
+- MAP = the one folder inside OUT/map/ (named after the target repo); if there are several,
+  the one whose map.json "repo_root" is the repo the tickets are about
+- AREAS = MAP/areas      (one <area>.md per area: read-only)
+- OVERVIEW = MAP/overview.md   (read-only)
+- REPO = the "repo_root" value in MAP/map.json   (the target repo: read-only)
+- GUIDES = OUT/guides/<the same folder name as MAP>   (you write here, and only here)
 
 Work list:
 1. First the framework: write GUIDES/_framework.authored.json from OVERVIEW and the base test
-   classes, shared helpers, fixtures and data loading under SUITE.
+   classes, shared helpers, fixtures and data loading under REPO.
 2. Then every file in AREAS, in name order. The area's name is the file name without ".md".
    Write GUIDES/<area>.authored.json.
 3. Skip any area whose GUIDES/<area>.authored.json already exists. Keep a log in
