@@ -4,9 +4,9 @@ read on every ticket (``prompts/guide_v*.md``, ``guides/``)."""
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ticket2test.llm.meter import Usage
 
@@ -29,10 +29,26 @@ class GuideOutput(BaseModel):
     how_to_add: list[str] = Field(max_length=12)  # ordered steps for a new test in this area
     classes: list[GuideRef] = Field(max_length=12)  # test classes: when to put a test where
     page_objects: list[GuideRef] = Field(max_length=25)  # chains such as nav.<area>.<page>
-    helpers: list[GuideRef] = Field(max_length=20)  # base-class helpers and functions
+    helpers: list[GuideRef] = Field(max_length=30)  # base-class helpers and functions
     data: list[str] = Field(max_length=12)  # how entries look: sections, keys, placeholders
     examples: list[GuideRef] = Field(max_length=8)  # test chunk ids worth copying
     pitfalls: list[str] = Field(max_length=10)  # what the examples alone wouldn't show
+
+    @model_validator(mode="before")
+    @classmethod
+    def _cut_long_lists(cls, data: Any) -> Any:
+        """A list longer than its limit keeps its first items (the model lists the most
+        important first) instead of failing the whole guide: a real run lost an area, and
+        its cost three times over, to one helper too many."""
+        if not isinstance(data, dict):
+            return data
+        cut = dict(data)
+        for name, field in cls.model_fields.items():
+            limit = next((m.max_length for m in field.metadata if hasattr(m, "max_length")), None)
+            value = cut.get(name)
+            if isinstance(value, list) and limit is not None and len(value) > limit:
+                cut[name] = value[:limit]
+        return cut
 
 
 class AreaGuide(BaseModel):

@@ -424,3 +424,23 @@ def test_the_framework_guide_is_built_first_and_read_with_every_area(
     assert label == FRAMEWORK and alone
     off = _settings(tmp_path, framework=False)
     assert area_guide_text("rules", STANDIN, index, off)[1] == "rules"
+
+
+def test_a_list_longer_than_its_limit_is_cut_not_failed() -> None:
+    """Found in the real run: the most important area failed three times (and cost three
+    calls) because the model listed 21 helpers against a limit of 20."""
+    ref = {"name": "x", "use": "y"}
+    output = GuideOutput.model_validate(
+        {
+            "summary": "s",
+            "how_to_add": [],
+            "classes": [],
+            "page_objects": [],
+            "helpers": [{**ref, "name": f"h{i}"} for i in range(35)],
+            "data": [],
+            "examples": [],
+            "pitfalls": [f"p{i}" for i in range(12)],
+        }
+    )
+    assert len(output.helpers) == 30 and output.helpers[0].name == "h0"
+    assert len(output.pitfalls) == 10
