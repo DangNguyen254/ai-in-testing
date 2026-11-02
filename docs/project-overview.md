@@ -1,6 +1,7 @@
 # What we built: a plain-language overview
 
-*ticket2test, as of October 2026*
+*ticket2test, as of November 2026. The first trial on the real suite ended with work paused for a
+research and design step; what it found is in `docs/trial-findings.md`.*
 
 ## The idea in one paragraph
 
@@ -28,7 +29,8 @@ The backbone is a **fixed workflow**: the same steps in the same order every tim
 | **LLM access** | One model provider behind one interface: the Claude Code CLI (default), the Anthropic API, or Gemini. | The approved endpoint. | Yes |
 | **Conventions doc** (opt) | The team's test-writing rules in Markdown, under ~1,800 words. Goes into every generation. | Written once per suite (`docs/real-suite-conventions-prompt.md` helps a model write it). | Recommended |
 | **Container runtime** (opt) | Docker or Podman, plus an image with the suite's Python and the packages needed to import it; optional private stubs and settings for modules that do things at import time. | The machine running the tool; the image is built once. | For the "it loads" check |
-| **Area guides** (opt) | One short guide per feature area, written once by a stronger model within a dollar cap, then reused by the small model. | `ticket2test guides`. | Optional |
+| **Glossary** (opt) | Tracker words mapped to the suite's folders, classes, markers and values, with evidence; a living file. | Written and kept current by a Claude Code session that can read the private code (`docs/glossary-prompt.md`). | Optional |
+| **Area guides** (opt) | One short guide per feature area plus one for the shared framework, read by the small model. | Built by `ticket2test guides` (a stronger model, one call per area, within a dollar cap), or written by a Claude Code session with its own tools (`docs/guide-authoring-prompt.md`, `<area>.authored.json`, used first). | Optional |
 | **A real run's console log** (opt) | The console output of the suite's own runner, after a person ran the generated test. | The person who ran it. | For run verdicts |
 | **Eval pair sets** (opt) | Tickets with their known tests (or expected outcome), for measuring quality. | `eval_data/`, or mined from the repo by `ticket2test mine`. | Evaluation only |
 
@@ -79,7 +81,9 @@ Suite-level outputs (built once, refreshed when the suite changes): the **index*
    - Rules learned from the real suite, each general and most behind config: helpers reached from setup, teardown, `super()` calls, autouse or `usefixtures` fixtures; the entry handed to a repo function or copied into a local name; reads guarded by a presence check or `try`/`except KeyError`; data files named after the test function (also by name prefix, holding the function's cases); checks done by waiting on a condition or raising a failure (`validation.wait_checks`); module-level `TestCase` objects; retired tests (an unconditional skip) left out of the data checks.
    - The report prints peak memory after indexing and per progress line, and the JSON keeps up to five examples per message pattern, one per file, for investigations.
 3. **Suite map** (opt) (`ticket2test map`). Per-area summaries from the index, in code: classes, setup options, test shapes, page objects, helpers, data keys, typical tests.
-4. **Area guides** (opt) `[LLM, stronger model, once]` (`ticket2test guides`). One call per area, with material picked by code, under a hard dollar cap. Names in the guide are checked against the index and removed if they don't exist.
+4. **Area guides** (opt) `[LLM, stronger model, once]` (`ticket2test guides`). One call per area, with material picked by code (the area summary, typical tests, class scaffolds, the helpers the tests call and, one level down, what those call, then page objects), under a hard dollar cap. A framework guide (`_framework`: base classes, shared helpers, fixtures, how data is loaded) is built first and read with every area's guide. A list that's too long is cut, not failed. Names in a guide are checked against the index and removed if they don't exist.
+   - (opt) **Guides written by Claude Code:** a session with its own tools works through the map's areas and writes `<area>.authored.json`; the tool uses it ahead of the built guide and checks its names when loading it. Rebuilds never overwrite it.
+   - (opt) **Glossary** (written outside the tool, see Inputs) and **known values** (from the index) feed the search, the area choice, the draft and the generation context.
 
 ### 1. Read the ticket
 
@@ -89,7 +93,8 @@ Suite-level outputs (built once, refreshed when the suite changes): the **index*
 
 6. **Draft** `[LLM]` (`ticket2test draft`). The model writes the structured plan: intent, markers, test kind, deployment type, preconditions, steps, expected outcome, variants.
    - The answer must match a JSON schema. A bad answer goes back with the exact error, a limited number of times.
-   - Code then checks how well the ticket supports the draft: explicit steps and expected result present, component named, no numbers the ticket doesn't contain. There is no model self-rating.
+   - Code then checks how well the ticket supports the draft: explicit steps and expected result present, component named, no numbers the ticket doesn't contain, and variants whose values the ticket doesn't name (flagged, not dropped). There is no model self-rating.
+   - The priority follows a guide in config (`draft.priority_guide`); components come from the glossary or the suite map.
 7. **Insufficient info?** If the ticket lacks steps or an expected result, the run stops here with a list of questions for the reporter. (opt) `[LLM]` it also writes a **partial draft**, with every unknown as a numbered question; code rejects any number in it that the ticket doesn't contain.
 8. **[Human review of the draft.]**
 
@@ -119,21 +124,23 @@ Suite-level outputs (built once, refreshed when the suite changes): the **index*
     - **new method** in an existing class;
     - **new test file**, scaffolded from the closest class.
 
-    New methods never go into frozen classes, into classes gated to a narrower deployment than the draft, or (for UI tests) into classes that don't use page objects. The class whose component marker matches the ticket is preferred. Every decision records its reasons.
+    New methods never go into frozen classes, into classes gated to a narrower deployment than the draft, or (for UI tests) into classes that don't use page objects. The class whose component marker matches the ticket is preferred; the class of the closest template test inside the area takes the method when the ticket names its folder (glossary or component). A new file is scaffolded from that class and keeps the class's own helpers. Every decision records its reasons.
+17. (opt) **Coverage check** `[LLM]` (`--coverage-check`, off by default): the draft and the closest tests (code and one data entry each) go to the model, which answers covered, partial or not covered. Covered stops generation; partial puts what the existing test lacks into the context and the checklist. The answer must name a test it was shown.
 
 ### 5. Write the test
 
-17. **Context** (code). The template tests, the target class, the page objects and helpers involved, the conventions doc, and (opt) the area's guide. It must fit a token budget; the least relevant pieces are dropped whole, never cut mid-function.
-18. **Generate** `[LLM]`. The model writes only the test steps, and says which data sections to keep and which values change. Code does the rest:
+18. **Context** (code). Always: the template test with its class scaffold and the base entry, the conventions doc, and (opt) the framework and area guides. Then, while the budget (16,000 tokens) lasts: the code of the helpers the template calls (and one level into the base-class methods they call), the class's other entries with their blocks, the known values of the base entry's keys, base classes, similar tests, page objects and related code. Pieces are dropped whole, never cut mid-function.
+    - **Base entry:** of the template class's entries, the one whose values the draft names most; the template's own when none names more.
+19. **Generate** `[LLM]`. The model writes only the test steps, says which data sections to keep and which values change (or which block to copy from another entry of the class), and lists members a check needs that the suite lacks. Code does the rest:
     - **Scaffold:** imports, decorators, base class and setup/teardown are copied from the template class. A copied star import becomes an import of just the names used.
     - **Data entries:** built from the nearest existing entry, trimmed to what the test reads, cloned once per variant, relabelled with the computed test ids. Unique names use the suite's placeholder.
     - **Style:** applied by a formatter. (opt) It follows the local style: a new file takes its template's style.
     - **New case path:** the new parametrize value and its entry are planned in code when the draft's inputs name the data keys they change. Otherwise one small `[LLM]` call plans them.
-19. **Patch** (code, for a new method or a new case). The new methods are spliced into the existing class, and (opt) take that file's own indent and quotes; no existing line is reformatted. New data entries are inserted as text in the data file's own JSON style. A patch that can't be built falls back: new case, then new method, then new file.
+20. **Patch** (code, for a new method or a new case). The new methods are spliced into the existing class, and (opt) take that file's own indent and quotes; no existing line is reformatted. New data entries are inserted as text in the data file's own JSON style. A patch that can't be built falls back: new case, then new method, then new file.
 
 ### 6. Check it
 
-20. **Validators** (27 checks, all code). Some are errors that block the test; others are warnings for the reviewer.
+21. **Validators** (31 checks, all code). Some are errors that block the test; others are warnings for the reviewer.
 
     **Errors:**
     - **Names:** every name, import and page-object chain exists. A member of a page built by its constructor is allowed only where the class already builds that page, and is flagged.
@@ -145,51 +152,52 @@ Suite-level outputs (built once, refreshed when the suite changes): the **index*
     **Warnings:**
     - the checks don't touch what the test's name promises;
     - capability gates the feature doesn't use;
-    - risky patterns: a test calling a test, shared state, broad `except`, values that break hooks, entries copied unchanged from their template.
-21. **Repair loop** `[LLM, bounded]`. Errors go back with their exact messages, at most 3 rounds. Some problems are fixed in code without asking again (unread keys removed, a mislabelled entry relabelled). A patched file reports only findings the unpatched file didn't already have.
-22. **Sandbox collect** (opt, `validate --collect`). pytest loads the test (`--collect-only`) inside a container: no network, read-only file system, no capabilities, only the repo (read-only) and a staging folder mounted. The collected ids must equal the computed ones.
+    - risky patterns: a test calling a test, shared state, broad `except`, values that break hooks, entries copied unchanged from their template;
+    - data: keys inside a section the test reads that nothing reads; values nothing supports (not in the ticket, the template or the area's data); a value spelled differently from the suite's; an expected backend result built in code instead of the entry.
+22. **Repair loop** `[LLM, bounded]`. Errors go back with their exact messages, at most 3 rounds; warnings of `repair.warning_checks` (claims, unread keys) start at most one round, undone if it brings errors back. Some problems are fixed in code without asking again (unread keys removed, a mislabelled entry relabelled). A patched file reports only findings the unpatched file didn't already have.
+23. **Sandbox collect** (opt, `validate --collect`). pytest loads the test (`--collect-only`) inside a container: no network, read-only file system, no capabilities, only the repo (read-only) and a staging folder mounted. The collected ids must equal the computed ones.
 
 ### 7. What the suite lacks
 
-23. **Gap report** (code). Names the new test needed that don't exist (in the final code, in any repair attempt, or among the investigator's hints) are checked against the catalog. Each real gap adds a reviewer note: the test may work around it.
-24. **(opt) Missing-piece proposals** `[LLM, bounded agent]`. For each gap on an existing page-object or helper class, the model writes only the missing member. Code checks:
+24. **Gap report** (code). Names the new test needed that don't exist (in the final code, in any repair attempt, among the investigator's hints, or listed by the generating model as missing) are checked against the catalog. Each real gap adds a reviewer note: the test may work around it.
+25. **(opt) Missing-piece proposals** `[LLM, bounded agent]`. For each gap on an existing page-object or helper class, the model writes only the missing member. Code checks:
     - nothing existing changed (syntax-tree comparison);
     - the name and kind match the use (called means method, read means property);
     - only existing names are used, with no new imports;
     - the suite still loads with the patch in the sandbox.
 
     Findings go back at most twice. The result is a separate diff, never applied.
-25. **(opt) Generate again with the proposals.** The accepted members are added to an in-memory copy of the catalog and to the context, and the test is generated again. The new test replaces the first only if it validates and uses them; its checklist then says which patch to apply first.
+26. **(opt) Generate again with the proposals.** The accepted members are added to an in-memory copy of the catalog and to the context, and the test is generated again. The new test replaces the first only if it validates and uses them; its checklist then says which patch to apply first.
 
 ### 8. Hand it over
 
-26. **Reviewer checklist** (code). The standard "needs a real run" items:
+27. **Reviewer checklist** (code). The standard "needs a real run" items:
     - expected responses aren't from a real capture;
     - whether a page needs a refresh;
     - which save flow it uses.
 
     Plus the model's own notes, the gap or apply-this-patch notes, and (when neighbouring tests in the file break a correctness rule the new test follows) a note to confirm it reaches the same state.
-27. **Output written** to the output folder (see Outputs). **[A person reviews the test and runs it with the suite's own runner.]**
+28. **Output written** to the output folder (see Outputs). **[A person reviews the test and runs it with the suite's own runner.]**
 
 ### 9. After a real run
 
-28. **(opt) Read the run's console log** (`ticket2test results`, code). One result per class variant and case, the error lines, session links, and a verdict:
+29. **(opt) Read the run's console log** (`ticket2test results`, code). One result per class variant and case, the error lines, session links, and a verdict:
     - **passed**;
     - **environment**: the system couldn't be reached;
     - **test problem**: the test itself is wrong;
     - **check failed**: the bug was caught, or the expectation is wrong; the run's link shows which;
     - **error**, **not run**, or **unclear**.
-29. **Log triage agent** `[LLM, bounded agent]`: *planned.* It would read the log and the test, then decide between a repair, an environment problem, or flagging for review. Any repair would have to pass the validators and the sandbox again.
+30. **Log triage agent** `[LLM, bounded agent]`: *planned.* It would read the log and the test, then decide between a repair, an environment problem, or flagging for review. Any repair would have to pass the validators and the sandbox again.
 
 ### 10. Measuring it (opt)
 
-30. **Eval harness** (`ticket2test eval`):
+31. **Eval harness** (`ticket2test eval`):
     - **Retrieval:** recall@k and MRR.
     - **Generation:** the validator pass rate on the first attempt and after repair, the invented-name rate, the sandbox collect pass rate, repair rounds, LLM calls and dollar cost.
     - **Expected outcomes:** gap reported, vague ticket recognized, legacy ticket out of scope.
 
     Each ticket's own test is hidden from the suite first (leave-one-out). The optional judge `[LLM]` compares the draft with the ticket and stays marked unvalidated.
-31. **Mining** (`ticket2test mine`). Ticket-test pairs come from commits that remove a skip citing a ticket id, or (`--from-skips`) from skips in the current tree when there's no history.
+32. **Mining** (`ticket2test mine`). Ticket-test pairs come from commits that remove a skip citing a ticket id, or (`--from-skips`) from skips in the current tree when there's no history.
 
 ### Around every LLM call
 
@@ -209,10 +217,12 @@ Suite-level outputs (built once, refreshed when the suite changes): the **index*
 | Draft (and partial draft) | Yes | Schema, support facts, numbers the ticket doesn't contain |
 | Query words, follow-up searches | Yes | Unknown names dropped; only the tool's own search functions |
 | Investigator (opt) | Yes, bounded agent | Read-only tools, budgets, kept ids checked, hints checked against the catalog |
-| Writing the test steps | Yes | 27 validators, sandbox collect |
+| Coverage check (opt) | Yes, one call | The answer must name a test it was shown |
+| Writing the test steps | Yes | 31 validators, sandbox collect |
 | Planning a new case (only when code can't) | Yes | Same validators |
 | Repair | Yes, bounded loop | Same validators; at most 3 rounds |
 | Area guides (opt, once) | Yes, stronger model | Names checked against the index; dollar cap |
+| Glossary, authored guides (opt) | Yes, a Claude Code session outside the tool | Names checked when loaded; a person reviews |
 | Missing-piece proposals (opt) | Yes, bounded agent | Nothing existing changed, names exist, the suite still loads |
 | Judge (eval only, opt) | Yes | Marked unvalidated |
 | Everything else (index, search, reuse decision, scaffold, data entries, style, patches, gaps, checklist, run verdicts) | No | — |
@@ -238,7 +248,7 @@ Suite-level outputs (built once, refreshed when the suite changes): the **index*
 | `prompts/` | Every instruction given to the AI, as numbered versions, never edited in place |
 | `standin/` | The invented practice suite: app, framework, tests, data, tickets |
 | `eval_data/` | Ticket-test pairs used for measurement |
-| `tests/` | The project's own automated tests (about 880) |
+| `tests/` | The project's own automated tests (about 950) |
 | `docs/` | This overview, the integration brief and fit check, the porting checklist, the conventions prompt |
 
 ## How well it works today (on the practice suite)
@@ -254,16 +264,18 @@ These are synthetic results. On the real suite so far:
 - **Test ids:** for a sample area, the computed method ids equal pytest's exactly.
 - **Memory:** check-suite's peak fell from about 2.5 GB to about 1.1 GB (search tokens built only when searching, incremental builds read only the old file records, the index written in sections).
 
+- **Trial on real tickets** (2026-10-27 to 2026-11-02, one area, the small model): tests landed in the right area and usually the right class, but the generated code and data kept falling short in ways that changed from run to run (helpers re-implemented instead of called, blocks missing from data, values made up, variants the ticket didn't ask for). Fixes were made run by run and not measured; see `docs/trial-findings.md`.
+
 Generation quality on real tickets isn't measured yet.
 
 ## What's still open
 
-- **The real suite:** calibration is done to a small remainder. Next is a trial on a few real tickets, pasted by hand, through `run`. Collecting a generated test is a manual step until a container runtime is available.
+- **Paused for research and design.** The trial's problems, what was tried, and the open questions are in `docs/trial-findings.md`. The next step is a plan, starting with how to measure on real tickets, before any more fixes.
 - **Known limits:**
   - a test can use a real member that's the wrong one and still pass every check;
   - a missing member that needs a new selector can't be proposed;
   - members of pages built by constructors aren't type-checked.
-- **Planned next: the suite's vocabulary and meaning** (see `docs/knowledge-plan.md`). The trials showed generated tests miss on meaning, not structure: tracker words that don't match the suite's, guessed values, unwritten conventions. The plan: known values extracted by code from the index; a glossary from tracker words to suite words written and kept current by a model session that can read the private code; both used in the draft, the search and the generation context; then area guides by a stronger model. Measured after each layer.
+- **The suite's vocabulary and meaning** (`docs/knowledge-plan.md`): built (known values, glossary, area and framework guides, guides written by Claude Code), with no measured effect yet.
 - **Planned, to refine after the trial: revising a draft by instruction.** Today a draft that needs changes is fixed by improving the ticket file and drafting again, or by editing `drafts/<id>.drafts.json` by hand (the `.md` is only a readable copy). The idea is a `revise <id> "<instruction>"` command:
   - `[LLM]` API Haiku gets the current draft, the ticket and the person's instruction, and returns the revised draft;
   - code checks it as it checks a first draft: the schema, and nothing taken from neither the ticket nor the instruction;

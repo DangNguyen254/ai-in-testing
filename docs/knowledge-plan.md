@@ -1,6 +1,8 @@
 # Plan: giving the model the suite's vocabulary and meaning
 
-*Status: planned, October 2026. Nothing here is built yet; this is the agreed order of work.*
+*Status, 2026-11-02: A to E are built and were tried on the real suite. None of them showed a
+measured improvement in generated tests; see "What happened" at the end and
+`docs/trial-findings.md`. Work is paused for a research and design step.*
 
 ## Why
 
@@ -95,6 +97,26 @@ one-off.
 
 Everything stays private: the known values, the glossary and the guides describe the private
 suite and live in the private folder, never in this repo.
+
+## What happened (2026-10-27 to 2026-11-02)
+
+- **A, B, C** were built as planned. The draft prompt moved on to `draft_v6` (a priority guide
+  from config; variants only for values the ticket names). The generation context also got the
+  known values of the base entry's keys, uncapped for the paths the entry uses.
+- **D.** The retrieval eval on the mined tickets showed no gain from the glossary (same hit rate
+  at 10; the one miss is a ticket whose linked test doesn't match it). The trial reruns were
+  judged by eye, one run at a time, so they don't count as a measurement.
+- **E.** Area guides were built for the whole suite by a stronger model through the CLI, one call
+  per area (about $11 over two runs; one area failed on a list limit, then fixed). Also built: a
+  **framework guide** (`_framework`: base classes, shared helpers, fixtures, how data is loaded),
+  read with every area's guide, and prompt revisions (`guide_v3`, `guide_framework_v2`) after a
+  Claude Code session checked the guides against the code and found them incomplete and partly
+  wrong. The reason: the guide step is one call over material picked by code; it can't open files
+  or follow a helper to where it asserts. So a second path was added: **guides written by a
+  Claude Code session** with its own tools (`docs/guide-authoring-prompt.md`), stored as
+  `<area>.authored.json` and used ahead of the built guide, names checked when loaded. Neither
+  kind of guide made a visible difference in the runs so far, and the guides take a large part
+  of the context budget.
 
 ## Open, for later discussion
 

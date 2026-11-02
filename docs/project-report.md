@@ -1,7 +1,8 @@
 # ticket2test: project report
 
-*High-level report, October 2026. The detailed walk-through of every step is in
-`docs/project-overview.md`.*
+*High-level report, November 2026. The detailed walk-through of every step is in
+`docs/project-overview.md`; the first real-suite trial and why work is paused for research and
+design are in `docs/trial-findings.md`.*
 
 ---
 
@@ -62,7 +63,8 @@ Once per suite, and again when it changes:
 ```
 test suite ──► index (syntax trees → chunks, symbol catalog, page-object chains, test ids)
            ──► check-suite (validators over the suite's own tests → config fixes)
-           ──► (optional) suite map ──► (optional) area guides
+           ──► (optional) suite map ──► (optional) area guides + framework guide
+           ──► (optional, outside the tool) glossary and guides written by a Claude Code session
 ```
 
 Per ticket:
@@ -75,8 +77,11 @@ ticket ──► normalize ──► draft [AI] ──► enough info? ──no�
         [human reviews the draft] ──► query words [AI] ──► search (keywords + exact names)
 ──► expand through the code's structure ──► rerank ──► follow-up rounds or investigator [AI]
 ──► reuse decision (covered / out of scope / new case / new method / new file)
-──► build context (templates, class, page objects, helpers, within a token budget)
-──► generate test steps [AI] + scaffold, data entries and style by code
+──► (optional) coverage check [AI]
+──► build context (template and base entry, guides, helper code, other entries, page objects,
+    within a token budget)
+──► generate test steps [AI] + scaffold, data entries (with blocks copied from other entries)
+    and style by code
 ──► validators ──► repair loop [AI, capped] ──► (optional) sandbox collect
 ──► missing pieces ──► (optional) proposals [AI] ──► reviewer checklist
 ──► output ──► [a human reviews and runs the test] ──► (optional) read the run's log
@@ -112,7 +117,7 @@ The code is organized by pipeline stage, with company-specific parts at the edge
 - **No invented names.** Every name in a generated test, including every page-object chain, must
   exist in the symbol catalog. A needed member that doesn't exist becomes a reported gap, and
   optionally a separate proposed patch, never a silent invention.
-- **Validators are the contract.** About 27 deterministic checks define what a good test is.
+- **Validators are the contract.** About 31 deterministic checks define what a good test is.
   The same checks run over the real suite's own tests to calibrate the config.
 - **Untrusted code stays contained.** Generated tests are only loaded (`pytest --collect-only`),
   inside a container with no network and a read-only copy of the suite.
@@ -143,6 +148,7 @@ The code is organized by pipeline stage, with company-specific parts at the edge
 | No container runtime in the work environment yet | The "it loads" check in the sandbox can't run there; collecting a generated test is a manual step for now. |
 | Model runs aren't fully repeatable | Some providers expose no temperature setting, so results vary from run to run. Eval numbers from those runs are treated with caution. |
 | Keeping private data out | Secret scrubbing and masking before every prompt, a private-term list, a privacy scan before every push, and shared findings written in general words only. |
+| Generated tests on real tickets fell short on meaning, differently each run | Fixed run by run for a week (placement, draft, data entries, code, checks, knowledge layers). Not measured; several changes added model calls and variation. Paused for research and design; every problem, what was tried and its status are in `docs/trial-findings.md`. |
 
 ## 9. Evaluation
 
@@ -165,8 +171,9 @@ The code is organized by pipeline stage, with company-specific parts at the edge
   missing-piece and vague tickets were handled as intended, for a few cents per set.
 - Missing-piece proposals: each gap got a correct one-line member, and the regenerated tests used
   it.
-- Real suite: calibration only so far (about 98% fewer validator errors). Generation on real
-  tickets is the next step, so real-suite quality numbers don't exist yet.
+- Real suite: calibration (about 98% fewer validator errors), then a week's trial on real tickets
+  in one area, judged by eye one run at a time. No real-suite quality numbers exist yet; defining
+  how to measure them is the first item of the design step.
 
 ## 10. Where it stands
 
@@ -180,12 +187,15 @@ The code is organized by pipeline stage, with company-specific parts at the edge
 - memory fixes;
 - pasted tickets.
 
+**Done, not measured**
+- the first trial on real tickets and the fixes made during it (`docs/trial-findings.md`);
+- the suite's vocabulary and meaning (`docs/knowledge-plan.md`): known values, glossary, area and
+  framework guides, guides written by Claude Code sessions.
+
 **Next**
-- a trial on a few real tickets, pasted by hand: draft, review, generate, validate, then a
-  person collects and runs the tests (started: structure comes out right; meaning doesn't yet);
-- the suite's vocabulary and meaning (`docs/knowledge-plan.md`): known values extracted by code,
-  a glossary from tracker words to suite words kept current by a model session that can read the
-  private code, then area guides by a stronger model, measured after each layer.
+- a research and design step: what the tool should hand over, how to measure on real tickets,
+  which knowledge generation needs and where it comes from, where agents with tools are worth it,
+  and which trial changes to keep (the questions are listed in `docs/trial-findings.md`).
 
 **Known limits**
 - a test can use a real member that is the wrong one and still pass every check;
