@@ -702,7 +702,7 @@ class GuideSettings(_Section):
     """Area guides (guides/): one LLM call per area, written once by a strong model (the
     ``guide`` step's model) and read by the generator on every ticket in that area."""
 
-    prompt: str = "guide_v2"
+    prompt: str = "guide_v3"
     max_budget_usd: float = Field(default=50.0, ge=0)  # hard ceiling; --budget can't exceed it
     max_input_tokens: int = Field(default=20000, ge=1000)  # per area: summary + picked code
     max_piece_tokens: int = Field(default=3000, ge=200)  # a larger page object: outline only
@@ -719,7 +719,7 @@ class GuideSettings(_Section):
     # The framework guide (guides/framework.py): one more call, built with the areas (or with
     # --area _framework), read next to every area's guide.
     framework: bool = True
-    framework_prompt: str = "guide_framework_v1"
+    framework_prompt: str = "guide_framework_v2"
     framework_max_input_tokens: int = Field(default=40000, ge=1000)
     framework_context_tokens: int = Field(default=1200, ge=200)
     # USD per million tokens, used for estimates and when the provider reports no cost.

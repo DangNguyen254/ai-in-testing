@@ -7,19 +7,24 @@ skipped whole (never cut mid-function).
 1. the area summary (always)
 2. the typical tests, each with one of its data entries
 3. the test classes' scaffold (class header, setup/teardown and the class's own helper methods)
-4. the page objects the area's chains reach, most used first; a page object larger than
+4. the base-class helper methods the tests call, then what those helpers and the class's own
+   helpers call in the base classes, one level down: the assert or wait often sits there, and
+   a guide that only sees the caller says "waits" for a helper that also checks
+5. the page objects the area's chains reach, most used first; a page object larger than
    ``guides.max_piece_tokens`` (real page modules run to tens of thousands of lines) goes in as
    an outline: its members with types and signatures, the ones this area uses first
-5. the base-class helper methods the tests call
 """
 
 from __future__ import annotations
 
 import json
+import re
+import textwrap
 from dataclasses import dataclass
 
 from ticket2test.config import Settings
 from ticket2test.generate.context import estimate_tokens
+from ticket2test.index.catalog import ClassEntry
 from ticket2test.index.indexer import IndexData
 from ticket2test.models.suite_map import AreaSummary
 from ticket2test.security import scrub_code, scrub_text
@@ -79,6 +84,38 @@ def pick_material(area: AreaSummary, index: IndexData, settings: Settings) -> Ma
         add(f"Test class scaffold {cls.file_path}::{cls.name}", _code("\n\n".join(scaffold)))
 
     catalog = index.catalog
+    shown: set[str] = set()
+    callers: list[str] = []
+    for helper in area.base_helpers:
+        for chunk in index.chunks:
+            if chunk.symbol_name == helper.name and chunk.kind != "test" and "." in chunk.qualname:
+                add(f"Helper {chunk.id}", _code(chunk.code))
+                shown.add(helper.name)
+                callers.append(chunk.code)
+                break
+    own: set[str] = set()
+    bases: list[ClassEntry] = []
+    for cls in area.classes:
+        info = index.files[cls.file_path].info
+        found = next((c for c in info.classes if c.name == cls.name), None) if info else None
+        entry = catalog.class_named(cls.name)
+        if found is None or entry is None:
+            continue
+        own |= {m.name for m in found.methods}
+        callers += [m.code for m in found.methods]
+        bases += [b for b in catalog.mro(entry.qualname)[1:] if b not in bases]
+    wanted = {n for code in callers for n in _SELF_CALL.findall(code)} - own - shown
+    for base in bases:
+        info = index.files[base.file_path].info if base.file_path in index.files else None
+        found = next((c for c in info.classes if c.name == base.name), None) if info else None
+        if found is None:
+            continue
+        for method in found.methods:
+            if method.name in wanted:
+                code = _code(_method_text(method.code, found.code))
+                add(f"Called by those helpers: {base.name}.{method.name}", code)
+                wanted.discard(method.name)
+
     seen: set[str] = set()
     for chain in area.chains:
         resolution = catalog.resolve_chain_from_roots(chain.name)
@@ -98,12 +135,6 @@ def pick_material(area: AreaSummary, index: IndexData, settings: Settings) -> Ma
                     step for c in area.chains for step in c.name.split(".")
                 }
                 add(f"Page object {chunk_id} (outline)", class_outline(qualname, index, area_names))
-
-    for helper in area.base_helpers:
-        for chunk in index.chunks:
-            if chunk.symbol_name == helper.name and chunk.kind != "test" and "." in chunk.qualname:
-                add(f"Helper {chunk.id}", _code(chunk.code))
-                break
 
     return Material(text="\n".join(blocks), pieces=pieces, skipped=skipped, tokens=used)
 
@@ -133,6 +164,24 @@ def class_outline(qualname: str, index: IndexData, used: set[str], limit: int = 
     shown = ordered[:limit]
     more = [f"... and {len(ordered) - limit} more"] if len(ordered) > limit else []
     return "\n".join([head, *(f"    {line}" for line in shown), *more])
+
+
+def _method_text(method_code: str, class_code: str) -> str:
+    """A method as extracted (first line at column 0, the rest at their class indent), dedented
+    as a whole: the first line's indent comes from the class source."""
+    first = method_code.split("\n", 1)[0]
+    indent = next(
+        (
+            line[: len(line) - len(line.lstrip())]
+            for line in class_code.split("\n")
+            if line.strip() == first.strip()
+        ),
+        "",
+    )
+    return textwrap.dedent(indent + method_code)
+
+
+_SELF_CALL = re.compile(r"\bself\.(\w+)\s*\(")
 
 
 def _code(code: str) -> str:

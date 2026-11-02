@@ -410,7 +410,7 @@ def test_the_framework_guide_is_built_first_and_read_with_every_area(
     assert [(i.area, i.status) for i in run.items] == [(FRAMEWORK, "built"), ("rules", "built")]
     assert "Area: the shared framework" in fake.requests[0].messages[1].content
     stored = load_guide(folder, FRAMEWORK)
-    assert stored is not None and stored.prompt_version == "guide_framework_v1"
+    assert stored is not None and stored.prompt_version == "guide_framework_v2"
     # unchanged: skipped; asked for areas only: not built
     again = PricedFake([], cost=0.02)
     run = _run(index, suite_map, settings, again, areas=[FRAMEWORK])
@@ -444,3 +444,15 @@ def test_a_list_longer_than_its_limit_is_cut_not_failed() -> None:
     )
     assert len(output.helpers) == 30 and output.helpers[0].name == "h0"
     assert len(output.pitfalls) == 10
+
+
+def test_the_material_follows_helpers_one_level_down(index: IndexData, suite_map: SuiteMap) -> None:
+    """Found by checking the first real guides: a helper was described as "waits" because the
+    assert sat in the base-class method it calls, which the guide model was never shown."""
+    found = {
+        p
+        for area in suite_map.areas
+        for p in pick_material(area, index, Settings()).pieces
+        if p.startswith("Called by those helpers: ")
+    }
+    assert "Called by those helpers: ValidationMixin._check" in found

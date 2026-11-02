@@ -312,7 +312,7 @@ map:                             # suite map: area summaries from the index (no 
   max_value_keys: 80             # data key paths listed per area (most common first)
 
 guides:                          # area guides: one strong-model call per area (no exploring)
-  prompt: guide_v2
+  prompt: guide_v3
   max_budget_usd: 50.0           # hard ceiling; --budget can go lower, never higher
   max_input_tokens: 20000        # per area: the area summary + code picked by the tool
   max_piece_tokens: 3000         # a page object larger than this goes in as an outline
@@ -327,7 +327,7 @@ guides:                          # area guides: one strong-model call per area (
   use_in_generation: true        # the ticket's area guide goes into the generation context
   max_context_tokens: 1500       # how much of the guide may go there
   framework: true                # also the framework guide (_framework): built with the areas, read with each
-  framework_prompt: guide_framework_v1
+  framework_prompt: guide_framework_v2
   framework_max_input_tokens: 40000   # base classes, shared helpers, fixtures, data overview
   framework_context_tokens: 1200 # how much of it goes into the generation context
   # USD per million tokens: for estimates, and when the provider reports no cost. Anthropic
