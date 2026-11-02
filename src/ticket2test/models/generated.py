@@ -30,6 +30,7 @@ CTX_SEED_SECTIONS = "seed_sections"
 CTX_CONVENTION_KEYS = "convention_keys"  # sections (nearly) every entry of the file has
 CTX_TICKET_ID = "ticket_id"
 CTX_INHERITED_IDS = "inherited_ids"  # ids of tests the template class inherits
+CTX_SIBLING_ENTRIES = "sibling_entries"  # test id -> entry: the class's entries "copy" reads
 
 # How a draft becomes code (generate/reuse.py): already covered by an existing test, a new
 # case of an existing parametrized test, a new method in an existing class, or a new module.
@@ -39,9 +40,11 @@ ReuseKind = Literal["covered", "variant", "method", "module", "out_of_scope"]
 class EntryChange(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    op: Literal["set", "delete"]
+    op: Literal["set", "delete", "copy"]
     path: str  # dotted; list items by index, e.g. "interactions.0.response.body.quantity"
-    value_json: str  # the new value as JSON text ("" for delete)
+    # the new value as JSON text ("" for delete); for copy, the JSON string of the test id of
+    # another entry of the class, whose value at ``path`` is copied (by code)
+    value_json: str
 
 
 class EntryPlan(BaseModel):
@@ -176,6 +179,7 @@ class GenerationResponse(BaseModel):
                     id_field=ctx.get(CTX_ID_FIELD, "id"),
                     per_entry_keys=ctx.get(CTX_PER_ENTRY_KEYS, []),
                     test_prefix=test_prefix,
+                    siblings=ctx.get(CTX_SIBLING_ENTRIES, {}),
                 )
             except EntryError as exc:
                 raise ValueError(str(exc)) from exc

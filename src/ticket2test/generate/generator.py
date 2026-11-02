@@ -51,6 +51,7 @@ from ticket2test.models.generated import (
     CTX_INHERITED_IDS,
     CTX_PER_ENTRY_KEYS,
     CTX_SEED_SECTIONS,
+    CTX_SIBLING_ENTRIES,
     CTX_TEST_PREFIX,
     CTX_TICKET_ID,
     EntryPlan,
@@ -110,6 +111,8 @@ class GenerationSetup:
     prompt_version: str
     input_redactions: int
     conventions: Conventions = field(default_factory=Conventions)  # sections every entry has
+    entry_chunk: Chunk | None = None  # whose entry is the base, when not the template's own
+    siblings: dict[str, dict[str, Any]] = field(default_factory=dict)  # the class's entries
 
 
 def prepare_generation(
@@ -122,12 +125,21 @@ def prepare_generation(
     gen, data = settings.generate, settings.data
     chunks = {c.id: c for c in index.chunks}
     template_chunk, entry_key = _template(retrieval, chunks)
-    base_entry = template_chunk.data_entries[entry_key]
+    siblings = class_entries(template_chunk, index)
+    entry_chunk, entry_key = closest_entry(template_chunk, entry_key, draft, index)
+    base_entry = entry_chunk.data_entries[entry_key]
     layout: DataFormat = template_chunk.data_format or data.format
 
     conventions_ = convention_sections(template_chunk.file_path, index, settings)
     context = build_generation_context(
-        draft, retrieval, index, settings, template_chunk, entry_key, conventions
+        draft,
+        retrieval,
+        index,
+        settings,
+        template_chunk,
+        entry_key,
+        conventions,
+        entry_chunk=entry_chunk,
     )
     prompt = load_prompt(gen.prompt_version, settings.paths.prompts_dir)
     deployment = gen.deployment_decorators.get(draft.deployment_type, "")
@@ -173,10 +185,13 @@ def prepare_generation(
             CTX_INHERITED_IDS: [
                 i for c in _inherited_chunks(template_chunk, index) for i in c.test_ids
             ],
+            CTX_SIBLING_ENTRIES: siblings,
         },
         template_chunk=template_chunk,
         entry_key=entry_key,
         base_entry=base_entry,
+        entry_chunk=entry_chunk if entry_chunk is not template_chunk else None,
+        siblings=siblings,
         layout=layout,
         context=context,
         conventions=conventions_,
@@ -234,6 +249,7 @@ def assemble(
             id_field=data.id_field,
             per_entry_keys=data.per_entry_keys,
             test_prefix=settings.index.test_function_prefix,
+            siblings=setup.siblings,
         )
         entry, copied = with_conventions(entry, setup.base_entry, setup.conventions)
         conventional.update(copied)
@@ -283,7 +299,7 @@ def assemble(
         data_format=setup.layout,
         test_ids=[*order, *(i for i in inherited_ids if i not in order)],
         template_entry_ref=TemplateEntryRef(
-            chunk_id=setup.template_chunk.id, entry_key=setup.entry_key
+            chunk_id=(setup.entry_chunk or setup.template_chunk).id, entry_key=setup.entry_key
         ),
         ticket_id=setup.draft.ticket_id,
         draft_ref=setup.draft.id,
@@ -781,23 +797,29 @@ def build_generation_context(
     template_chunk: Chunk,
     entry_key: str,
     conventions: str | None = None,
+    entry_chunk: Chunk | None = None,
 ) -> BuiltContext:
     chunks = {c.id: c for c in index.chunks}
     catalog = index.catalog
     pieces: list[Piece] = []
     if conventions:
         pieces.append(Piece("Team conventions for tests", conventions, required=True))
-    entry_json = format_json(template_chunk.data_entries[entry_key], settings.style.json_files)
+    base = (entry_chunk or template_chunk).data_entries[entry_key]
+    entry_json = format_json(base, settings.style.json_files)
     pieces.append(
         template_piece(
             template_chunk,
             entry_key,
             entry_json,
             class_scaffold(template_chunk, index, settings.generate.scaffold_methods),
+            entry_chunk=entry_chunk,
         )
     )
+    others = entries_piece(class_entries(template_chunk, index), entry_key, settings.data.id_field)
+    if others is not None:  # blocks the base lacks can be copied from them ("copy" changes)
+        pieces.append(others)
 
-    known = entry_values(template_chunk, template_chunk.data_entries[entry_key], index, settings)
+    known = entry_values(template_chunk, base, index, settings)
     if known:  # the suite's own values, so a changed field gets one of them, not a guess
         pieces.append(
             Piece(
@@ -863,6 +885,107 @@ def _template(retrieval: RetrievalResult, chunks: dict[str, Chunk]) -> tuple[Chu
         "no template test with a JSON data entry was retrieved; run `retrieve` against an "
         "indexed suite that has data files"
     )
+
+
+_MAX_LISTED_ENTRIES = 25
+
+
+def class_entries(template: Chunk, index: IndexData) -> dict[str, dict[str, Any]]:
+    """test id -> entry, for the tests of the template's class (their own entries)."""
+    found: dict[str, dict[str, Any]] = {}
+    for chunk in index.chunks:
+        if (
+            chunk.kind == "test"
+            and chunk.file_path == template.file_path
+            and chunk.class_name == template.class_name
+            and not chunk.inherited_from
+        ):
+            found.update({k: v for k, v in chunk.data_entries.items() if isinstance(v, dict)})
+    return found
+
+
+def entries_piece(entries: dict[str, dict[str, Any]], base_id: str, id_field: str) -> Piece | None:
+    """The class's other entries: id and blocks (two levels), so a block the base entry lacks
+    can be copied from one of them by a "copy" change instead of written out."""
+    rows = []
+    for test_id, entry in entries.items():
+        if test_id == base_id:
+            continue
+        blocks = [
+            f"{k}({', '.join(v)})" if isinstance(v, dict) and v else k
+            for k, v in entry.items()
+            if k != id_field
+        ]
+        rows.append(f"- `{test_id}`: {'; '.join(blocks)}")
+    if not rows:
+        return None
+    return Piece(
+        "Other entries of this class (copy a block the base entry lacks with "
+        '{"op": "copy", "path": "<block path>", "value_json": "\\"<test id>\\""})',
+        "\n".join(rows[:_MAX_LISTED_ENTRIES]),
+    )
+
+
+def closest_entry(
+    template: Chunk, entry_key: str, draft: TestCaseDraft, index: IndexData
+) -> tuple[Chunk, str]:
+    """The base entry: of the class's entries, the one whose short values the draft names most
+    (an action such as "redact" sits in the block the scenario needs); the template's own when
+    none names more. Values every entry has tell nothing and don't count."""
+    candidates = [
+        (chunk, key)
+        for chunk in index.chunks
+        if chunk.kind == "test"
+        and chunk.file_path == template.file_path
+        and chunk.class_name == template.class_name
+        and not chunk.inherited_from
+        for key, entry in chunk.data_entries.items()
+        if isinstance(entry, dict)
+    ]
+    if len(candidates) < 2:
+        return template, entry_key
+    text = _loose(
+        " ".join(
+            [
+                draft.intent,
+                *draft.preconditions,
+                *draft.steps,
+                draft.expected_outcome,
+                *(i.value for v in draft.variants for i in v.inputs),
+            ]
+        )
+    )
+    values = {(c.id, k): _short_values(c.data_entries[k]) for c, k in candidates}
+    common = set.intersection(*values.values()) if values else set()
+
+    def score(chunk: Chunk, key: str) -> int:
+        return sum(1 for v in values[(chunk.id, key)] - common if f" {v} " in text)
+
+    own = score(template, entry_key)
+    best = max(candidates, key=lambda ck: (score(*ck), ck[0].id == template.id, ck[1]))
+    return best if score(*best) > own else (template, entry_key)
+
+
+_LOOSE = re.compile(r"[\s_\-.,;:()\[\]\"'/]+")
+
+
+def _loose(text: str) -> str:
+    return f" {_LOOSE.sub(' ', text).strip().lower()} "
+
+
+def _short_values(entry: Any) -> set[str]:
+    """Loose forms of the entry's short string values (no placeholders, 3 to 40 chars)."""
+    found: set[str] = set()
+    stack = [entry]
+    while stack:
+        value = stack.pop()
+        if isinstance(value, dict):
+            stack.extend(value.values())
+        elif isinstance(value, list):
+            stack.extend(value)
+        elif isinstance(value, str) and "{" not in value and 3 <= len(value) <= 40:
+            found.add(_loose(value).strip())
+    return {v for v in found if v}
 
 
 def helpers_piece(template: Chunk, index: IndexData, settings: Settings) -> Piece | None:

@@ -1,4 +1,4 @@
-"""Code generation (generate_v5) with the fake LLM: entries from the base entry, checks with
+"""Code generation (generate_v6) with the fake LLM: entries from the base entry, checks with
 retry, formatting, context budget, traceability."""
 
 from __future__ import annotations
@@ -201,7 +201,7 @@ def test_generates_a_traceable_code_and_data_pair(
     assert ref is not None and (ref.chunk_id, ref.entry_key) == (TEMPLATE_CHUNK, TEMPLATE_ID)
     assert ref.chunk_id in generated.retrieved_chunk_ids
     assert generated.ticket_id == "STND-104" and generated.draft_ref == "STND-104/d1"
-    assert generated.prompt_version == "generate_v5"
+    assert generated.prompt_version == "generate_v6"
     assert (generated.provider, generated.model, generated.attempts) == ("fake", "fake-model", 1)
     assert generated.context_tokens > 0
     assert [p.test_id for p in generated.entry_plans] == list(IDS)
@@ -955,3 +955,63 @@ def test_the_context_shows_the_bodies_of_the_helpers_the_template_calls(
     assert piece is not None and piece.title.startswith("Helpers the template test calls")
     assert "# ValidationMixin.verify_targets\ndef verify_targets(self" in piece.body
     assert "\n   def " not in piece.body  # dedented like the class's own methods
+
+
+def test_a_copy_change_takes_a_block_from_another_entry_of_the_class() -> None:
+    """Found in the real trial: the base entry lacked the agent's rule block, and the model
+    would have had to write ~60 lines by hand. A "copy" change takes it from a sibling."""
+    base = {"test_id": "test_a", "policy": {"exceptions": [1]}}
+    sibling = {
+        "test_id": "test_b",
+        "policy": {"exceptions": [1], "agents": [{"name": "{test_id:9}", "action": "block"}]},
+    }
+    entry = build_entry(
+        base,
+        "test_a",
+        "test_new",
+        ["policy"],
+        [
+            ("copy", "policy.agents", '"test_b"'),
+            ("set", "policy.agents.0.action", '"redact"'),
+        ],
+        id_field="test_id",
+        siblings={"test_a": base, "test_b": sibling},
+    )
+    assert entry["policy"]["agents"] == [{"name": "{test_id:9}", "action": "redact"}]
+    assert sibling["policy"]["agents"][0]["action"] == "block"  # the source is untouched
+    with pytest.raises(EntryError, match="not an entry of the class"):
+        build_entry(base, "test_a", "t", ["policy"], [("copy", "policy.agents", '"x"')],
+                    id_field="test_id", siblings={"test_b": sibling})  # fmt: skip
+    with pytest.raises(EntryError, match="nothing at that path"):
+        build_entry(base, "test_a", "t", ["policy"], [("copy", "policy.nope", '"test_b"')],
+                    id_field="test_id", siblings={"test_b": sibling})  # fmt: skip
+
+
+def test_the_base_entry_is_the_class_entry_whose_values_the_draft_names(
+    index: IndexData,
+) -> None:
+    """Found in the real trial: the template test's own entry lacked the block the scenario
+    needs, while a sibling's had it (with the draft's action value in it)."""
+    from ticket2test.generate.generator import _short_values, closest_entry
+
+    template = next(c for c in index.chunks if c.id == TEMPLATE_CHUNK)
+    siblings = [
+        (c, k)
+        for c in index.chunks
+        if c.kind == "test"
+        and c.file_path == template.file_path
+        and c.class_name == template.class_name
+        and not c.inherited_from
+        for k in c.data_entries
+    ]
+    own = _short_values(template.data_entries[TEMPLATE_ID])
+    other, key = next(
+        (c, k)
+        for c, k in siblings
+        if (c.id, k) != (template.id, TEMPLATE_ID) and _short_values(c.data_entries[k]) - own
+    )
+    value = sorted(_short_values(other.data_entries[key]) - own)[0]
+    assert closest_entry(template, TEMPLATE_ID, _draft(), index) == (template, TEMPLATE_ID)
+    named = _draft(steps=[f"Use {value} for the rule."])
+    chosen, chosen_key = closest_entry(template, TEMPLATE_ID, named, index)
+    assert value in _short_values(chosen.data_entries[chosen_key]) and chosen_key != TEMPLATE_ID

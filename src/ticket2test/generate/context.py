@@ -84,10 +84,17 @@ def chunk_piece(chunk: Chunk, label: str, required: bool = False) -> Piece:
 
 
 def template_piece(
-    chunk: Chunk, entry_key: str, entry_json: str, scaffold: str | None = None
+    chunk: Chunk,
+    entry_key: str,
+    entry_json: str,
+    scaffold: str | None = None,
+    entry_chunk: Chunk | None = None,
 ) -> Piece:
-    """The template test, its class scaffold, and its entry (the base for new entries)."""
-    sections = ", ".join(chunk.data_entries[entry_key])
+    """The template test, its class scaffold, and the base entry for new entries: the
+    template's own, or (``entry_chunk``) another test's of the class that fits the draft
+    better."""
+    source = entry_chunk or chunk
+    sections = ", ".join(source.data_entries[entry_key])
     body = ""
     if scaffold:
         body += (
@@ -96,7 +103,13 @@ def template_piece(
         )
     body += (
         f"```python\n{chunk.code}\n```\n"
-        f"Base entry `{entry_key}` (from {chunk.data_file}; top-level sections: {sections}):\n"
+        f"Base entry `{entry_key}` (from {source.data_file}; top-level sections: {sections}"
+        + (
+            f"; the entry of {source.symbol_name}, closer to the draft than the template's own"
+            if source is not chunk
+            else ""
+        )
+        + "):\n"
         f"```json\n{entry_json.rstrip()}\n```"
     )
     return Piece(

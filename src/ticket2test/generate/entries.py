@@ -132,8 +132,12 @@ def build_entry(
     id_field: str = "id",
     per_entry_keys: list[str] | None = None,
     test_prefix: str = "test",
+    siblings: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """One new entry. ``changes`` are (op, path, value_json) with op "set" or "delete"."""
+    """One new entry. ``changes`` are (op, path, value_json) with op "set", "delete" or "copy":
+    copy takes the value at ``path`` from the entry of another test of the class
+    (``siblings``: test id -> entry; value_json is that id as a JSON string), so a block the
+    base entry lacks is copied by code, not written out by the model."""
     never = {id_field, *(per_entry_keys or [])}
     unknown = [s for s in copy_sections if s not in base or s in never]
     if unknown:
@@ -153,12 +157,42 @@ def build_entry(
         if op == "delete":
             delete_path(entry, path)
             continue
+        if op == "copy":
+            set_path(entry, path, _copied(path, value_json, test_id, siblings or {}, test_prefix))
+            continue
         try:
             value = json.loads(value_json)
         except json.JSONDecodeError as exc:
             raise EntryError(f"{test_id}: {path!r}: value_json is not valid JSON: {exc}") from exc
         set_path(entry, path, value)
     return entry
+
+
+def _copied(
+    path: str,
+    value_json: str,
+    test_id: str,
+    siblings: dict[str, dict[str, Any]],
+    test_prefix: str,
+) -> Any:
+    try:
+        source_id = json.loads(value_json)
+    except json.JSONDecodeError:
+        source_id = value_json.strip()
+    if not isinstance(source_id, str) or source_id not in siblings:
+        known = ", ".join(sorted(siblings)[:20]) or "(none)"
+        raise EntryError(
+            f"{test_id}: copy {path!r}: {source_id!r} is not an entry of the class (known: {known})"
+        )
+    value: Any = siblings[source_id]
+    for step in parse_path(path):
+        try:
+            value = value[int(step)] if isinstance(value, list) else value[step]
+        except (KeyError, IndexError, ValueError, TypeError):
+            raise EntryError(
+                f"{test_id}: copy {path!r}: entry {source_id!r} has nothing at that path"
+            ) from None
+    return relabel(copy.deepcopy(value), function_of(source_id), function_of(test_id), test_prefix)
 
 
 __all__ = [
