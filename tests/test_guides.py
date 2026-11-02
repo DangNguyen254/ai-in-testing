@@ -456,3 +456,38 @@ def test_the_material_follows_helpers_one_level_down(index: IndexData, suite_map
         if p.startswith("Called by those helpers: ")
     }
     assert "Called by those helpers: ValidationMixin._check" in found
+
+
+def test_an_authored_guide_wins_and_is_checked_when_loaded(
+    index: IndexData, suite_map: SuiteMap, tmp_path: Path
+) -> None:
+    """Written by a person's Claude Code session (docs/guide-authoring-prompt.md), with tools
+    the one-call guide step doesn't have: used ahead of the built guide; names checked."""
+    import json
+
+    from ticket2test.guides.context import authored_path
+
+    settings = _settings(tmp_path)
+    folder = settings.guides.dir
+    assert folder is not None
+    _stored(folder, "rules", {})
+    authored = {
+        "summary": "Authored summary.",
+        "how_to_add": [],
+        "classes": [{"name": "TestRules", "use": "rule tests"}],
+        "page_objects": [],
+        "helpers": [
+            {"name": "verify_targets", "use": "asserts the targets"},
+            {"name": "made_up_helper", "use": "invented"},
+        ],
+        "data": [],
+        "examples": [],
+        "pitfalls": [],
+    }
+    authored_path(folder, "rules").write_text(json.dumps(authored), encoding="utf-8")
+    text, label = area_guide_text("rules", STANDIN, index, settings)
+    assert label == "rules (written by Claude Code)"
+    assert "Authored summary." in text and "made_up_helper" not in text
+    # an invalid file is ignored: the built guide is used
+    authored_path(folder, "rules").write_text("{not json", encoding="utf-8")
+    assert area_guide_text("rules", STANDIN, index, settings)[1] == "rules"
