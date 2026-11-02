@@ -930,7 +930,7 @@ def closest_entry(
     template: Chunk, entry_key: str, draft: TestCaseDraft, index: IndexData
 ) -> tuple[Chunk, str]:
     """The base entry: of the class's entries, the one whose short values the draft names most
-    (an action such as "redact" sits in the block the scenario needs); the template's own when
+    (an action such as "archive" sits in the block the scenario needs); the template's own when
     none names more. Values every entry has tell nothing and don't count."""
     candidates = [
         (chunk, key)

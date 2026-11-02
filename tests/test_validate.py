@@ -997,8 +997,8 @@ def test_data_handed_to_a_check_through_a_local_counts_for_the_claims() -> None:
 
 
 def test_a_key_a_helper_reads_through_its_parameter_default_is_read(tmp_path: Path) -> None:
-    """Found in the real trial: ``def login(self, target, user="agent_user"):
-    self.params[user]`` reads ``agent_user`` when called without ``user``; it was taken as
+    """Found in the real trial: ``def login(self, target, user="main_user"):
+    self.params[user]`` reads ``main_user`` when called without ``user``; it was taken as
     unread and removed from the new entry, so the test would fail on the missing key."""
     from ticket2test.generate.generator import first_party
 
@@ -1006,7 +1006,7 @@ def test_a_key_a_helper_reads_through_its_parameter_default_is_read(tmp_path: Pa
     (repo / "tests").mkdir(parents=True)
     code = (
         "class TestArea:\n"
-        '   def login(self, target, user="agent_user"):\n'
+        '   def login(self, target, user="main_user"):\n'
         "      return self.params[user]\n\n"
         "   def test_area_one(self):\n      self.login(1)\n\n"
         '   def test_area_two(self):\n      self.login(1, "other_user")\n'
@@ -1018,19 +1018,19 @@ def test_a_key_a_helper_reads_through_its_parameter_default_is_read(tmp_path: Pa
         (settings, index, first_party(index, settings)),
         code=code,
         entries=[
-            {"test_id": "test_area_one", "agent_user": "a"},
+            {"test_id": "test_area_one", "main_user": "a"},
             {"test_id": "test_area_two", "other_user": "b"},
         ],
         file_name="tests/test_area.py",
         test_ids=["test_area_one", "test_area_two"],
     )
-    found = [f.render() for f in report.findings if "agent_user" in f.message]
+    found = [f.render() for f in report.findings if "main_user" in f.message]
     found += [f.render() for f in report.findings if "other_user" in f.message]
     assert not found, found
 
 
 def test_keys_inside_a_section_the_test_reads_itself_must_be_read(tmp_path: Path) -> None:
-    """Found in the real trial: ``targets[0].snippets`` (a made-up payload) was in the new
+    """Found in the real trial: ``targets[0].items`` (a made-up payload) was in the new
     entry, but the test never called the helper that reads it."""
     import ast
 
@@ -1043,8 +1043,8 @@ def test_keys_inside_a_section_the_test_reads_itself_must_be_read(tmp_path: Path
         '      self.driver.get(target["url"])\n\n'
         "   def _verify_log(self, row):\n"
         '      return row.get("expected")\n\n'
-        "   def verify_payload(self, snippets):\n"
-        "      return snippets\n\n"
+        "   def verify_items(self, items):\n"
+        "      return items\n\n"
         "   def test_area_one(self):\n"
         '      target = self.params["targets"][0]\n'
         "      self.open_page(target)\n"
@@ -1064,8 +1064,8 @@ def test_keys_inside_a_section_the_test_reads_itself_must_be_read(tmp_path: Path
 
     reads = section_reads(fn, cls, Methods(), ["self.params", "params"])  # type: ignore[arg-type]
     assert reads == {"targets": {"url", "expected"}}
-    entry = {"targets": [{"url": "u", "expected": {}, "snippets": ["x"]}]}
-    assert unread_subkeys(entry, reads, set()) == {"targets": {"snippets"}}
+    entry = {"targets": [{"url": "u", "expected": {}, "items": ["x"]}]}
+    assert unread_subkeys(entry, reads, set()) == {"targets": {"items"}}
     assert unread_subkeys(entry, reads, {"targets"}) == {}  # consumed elsewhere: not judged
     # handed to something that can't be followed: the whole section counts as used
     whole = ast.parse(code.replace("self._verify_log(target)", "log_check(target)")).body[0]
@@ -1087,7 +1087,7 @@ def test_keys_inside_a_section_the_test_reads_itself_must_be_read(tmp_path: Path
         test_ids=["test_area_one"],
     )
     found = [f.message for f in report.findings if f.check == "unread_subkeys"]
-    assert len(found) == 1 and "['snippets']" in found[0], found
+    assert len(found) == 1 and "['items']" in found[0], found
 
 
 def test_a_check_helper_given_a_data_local_counts_only_the_keys_it_reads() -> None:

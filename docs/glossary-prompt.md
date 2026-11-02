@@ -83,7 +83,7 @@ YAML, exactly this shape (the tool reads it):
 version: 1
 updated: 2026-10-29
 terms:
-  - term: "Isolation"               # the tracker's word, as written
+  - term: "Archiving"               # the tracker's word, as written
     kind: component                 # component | epic | label | phrase
     status: proposed                # proposed (written by you) | confirmed (a person checked it)
     checked: 2026-10-29

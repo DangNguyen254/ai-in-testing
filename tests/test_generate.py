@@ -861,8 +861,8 @@ def test_an_expected_backend_result_built_in_code_is_flagged(
 def test_a_value_spelled_differently_from_the_suites_is_flagged(
     index: IndexData, tmp_path: Path
 ) -> None:
-    """Found in the real trial: the ticket wrote "prompt injection" where the suite writes
-    ``prompt_injection``, and the entry took the ticket's spelling."""
+    """Found in the real trial: the ticket wrote "on hold" where the suite writes
+    ``on_hold``, and the entry took the ticket's spelling."""
     from ticket2test.knowledge.vocabulary import entry_values
     from ticket2test.models.generated import GeneratedTest, TemplateEntryRef
     from ticket2test.validate.validator import validate_generated
@@ -972,12 +972,12 @@ def test_a_copy_change_takes_a_block_from_another_entry_of_the_class() -> None:
         ["policy"],
         [
             ("copy", "policy.agents", '"test_b"'),
-            ("set", "policy.agents.0.action", '"redact"'),
+            ("set", "policy.agents.0.action", '"archive"'),
         ],
         id_field="test_id",
         siblings={"test_a": base, "test_b": sibling},
     )
-    assert entry["policy"]["agents"] == [{"name": "{test_id:9}", "action": "redact"}]
+    assert entry["policy"]["agents"] == [{"name": "{test_id:9}", "action": "archive"}]
     assert sibling["policy"]["agents"][0]["action"] == "block"  # the source is untouched
     with pytest.raises(EntryError, match="not an entry of the class"):
         build_entry(base, "test_a", "t", ["policy"], [("copy", "policy.agents", '"x"')],

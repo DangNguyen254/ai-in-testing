@@ -460,7 +460,7 @@ def _keys_by_parameter(
     names: set[str],
     calls: list[tuple[list[ast.expr], dict[str, ast.expr]]] | None,
 ) -> set[str]:
-    """Keys a method reads through a parameter (``def login(self, t, user="agent_user"):
+    """Keys a method reads through a parameter (``def login(self, t, user="main_user"):
     self.params[user]``): the string each call passes for it, or its default when a call leaves
     it out (or no call was seen, as for a hook)."""
     params = [a.arg for a in [*function.args.posonlyargs, *function.args.args]][1:]  # no self

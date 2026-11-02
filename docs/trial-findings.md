@@ -79,7 +79,7 @@ another), **worked around** (a process rule, not a fix).
 | 16 | Members of the main base class reported missing (only the first base class was searched). | All base classes searched. | seen once |
 | 17 | The class's helpers were re-implemented inline, and checks a helper already makes were repeated. | Helper code put into the context (the class's own helpers and one level into base-class methods). | **mixed**: the next run copied the helpers' internals instead of calling them |
 | 18 | A helper hands work to a framework object whose method already asserts and returns the events; the model doesn't see that and checks again. | None yet (proposed: follow calls on such objects into the context). | open |
-| 19 | Outcomes not checked because no helper exists for them (a banner, page content delivered); workarounds instead. | The model lists what's missing (generate v5); gap check; owner of a noted member mapped to a real class; proposals on. | tried; proposals were produced but not reviewed or applied |
+| 19 | Outcomes not checked because no helper exists for them (something shown on the page, page content delivered); workarounds instead. | The model lists what's missing (generate v5); gap check; owner of a noted member mapped to a real class; proposals on. | tried; proposals were produced but not reviewed or applied |
 | 20 | The test description written as a string expression instead of a docstring. | None. | open |
 | 21 | Code that drifts from the suite's way when a repair round asks for more checks. | Repair rounds started by some warnings (one at most), undone if they bring errors back. | **mixed**: a warning-started round led to the inlining in 17 |
 
@@ -114,7 +114,7 @@ another), **worked around** (a process rule, not a fix).
   with several runs each.
 - **Nondeterminism.** The provider used has no temperature; run-to-run differences are mixed up
   with the effect of changes.
-- **Values only a person knows** (page payloads, exact banner text, which user): the tool can
+- **Values only a person knows** (page payloads, exact text shown on a page, which user): the tool can
   flag them, not supply them.
 - **Proposals** (missing helpers written by the model) were produced but never reviewed or run.
 - **Hidden-test runs** (`--hide`, the person's class and the older class removed) were prepared,

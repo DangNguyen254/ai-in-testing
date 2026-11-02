@@ -322,8 +322,8 @@ def test_variants_whose_values_the_ticket_doesnt_name_are_flagged() -> None:
 
     ticket = Ticket(
         id="T-1",
-        title="Redact action on a page with an injected prompt",
-        description="Run it for both block_mode and redact. The page carries one payload.",
+        title="Archive action on a page with stored items",
+        description="Run it for both keep_mode and archive. The page carries one item.",
         source=SourceInfo(system="jira", ref="T-1"),
     )
     support = support_for(
@@ -331,9 +331,9 @@ def test_variants_whose_values_the_ticket_doesnt_name_are_flagged() -> None:
         "",
         ["Open the page"],
         [
-            ("block", ["block mode"]),  # spaces for underscores: the ticket names it
-            ("redact", ["redact"]),
-            ("multi", ["multi-payload page", "several snippets"]),
+            ("keep", ["keep mode"]),  # spaces for underscores: the ticket names it
+            ("archive", ["archive"]),
+            ("multi", ["multi-item page", "several pieces"]),
         ],
     )
     assert support.ungrounded_variants == ["multi"]

@@ -211,12 +211,12 @@ def test_values_that_nearly_all_differ_are_free_text(tmp_path: Path) -> None:
     from ticket2test.suitemap.build import known_values
 
     settings = _settings(tmp_path, map={"max_values_per_key": 3})
-    entries = [{"test_id": f"t{i}", "name": f"rule-{i}", "mode": "proxy"} for i in range(10)]
-    entries.append({"test_id": "t10", "name": "x" * 200, "mode": "isolate"})
+    entries = [{"test_id": f"t{i}", "name": f"rule-{i}", "mode": "keep"} for i in range(10)]
+    entries.append({"test_id": "t10", "name": "x" * 200, "mode": "archive"})
     values = {v.key: v for v in known_values(entries, settings)}
     assert values["name"].free_text and values["name"].values == []
     assert values["name"].long_text == 1
-    assert [(c.name, c.count) for c in values["mode"].values] == [("proxy", 10), ("isolate", 1)]
+    assert [(c.name, c.count) for c in values["mode"].values] == [("keep", 10), ("archive", 1)]
 
 
 def test_a_test_defined_twice_doesnt_break_large_area_splitting(tmp_path: Path) -> None:
@@ -241,14 +241,14 @@ def test_a_test_defined_twice_doesnt_break_large_area_splitting(tmp_path: Path) 
 def test_known_values_for_given_keys_are_not_cut_by_the_maps_cap() -> None:
     """Found in the real trial: big policy blocks have more key paths than ``max_value_keys``,
     so the path a check needed (a category inside the expectation) was cut and its known value
-    ``prompt_injection`` never compared with the entry's "prompt injection"."""
+    ``on_hold`` never compared with the entry's "on hold"."""
     from ticket2test.suitemap.build import known_values
 
     settings = Settings.model_validate({"map": {"max_value_keys": 5}})
     entries = [
         {
             **{f"policy.k{i}": "on" for i in range(10)},
-            "targets": [{"category": "prompt_injection"}],
+            "targets": [{"category": "on_hold"}],
         }
         for _ in range(3)
     ]
@@ -256,5 +256,5 @@ def test_known_values_for_given_keys_are_not_cut_by_the_maps_cap() -> None:
     assert "targets[].category" not in capped and len(capped) == 5
     wanted = known_values(entries, settings, keys={"targets[].category"})
     assert [(v.key, [c.name for c in v.values]) for v in wanted] == [
-        ("targets[].category", ["prompt_injection"])
+        ("targets[].category", ["on_hold"])
     ]

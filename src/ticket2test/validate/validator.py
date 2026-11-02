@@ -1022,8 +1022,8 @@ _SPELLING = re.compile(r"[\s_\-]+")
 
 def check_known_spelling(s: Subject) -> Iterator[Finding]:
     """A new entry's value differs from a value the suite uses for the same key only in case,
-    spaces, ``_`` or ``-`` (warning): a ticket's loose wording ("prompt injection") copied in
-    where the suite writes ``prompt_injection``. Known values: the template folder's entries."""
+    spaces, ``_`` or ``-`` (warning): a ticket's loose wording ("on hold") copied in
+    where the suite writes ``on_hold``. Known values: the template folder's entries."""
     from ticket2test.knowledge.vocabulary import entry_values
     from ticket2test.suitemap.build import leaves
 

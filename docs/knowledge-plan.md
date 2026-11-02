@@ -9,7 +9,7 @@ measured improvement in generated tests; see "What happened" at the end and
 The first trials on the real suite showed where generated tests fall short. It is rarely the
 structure: area, class, scaffold and suite rules come out right. It is **meaning**:
 
-- **Words don't match.** A ticket says "isolation", the suite's data says `isolate`; a feature
+- **Words don't match.** A ticket says "archiving", the suite's data says `archive`; a feature
   has one name in the tracker and another as a folder or class. The draft then uses the
   tracker's words, and the generated data uses values the suite doesn't know.
 - **Values are guessed.** Which URL, which payload field, which user: the model fills them
