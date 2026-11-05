@@ -56,6 +56,15 @@ Bugs found and fixed in `dbc2970`:
 - Regenerating with proposed members threw away the first pass's reasons, so g08's fallback
   (method → module) didn't say why.
 
+Fixed on the new machine (2026-11-05; not committed, the copy has no git history):
+- The catalog's class order (`SymbolCatalog.mro`) walked bases depth-first; it now uses
+  Python's C3 order, so in a diamond (`D(B, C)`, both from `A`, only `C` overriding) a lookup
+  finds `C`'s member, as Python does, not `A`'s. Where Python would refuse the order, the old
+  walk is kept. Found by the research review. It can change member lookups in validation,
+  placement and the C2 scorer, so it also lands in experiment 3c. The pre-fix file is kept in
+  `.scratch/pre-c3/catalog.py`: if the baseline rescore differs from the table above, rescore
+  again with it in place to tell a setup problem from this fix.
+
 ## Next steps, in order
 
 1. **Run experiment 3c** (not run: the VM hung), about $0.10:

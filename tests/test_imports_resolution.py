@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from ticket2test.config import Settings
-from ticket2test.index.catalog import import_map
+from ticket2test.index.catalog import SymbolCatalog, import_map
 from ticket2test.index.indexer import IndexData, update_index
 from ticket2test.models.generated import GeneratedTest
 from ticket2test.validate.validator import validate_generated
@@ -214,3 +214,62 @@ def test_a_function_local_import_decides_which_class_a_name_means(tmp_path: Path
     assert member.type_text == "pages.b.Page"
     page = catalog.resolve_type(member.type_text, "nav")
     assert page is not None and page.qualname == "pages.b.Page"
+
+
+def _catalog(tmp_path: Path, files: dict[str, str]) -> SymbolCatalog:
+    repo = tmp_path / "repo"
+    for path, text in files.items():
+        (repo / path).parent.mkdir(parents=True, exist_ok=True)
+        (repo / path).write_text(text, encoding="utf-8")
+    settings = Settings.model_validate({"paths": {"cache_dir": str(tmp_path / "cache")}})
+    index, _, _ = update_index(repo, settings)
+    return index.catalog
+
+
+DIAMOND = (
+    "class A:\n   def helper(self):\n      pass\n\n   @property\n   def title(self):\n"
+    "      return ''\n\n\n"
+    "class B(A):\n   pass\n\n\n"
+    "class C(A):\n   def helper(self):\n      pass\n\n   def title(self):\n      pass\n\n\n"
+    "class D(B, C):\n   pass\n"
+)
+
+
+def test_members_follow_pythons_method_resolution_order_in_a_diamond(tmp_path: Path) -> None:
+    """Python runs C.helper for D(B, C) when B and C both inherit A and only C overrides it
+    (C3: D, B, C, A); a depth-first walk (D, B, A, C) picked A's member, and its kind."""
+    catalog = _catalog(tmp_path, {"shapes.py": DIAMOND})
+    assert [e.name for e in catalog.mro("shapes.D")] == ["D", "B", "C", "A"]
+    found = catalog.member("shapes.D", "helper")
+    assert found is not None and found[0].name == "C"
+    owner, member = catalog.members_of("shapes.D")["title"]
+    assert (owner.name, member.kind) == ("C", "method")
+    assert [e.name for e in catalog.mro("shapes.B")] == ["B", "A"]
+
+
+def test_mro_matches_python_on_a_deeper_hierarchy(tmp_path: Path) -> None:
+    code = (
+        "class O:\n   pass\n\n\nclass X(O):\n   pass\n\n\nclass Y(O):\n   pass\n\n\n"
+        "class Z(O):\n   pass\n\n\nclass K1(X, Y):\n   pass\n\n\nclass K2(Y, Z):\n   pass\n\n\n"
+        "class K3(K1, K2, Z):\n   pass\n"
+    )
+    catalog = _catalog(tmp_path, {"deep.py": code})
+    namespace: dict[str, object] = {}
+    exec(code, namespace)  # the trusted literal above, not generated code
+    k3 = namespace["K3"]
+    assert isinstance(k3, type)
+    expected = [c.__name__ for c in k3.__mro__ if c is not object]
+    assert [e.name for e in catalog.mro("deep.K3")] == expected
+
+
+def test_mro_without_a_c3_order_falls_back_to_depth_first(tmp_path: Path) -> None:
+    """Orders Python would refuse (inconsistent bases, a cycle) still give every base once,
+    so a broken file elsewhere in the suite doesn't hide members."""
+    code = (
+        "class A:\n   pass\n\n\nclass B(A):\n   pass\n\n\nclass Bad(A, B):\n   pass\n\n\n"
+        "class P(Q):\n   pass\n\n\nclass Q(P):\n   pass\n"
+    )
+    catalog = _catalog(tmp_path, {"odd.py": code})
+    assert [e.name for e in catalog.mro("odd.Bad")] == ["Bad", "A", "B"]
+    assert [e.name for e in catalog.mro("odd.P")] == ["P", "Q"]
+    assert catalog.mro("odd.Missing") == []

@@ -200,6 +200,56 @@ class SymbolCatalog(BaseModel):
         return None
 
     def mro(self, qualname: str) -> list[ClassEntry]:
+        """The class and its in-repo bases in Python's method resolution order (C3), so a
+        member that another base overrides wins as it does at run time: for ``D(B, C)`` with
+        ``B(A)`` and ``C(A)``, the order is D, B, C, A (depth-first gave D, B, A, C, and
+        ``A``'s member). Bases outside the repo are left out. Where C3 has no answer (an
+        inconsistent order or a cycle, which Python itself would refuse), the depth-first
+        order without repeats is used. Bounded by ``_MAX_MRO``."""
+        if qualname not in self.classes:
+            return []
+        linear = self._c3(qualname, frozenset(), {})
+        if linear is None:
+            return self._depth_first(qualname)
+        return [self.classes[q] for q in linear[:_MAX_MRO]]
+
+    def _c3(
+        self, qualname: str, active: frozenset[str], done: dict[str, list[str] | None]
+    ) -> list[str] | None:
+        """C3 linearization over qualnames; None when there is none (or past the bound)."""
+        if qualname in done:
+            return done[qualname]
+        if qualname in active or len(active) >= _MAX_MRO:
+            return None
+        current = self.classes[qualname]
+        bases: list[str] = []
+        for written in current.bases:
+            entry = self.resolve_type(written, current.module)
+            if entry is not None and entry.qualname not in bases:
+                bases.append(entry.qualname)
+        lists: list[list[str]] = []
+        for base in bases:
+            sub = self._c3(base, active | {qualname}, done)
+            if sub is None:
+                done[qualname] = None
+                return None
+            lists.append(list(sub))
+        lists.append(list(bases))
+        merged = [qualname]
+        lists = [rest for rest in lists if rest]
+        while lists:
+            head = next(
+                (r[0] for r in lists if not any(r[0] in other[1:] for other in lists)), None
+            )
+            if head is None:  # no consistent order
+                done[qualname] = None
+                return None
+            merged.append(head)
+            lists = [rest for r in lists if (rest := r[1:] if r[0] == head else r)]
+        done[qualname] = merged
+        return merged
+
+    def _depth_first(self, qualname: str) -> list[ClassEntry]:
         """The class and its in-repo bases, depth-first, without repeats (bounded)."""
         order: list[ClassEntry] = []
         stack = [qualname]
