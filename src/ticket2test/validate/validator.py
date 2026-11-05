@@ -451,6 +451,12 @@ T = TypeVar("T")
 _PER_INDEX: dict[Any, tuple[object, Any]] = {}
 
 
+def clear_index_caches() -> None:
+    """Forget the per-index results: they hold on to the last index's chunks, which keeps a
+    whole index in memory after it is no longer used (a run that builds index after index)."""
+    _PER_INDEX.clear()
+
+
 def _per_index(index: IndexData, key: Any, build: Callable[[], T]) -> T:
     """``build()`` once per index (and key), not once per file: check-suite validates every
     file of a large suite against the same index. A new index (another list of chunks) rebuilds."""

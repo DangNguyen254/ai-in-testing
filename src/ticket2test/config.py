@@ -106,6 +106,7 @@ class EvalSettings(_Section):
     # Ticket ids in skip reasons (used to mine ticket <-> test pairs from git history).
     ticket_id_pattern: str = r"\b[A-Z][A-Z0-9]+-\d+\b"
     max_commits: int = Field(default=5000, ge=1)  # git history mining: newest commits read
+    max_golden_repeat: int = Field(default=10, ge=1)  # `golden --repeat` is capped here
 
 
 class DraftSettings(_Section):
@@ -369,10 +370,29 @@ class ReuseSettings(_Section):
     # UI tests in an area go only into classes that already use page objects (a chain root or
     # a path-string helper in some test), never into classes that drive the browser directly.
     ui_needs_page_objects: bool = True
+    # A draft's deployment "both" is also what it says when the ticket doesn't mention one: then
+    # a class gated to one deployment isn't excluded, only flagged for the reviewer (its own
+    # gate wins). False: "both" means the test must run on both (baseline-0).
+    both_means_unspecified: bool = True
+    # No class of the draft's kind (UI / API) in the area, e.g. UI tests of a client app that
+    # don't use the web page-object root: consider the area's classes of any kind, noted.
+    # False: a new module instead (baseline-0).
+    kind_fallback: bool = True
+    # Score every class of the domain for a new method, not only those of the `candidates`
+    # closest tests. False: only those (baseline-0).
+    classes_from_domain: bool = True
+    # The closest template's class (retrieval's, inside the domain) takes the new method
+    # whatever its class match: search found the test, the word overlap often misses it.
+    # False: it needs the class-match minimums or the ticket naming its feature (baseline-0).
+    template_class_wins: bool = True
 
 
 class GenerateSettings(_Section):
     prompt_version: str = "generate_v6"
+    # Switches for the design step's ablations (docs/design-step-plan.md); all on in baseline-0.
+    context_helpers: bool = True  # the code of the helpers the template calls, in the context
+    context_entry_list: bool = True  # the class's other entries and their blocks, in the context
+    base_entry_from_class: bool = True  # the base entry: the class entry the draft names most
     # Team conventions for tests (Markdown). Always placed in the context when set.
     conventions_doc: Path | None = None
     # Always on the reviewer checklist: things only a real run can confirm.

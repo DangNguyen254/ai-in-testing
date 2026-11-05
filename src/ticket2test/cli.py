@@ -171,39 +171,22 @@ def new_ticket(
 def _without_tests(state: AppState, repo: Path, hide: list[str], stem: str) -> Path:
     """A copy of the repo without these tests (and their data entries), in the cache: what the
     eval's leave-one-out does. The repo itself is only read."""
-    from ticket2test.eval.generation import leave_one_out_repo
-    from ticket2test.eval.retrieval import manifest_test_to_chunk_id
+    from ticket2test.eval.generation import hidden_tests, hide_files, leave_one_out_repo
     from ticket2test.index.indexer import update_index
 
     settings = state.settings
     index, _, _ = update_index(repo, settings)
-    tests = [c for c in index.chunks if c.kind == "test" and not c.inherited_from]
-    ids: set[str] = set()
-    files = [h.strip().lstrip("./") for h in hide if h.strip().endswith(".py") and "::" not in h]
-    for path in files:
-        if path not in index.files:
-            typer.echo(f"Error: no indexed file {path!r} for --hide", err=True)
-            raise typer.Exit(code=2)
-    for wanted in hide:
-        if wanted.strip().lstrip("./") in files:
-            continue
-        exact = manifest_test_to_chunk_id(wanted) if "::" in wanted else None
-        found = {
-            c.id for c in tests if c.id == exact or (exact is None and c.symbol_name == wanted)
-        }
-        if not found:
-            typer.echo(f"Error: no test matches --hide {wanted!r}", err=True)
-            raise typer.Exit(code=2)
-        ids |= found
+    files = [h for h in hide if h.strip().endswith(".py") and "::" not in h]
+    try:
+        ids = hidden_tests(hide, index)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc} (--hide)", err=True)
+        raise typer.Exit(code=2) from exc
     dest = settings.paths.cache_dir / "run-hidden" / stem
     shown = f"{len(ids)} test(s)" + (f" and {len(files)} file(s)" if files else "")
     typer.echo(f"Hiding {shown}: working on a copy of the repo in {dest}")
     copy = leave_one_out_repo(repo, index, ids, settings, dest, only_indexed=True)
-    for path in files:  # the whole file goes, with its data file(s)
-        data = {c.data_file for c in tests if c.file_path == path and c.data_file}
-        data.add(str(PurePosixPath(path).with_suffix(settings.index.data_file_suffix)))
-        for name in [path, *data]:
-            (copy / name).unlink(missing_ok=True)
+    hide_files(copy, files, index, settings)  # the whole file goes, with its data file(s)
     return copy
 
 
@@ -1054,6 +1037,130 @@ def eval_(
 
 
 @app.command()
+def golden(
+    ctx: typer.Context,
+    pair_set: Annotated[
+        Path,
+        typer.Argument(help="The golden pair set (JSON): real tickets with their reference tests."),
+    ],
+    repeat: Annotated[
+        int, typer.Option(help="Runs per ticket (pass@1 and pass^k; capped by config).", min=1)
+    ] = 3,
+    label: Annotated[
+        str, typer.Option(help="A name for this configuration, e.g. baseline-0 or no-guides.")
+    ] = "run",
+    collect: Annotated[
+        bool, typer.Option("--collect", help="Also `pytest --collect-only` in the sandbox.")
+    ] = False,
+    pairs: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--pairs",
+            help="Only these pairs, by id (repeatable, or comma-separated: --pairs g09,g10), "
+            "e.g. one failure group while trying a change.",
+        ),
+    ] = None,
+    out: Annotated[
+        Path | None, typer.Option(help="Report directory (default: <output_dir>/golden).")
+    ] = None,
+) -> None:
+    """Run the golden set k times per ticket and score each run against the reference test
+    (design step 1): pass@1 and pass^k per criterion, plus sheets for C6 and open coding."""
+    from datetime import UTC, datetime
+
+    from ticket2test.eval.golden import render_report, run_golden, select_pairs, write_sheets
+    from ticket2test.eval.pairs import load_pair_set
+    from ticket2test.llm.base import LLMError
+    from ticket2test.llm.factory import create_llm_client
+
+    state: AppState = ctx.obj
+    settings = state.settings
+    stem = f"{_safe_name(label)}-{datetime.now(UTC):%Y%m%dT%H%M%S}"
+    folder = (out or settings.paths.output_dir / "golden") / stem
+    try:
+        golden_set = select_pairs(load_pair_set(pair_set), pairs)
+        client = create_llm_client(settings, debug_log=state.debug_log)
+        report = run_golden(
+            golden_set,
+            Path.cwd(),
+            settings,
+            client,
+            repeat,
+            label,
+            folder / "runs",
+            collect=collect,
+            progress=lambda line: typer.echo(line, err=True),
+        )
+    except (OSError, ValueError, LLMError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "report.json").write_text(report.model_dump_json(indent=2), encoding="utf-8")
+    markdown = render_report(report)
+    (folder / "report.md").write_text(markdown, encoding="utf-8")
+    sheets = write_sheets(report, folder)
+    typer.echo(markdown)
+    typer.echo(f"Wrote {folder / 'report.json'} and .md; " + ", ".join(p.name for p in sheets))
+
+
+@app.command(name="golden-rescore")
+def golden_rescore(
+    ctx: typer.Context,
+    report_file: Annotated[Path, typer.Argument(help="A golden run's report.json.")],
+    pair_set: Annotated[
+        Path, typer.Option("--set", help="The golden pair set the run used (golden.json).")
+    ],
+) -> None:
+    """Score a finished golden run again from its kept outputs (after a scorer change): no
+    model calls. Rewrites report.json and report.md; C6 answers are kept."""
+    from ticket2test.eval.golden import GoldenReport, render_report, rescore_golden
+    from ticket2test.eval.pairs import load_pair_set
+
+    state: AppState = ctx.obj
+    try:
+        report = GoldenReport.model_validate_json(report_file.read_text(encoding="utf-8"))
+        scored = rescore_golden(
+            report,
+            load_pair_set(pair_set),
+            Path.cwd(),
+            state.settings,
+            progress=lambda line: typer.echo(line, err=True),
+        )
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    report_file.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+    markdown = render_report(report)
+    report_file.with_suffix(".md").write_text(markdown, encoding="utf-8")
+    typer.echo(markdown)
+    typer.echo(f"Re-scored {scored} run(s); wrote {report_file} and .md")
+
+
+@app.command(name="golden-report")
+def golden_report(
+    report_file: Annotated[Path, typer.Argument(help="A golden run's report.json.")],
+    c6: Annotated[
+        Path | None, typer.Option(help="The filled c6.csv: a person's yes/no per run.")
+    ] = None,
+) -> None:
+    """Re-render a golden run's report, with the C6 answers merged in."""
+    from ticket2test.eval.golden import GoldenReport, merge_c6, render_report
+
+    try:
+        report = GoldenReport.model_validate_json(report_file.read_text(encoding="utf-8"))
+        read = merge_c6(report, c6) if c6 is not None else 0
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    report_file.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+    markdown = render_report(report)
+    report_file.with_suffix(".md").write_text(markdown, encoding="utf-8")
+    typer.echo(markdown)
+    if c6 is not None:
+        typer.echo(f"Merged {read} C6 answer(s) from {c6}")
+
+
+@app.command()
 def mine(
     ctx: typer.Context,
     out: Annotated[Path, typer.Option(help="Pair-set JSON to write (e.g. eval_data/x.json).")],
@@ -1226,7 +1333,6 @@ def results(
     data key); check_failed (an assertion failed: the test caught the bug, or its expectation is
     wrong; open the run's link); error (setup or teardown); not_run; unclear.
     """
-    from pathlib import PurePosixPath
 
     from ticket2test.models.generated import GeneratedTest
     from ticket2test.results.console import parse_console, verdict

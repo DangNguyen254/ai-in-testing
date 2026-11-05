@@ -30,6 +30,8 @@ class BuiltContext:
     pieces: list[Piece] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)  # titles that didn't fit
     tokens: int = 0
+    # every piece offered, in order: (title, tokens, kept, required, chunk id or "")
+    offered: list[tuple[str, int, bool, bool, str]] = field(default_factory=list)
 
     @property
     def chunk_ids(self) -> list[str]:
@@ -66,7 +68,13 @@ def build_context(pieces: list[Piece], max_tokens: int, chars_per_token: float) 
         else:
             skipped.append(piece.title)
     return BuiltContext(
-        pieces=[p for i, p in enumerate(pieces) if i in included], skipped=skipped, tokens=total
+        pieces=[p for i, p in enumerate(pieces) if i in included],
+        skipped=skipped,
+        tokens=total,
+        offered=[
+            (p.title, cost(p), i in included, p.required, p.chunk_id or "")
+            for i, p in enumerate(pieces)
+        ],
     )
 
 

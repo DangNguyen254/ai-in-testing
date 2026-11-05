@@ -37,6 +37,18 @@ CTX_SIBLING_ENTRIES = "sibling_entries"  # test id -> entry: the class's entries
 ReuseKind = Literal["covered", "variant", "method", "module", "out_of_scope"]
 
 
+class ContextPiece(BaseModel):
+    """One piece offered to the generation context: kept, or dropped for the token budget."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    title: str
+    tokens: int
+    kept: bool
+    required: bool = False
+    chunk_id: str = ""
+
+
 class EntryChange(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -300,9 +312,16 @@ class GeneratedTest(BaseModel):
     reuse_kind: ReuseKind = "module"
     reuse_target: str | None = None  # chunk id (variant) or class name (method)
     reuse_reasons: list[str] = Field(default_factory=list)
+    # How the placement was decided, for the golden C1 diagnosis: domain, domain_folders,
+    # class_scores (class key -> match), excluded (class key -> why).
+    reuse_placement: dict[str, Any] | None = None
     variant_plans: list[VariantPlan] = Field(default_factory=list)
     patches: list[PatchedFile] = Field(default_factory=list)
     # The ids this output adds (a patch's test_ids list the whole patched file); empty: test_ids.
     new_test_ids: list[str] = Field(default_factory=list)
     run_report: dict[str, Any] | None = None  # from a real run's log (`ticket2test results`)
     noted_missing: list[MissingHint] = Field(default_factory=list)  # the model's `missing`
+    # What the generation context held (the design step's context recall, C8): every piece
+    # offered with its tokens and whether it was kept, and the identifiers in the kept pieces.
+    context_report: list[ContextPiece] = Field(default_factory=list)
+    context_names: list[str] = Field(default_factory=list)

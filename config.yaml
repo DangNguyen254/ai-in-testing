@@ -51,6 +51,7 @@ markers:                       # generic placeholders; set real values per envir
 
 eval:
   ticket_id_pattern: '\b[A-Z][A-Z0-9]+-\d+\b'   # Jira-style: KEY-123
+  max_golden_repeat: 10           # `golden --repeat` is capped here
 
 tickets:
   github:
@@ -170,6 +171,9 @@ context:
 
 generate:
   prompt_version: generate_v6
+  context_helpers: true           # design-step ablation switches (all on in baseline-0)
+  context_entry_list: true
+  base_entry_from_class: true
   conventions_doc: null          # e.g. standin/CONVENTIONS.md; always included when set
   review_checklist_defaults:      # always on the reviewer checklist ("needs a real run")
     - Expected backend responses are not from a real capture; confirm them in a real run.
@@ -197,6 +201,10 @@ generate:
     environment_decorators: [environments]  # class decorators listing the deployments it runs on
     legacy_domains: [units]        # areas (names or folder globs) where only "covered" is decided
     ui_needs_page_objects: true    # UI tests go only into classes that already use page objects
+    both_means_unspecified: true   # a draft's "both" (also its default) doesn't exclude gated classes
+    kind_fallback: true            # no class of the draft's kind in the area: consider any kind
+    classes_from_domain: true      # a new method may join any class of the domain, not only the closest tests'
+    template_class_wins: true      # the closest template's class takes the new method whatever its class match
   variant_prompt: variant_v1      # only when a new case can't be planned in code
 
 validation:                     # deterministic checks of generated tests (Phase 7)

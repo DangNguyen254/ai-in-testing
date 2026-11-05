@@ -91,6 +91,9 @@ class ReuseDecision:
     test_id: str | None = None  # covered: the existing test id
     candidates: list[Candidate] = field(default_factory=list)
     class_scores: dict[str, float] = field(default_factory=dict)
+    domain_folders: tuple[str, ...] = ()
+    excluded: dict[str, str] = field(default_factory=dict)  # class key -> why
+    home: str | None = None  # the closest template's class (``path::Class``) in the pool
     reasons: list[str] = field(default_factory=list)
     # For the reviewer: e.g. the chosen class runs on one deployment, the draft didn't say.
     review_notes: list[str] = field(default_factory=list)
@@ -116,6 +119,7 @@ def decide(
         domain_uncertain=choice.uncertain,
         target=None,
         target_file=None,
+        domain_folders=domain.folders if domain else (),
     )
     decision.reasons.append(
         f"domain: {choice.reason or 'none'}" + (" (uncertain)" if choice.uncertain else "")
@@ -132,13 +136,14 @@ def decide(
     weights = _idf(flows.values())
     values = _draft_values(draft)
     retrieved = {h.chunk_id: h.score for h in retrieval.hits}
-    candidates = sorted(
+    ranked = sorted(
         (
             _candidate(c, flows[c.id], draft_words, all_draft_words, values, weights, settings)
             for c in tests
         ),
         key=lambda c: (-c.rank_score, -retrieved.get(c.chunk_id, 0.0), c.chunk_id),
-    )[: reuse.candidates]
+    )
+    candidates = ranked[: reuse.candidates]
     decision.candidates = candidates
     best = candidates[0]
     kind = draft.test_kind
@@ -196,21 +201,40 @@ def decide(
             )
         )
 
-    excluded, gated = _excluded_classes(candidates, index, settings, draft)
-    in_domain = {f"{c.file_path}::{c.class_name}" for c in candidates if c.class_name}
+    # The classes a new method may join: those of the closest tests only (baseline-0), or of
+    # every test in the domain (generate.reuse.classes_from_domain), so a class whose tests
+    # share few words with the draft can still be chosen, e.g. as the closest template's.
+    pool = ranked if reuse.classes_from_domain else candidates
+    excluded, gated = _excluded_classes(pool, index, settings, draft)
+    in_domain = {f"{c.file_path}::{c.class_name}" for c in pool if c.class_name}
     home, top_hit = _template_class(retrieval, index, in_domain)
+    decision.home = home
     if home in gated:  # the closest existing test already runs there: its gate wins, flagged
-        del excluded[home]
+        excluded.pop(home, None)  # with both_means_unspecified it was never excluded
+    decision.excluded = dict(excluded)
     for key, why in sorted(excluded.items()):
         decision.reasons.append(f"not {key.split('::', 1)[1]}: {why}")
+    any_kind = (
+        reuse.kind_fallback
+        and kind != "hybrid"
+        and not any(
+            c.class_name and c.kind == kind and f"{c.file_path}::{c.class_name}" not in excluded
+            for c in pool
+        )
+    )
+    if any_kind:
+        decision.reasons.append(
+            f"no {kind} test class in the domain: classes of any kind considered "
+            "(generate.reuse.kind_fallback)"
+        )
+
+    def kind_ok(c: Candidate) -> bool:
+        return any_kind or kind == "hybrid" or c.kind == kind
+
     classes: dict[tuple[str, str], list[float]] = {}
-    for c in candidates:
+    for c in pool:
         key = f"{c.file_path}::{c.class_name}"
-        if (
-            c.class_name is not None
-            and (kind == "hybrid" or c.kind == kind)
-            and key not in excluded
-        ):
+        if c.class_name is not None and kind_ok(c) and key not in excluded:
             classes.setdefault((c.file_path, c.class_name), []).append(c.flow)
     scores = {f"{path}::{name}": max(flows_) for (path, name), flows_ in classes.items()}
     decision.class_scores = dict(sorted(scores.items(), key=lambda kv: -kv[1]))
@@ -242,6 +266,7 @@ def decide(
         )
         if home in scores and (
             qualifies(home)
+            or reuse.template_class_wins
             or (backed and (scores[home] >= reuse.method_named_min or home == top_hit))
         ):
             # the closest template's own class: its helpers, module objects and data style
@@ -280,10 +305,8 @@ def decide(
 
     eligible = [
         c
-        for c in candidates
-        if c.class_name
-        and (kind == "hybrid" or c.kind == kind)
-        and f"{c.file_path}::{c.class_name}" not in excluded
+        for c in pool
+        if c.class_name and kind_ok(c) and f"{c.file_path}::{c.class_name}" not in excluded
     ]
     # scaffolded from the closest template's class when it is eligible, else the best flow
     template = next(
@@ -366,12 +389,14 @@ def _excluded_classes(
             continue
         gate = _deployment_gate(cls.decorators, deployments, settings)
         if gate is not None and not needed <= gate:
-            if draft.deployment_type == "both":  # kept only as the template's own class
+            if draft.deployment_type == "both":
                 gated[key] = (
                     f"{c.class_name} runs only on {', '.join(sorted(gate))}; the draft says "
                     "both, which is also its default when the ticket doesn't say: confirm the "
                     "test only needs to run there"
                 )
+                if gen.reuse.both_means_unspecified:  # flagged, not excluded
+                    continue
             found[key] = (
                 f"runs only on {', '.join(sorted(gate))}; "
                 f"the draft needs {', '.join(sorted(needed))}"

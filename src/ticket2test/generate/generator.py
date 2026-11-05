@@ -54,6 +54,7 @@ from ticket2test.models.generated import (
     CTX_SIBLING_ENTRIES,
     CTX_TEST_PREFIX,
     CTX_TICKET_ID,
+    ContextPiece,
     EntryPlan,
     GeneratedTest,
     GenerationResponse,
@@ -126,7 +127,11 @@ def prepare_generation(
     chunks = {c.id: c for c in index.chunks}
     template_chunk, entry_key = _template(retrieval, chunks)
     siblings = class_entries(template_chunk, index)
-    entry_chunk, entry_key = closest_entry(template_chunk, entry_key, draft, index)
+    entry_chunk, entry_key = (
+        closest_entry(template_chunk, entry_key, draft, index)
+        if gen.base_entry_from_class
+        else (template_chunk, entry_key)
+    )
     base_entry = entry_chunk.data_entries[entry_key]
     layout: DataFormat = template_chunk.data_format or data.format
 
@@ -314,6 +319,11 @@ def assemble(
         review_checklist=checklist,
         entry_plans=plans,
         noted_missing=list(response.missing),
+        context_report=[
+            ContextPiece(title=t, tokens=n, kept=k, required=r, chunk_id=c)
+            for t, n, k, r, c in setup.context.offered
+        ],
+        context_names=sorted(set(_IDENTIFIER.findall(setup.context.render()))),
     )
 
 
@@ -815,7 +825,11 @@ def build_generation_context(
             entry_chunk=entry_chunk,
         )
     )
-    others = entries_piece(class_entries(template_chunk, index), entry_key, settings.data.id_field)
+    others = (
+        entries_piece(class_entries(template_chunk, index), entry_key, settings.data.id_field)
+        if settings.generate.context_entry_list
+        else None
+    )
     if others is not None:  # blocks the base lacks can be copied from them ("copy" changes)
         pieces.append(others)
 
@@ -830,7 +844,11 @@ def build_generation_context(
             )
         )
 
-    helpers = helpers_piece(template_chunk, index, settings)
+    helpers = (
+        helpers_piece(template_chunk, index, settings)
+        if settings.generate.context_helpers
+        else None
+    )
     if helpers is not None:  # what they check and return, so the test doesn't redo it
         pieces.append(helpers)
 
@@ -887,6 +905,7 @@ def _template(retrieval: RetrievalResult, chunks: dict[str, Chunk]) -> tuple[Chu
     )
 
 
+_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
 _MAX_LISTED_ENTRIES = 25
 
 

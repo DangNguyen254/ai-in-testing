@@ -330,31 +330,40 @@ def _one(
     judge: bool,
     reuse_drafts: bool,
     keep_dir: Path | None,
+    capture: dict[str, Any] | None = None,
+    prepared: tuple[Path, IndexData, set[str]] | None = None,
 ) -> GenerationPairResult:
+    """``capture``: receives the generated test (``"generated"``) and the index it was
+    generated against (``"index"``), for scorers. ``prepared``: the leave-one-out copy, its
+    index and the hidden chunk ids, built once by the caller (``loo_copy``) for several runs."""
     started = time.monotonic()
     result = GenerationPairResult(
         pair_id=pair.id, ticket=pair.ticket, status="failed", expected=pair.expect
     )
-    linked = {manifest_test_to_chunk_id(t) for t in pair.tests}
-    used_repo, used_index = repo, index
+    if prepared is not None:
+        used_repo, used_index, linked = prepared
+        leave_one_out = True
+    else:
+        linked = {manifest_test_to_chunk_id(t) for t in pair.tests}
+        linked |= hidden_tests(pair.hide, index)
+        used_repo, used_index = repo, index
     # A ticket whose right outcome is "out of scope" has no answer to copy, and hiding the
     # linked test can remove its (small) legacy area altogether: keep the suite whole.
     leave_one_out = leave_one_out and pair.expect != "out_of_scope"
-    if leave_one_out:  # a real copy without the linked tests, so files and index agree
-        loo_settings = settings.model_copy(
-            update={
-                "paths": settings.paths.model_copy(
-                    update={"cache_dir": settings.paths.cache_dir / "eval" / "loo-index"}
-                )
-            }
-        )
-        used_repo = leave_one_out_repo(
-            repo, index, linked, settings, settings.paths.cache_dir / "eval" / "loo" / pair.id
-        )
-        used_index, _, _ = update_index(used_repo, loo_settings)
+    if leave_one_out and prepared is None:  # a copy without the linked tests: files, index agree
+        used_repo = loo_copy(pair, repo, index, linked, settings, whole=collect)
+        used_index, _, _ = update_index(used_repo, loo_settings(settings))
     try:
         ticket = normalize(cache.raw_ticket(pair_set, pair, project_root), settings)
-        drafts, cached, calls = _drafts(ticket, client, settings, cache, reuse_drafts)
+        if pair.draft_file:  # reviewed by a person: the same draft every run
+            path = project_root / pair.draft_file
+            drafts, cached, calls = (
+                DraftResult.model_validate_json(path.read_text(encoding="utf-8")),
+                True,
+                0,
+            )
+        else:
+            drafts, cached, calls = _drafts(ticket, client, settings, cache, reuse_drafts)
         result.draft_cached, result.llm_calls = cached, calls
         if judge:
             verdict, judge_calls = judge_draft(ticket, drafts, client, settings)
@@ -438,6 +447,8 @@ def _one(
             generated = generated.model_copy(
                 update={"collect_report": collected.model_dump(mode="json")}
             )
+    if capture is not None:
+        capture["generated"], capture["index"] = generated, used_index
     if keep_dir is not None:
         _keep(keep_dir / pair.id, generated, settings)
         if outcome.proposals:  # agent 2's patches, for review
@@ -446,6 +457,70 @@ def _one(
                 encoding="utf-8",
             )
     return _finish(result, started)
+
+
+def loo_copy(
+    pair: EvalPair,
+    repo: Path,
+    index: IndexData,
+    linked: set[str],
+    settings: Settings,
+    whole: bool = False,
+) -> Path:
+    """The pair's leave-one-out copy of the repo (in the cache): the linked tests cut, the
+    pair's hidden files removed. Only the files the tool reads are copied, unless ``whole``
+    (a sandbox collect needs the rest of the repo too)."""
+    dest = settings.paths.cache_dir / "eval" / "loo" / pair.id
+    copy = leave_one_out_repo(repo, index, linked, settings, dest, only_indexed=not whole)
+    hide_files(copy, [h for h in pair.hide if _is_file(h)], index, settings)
+    return copy
+
+
+def loo_settings(settings: Settings) -> Settings:
+    """The settings the leave-one-out copies are indexed with (their own index cache)."""
+    return settings.model_copy(
+        update={
+            "paths": settings.paths.model_copy(
+                update={"cache_dir": settings.paths.cache_dir / "eval" / "loo-index"}
+            )
+        }
+    )
+
+
+def _is_file(hidden: str) -> bool:
+    return hidden.strip().endswith(".py") and "::" not in hidden
+
+
+def hidden_tests(hide: list[str], index: IndexData) -> set[str]:
+    """Chunk ids of the tests named in ``hide`` (pytest ids or method names; files aside).
+    Raises ``ValueError`` for a name that matches no test."""
+    tests = [c for c in index.chunks if c.kind == "test" and not c.inherited_from]
+    found: set[str] = set()
+    for wanted in hide:
+        if _is_file(wanted):
+            if wanted.strip().lstrip("./") not in index.files:
+                raise ValueError(f"no indexed file {wanted!r} to hide")
+            continue
+        exact = manifest_test_to_chunk_id(wanted) if "::" in wanted else None
+        ids = {c.id for c in tests if c.id == exact or (exact is None and c.symbol_name == wanted)}
+        if not ids:
+            raise ValueError(f"no test matches {wanted!r} to hide")
+        found |= ids
+    return found
+
+
+def hide_files(copy: Path, files: list[str], index: IndexData, settings: Settings) -> None:
+    """Remove whole test files and their data files from a repo copy."""
+    for raw in files:
+        path = raw.strip().lstrip("./")
+        data = {
+            c.data_file
+            for c in index.chunks
+            if c.kind == "test" and c.file_path == path and c.data_file
+        }
+        data.add(str(PurePosixPath(path).with_suffix(settings.index.data_file_suffix)))
+        for name in [path, *data]:
+            (copy / name).unlink(missing_ok=True)
 
 
 def _drafts(

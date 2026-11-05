@@ -44,6 +44,12 @@ class EvalPair(BaseModel):
     # info (a vague ticket), or nothing because the ticket's area is legacy (out of scope).
     expect: Literal["test", "gap", "insufficient_info", "out_of_scope"] = "test"
     gaps: list[ExpectedGap] = Field(default_factory=list)
+    # A reviewed drafts JSON (from `run`), used as is: no draft call, the same draft every run,
+    # so draft variation doesn't mix into the generation scores. Relative to the project root.
+    draft_file: str | None = None
+    # Also hidden during leave-one-out: other tests (pytest ids or method names) or whole test
+    # files (paths ending in .py), e.g. an older class for the same feature.
+    hide: list[str] = Field(default_factory=list)
 
 
 class PairSet(BaseModel):

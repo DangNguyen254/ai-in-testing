@@ -174,6 +174,7 @@ SCENARIOS = {
 @pytest.mark.parametrize("kind", list(SCENARIOS))
 def test_decision_kinds(setup: tuple[Settings, IndexData], kind: str) -> None:
     settings, index = setup
+    settings = _reuse(settings, template_class_wins=False)  # baseline-0 rule
     draft, target = SCENARIOS[kind]
     ticket = Ticket(
         id=draft.ticket_id,
@@ -326,13 +327,34 @@ def _listing_draft() -> TestCaseDraft:
 
 def test_a_test_never_goes_into_a_narrower_gated_class(setup: tuple[Settings, IndexData]) -> None:
     """Dev-set finding: a general list test went into a cloud-only legacy class, so it would
-    never run on-prem."""
+    never run on-prem. The real suite's baseline showed the other side: most classes are gated,
+    and "both" is also what a draft says when the ticket doesn't mention deployment, so
+    excluding them sent tests to new files. Now "both" flags a gated class instead (the switch
+    ``generate.reuse.both_means_unspecified``); an explicit deployment still excludes it."""
     settings, index = setup
-    decision = decide(_listing_draft(), _empty_retrieval(), index, settings, EXCEPTIONS)
+    strict = settings.model_copy(
+        update={
+            "generate": settings.generate.model_copy(
+                update={
+                    "reuse": settings.generate.reuse.model_copy(
+                        update={"both_means_unspecified": False}
+                    )
+                }
+            )
+        }
+    )
+    decision = decide(_listing_draft(), _empty_retrieval(), index, strict, EXCEPTIONS)
     assert decision.target not in ("TestExceptionsLegacyList", "TestExceptionsLegacyEditor")
     assert any(
         r.startswith("not TestExceptionsLegacyList: runs only on cloud") for r in decision.reasons
     ), decision.reasons
+    unspecified = decide(_listing_draft(), _empty_retrieval(), index, settings, EXCEPTIONS)
+    assert not any(r.startswith("not TestExceptionsLegacyList") for r in unspecified.reasons)
+    if unspecified.target in ("TestExceptionsLegacyList", "TestExceptionsLegacyEditor"):
+        assert any("runs only on cloud" in n for n in unspecified.review_notes)
+    on_prem = _listing_draft().model_copy(update={"deployment_type": "on_prem"})
+    decision = decide(on_prem, _empty_retrieval(), index, settings, EXCEPTIONS)
+    assert decision.target not in ("TestExceptionsLegacyList", "TestExceptionsLegacyEditor")
     cloud = _listing_draft().model_copy(update={"deployment_type": "cloud"})
     decision = decide(cloud, _empty_retrieval(), index, settings, EXCEPTIONS)
     assert not any("runs only on cloud" in r for r in decision.reasons)  # fits a cloud draft
@@ -446,19 +468,12 @@ def test_the_new_method_goes_into_the_closest_templates_class(
     decision = decide(draft, templated, index, loose, choice)
     assert decision.kind == "method" and decision.target == "TestFilesViewer"
     assert any("closest template test is in this class" in r for r in decision.reasons)
-    # a template class below the bar any class must clear doesn't win
-    strict = settings.model_copy(
-        update={
-            "generate": settings.generate.model_copy(
-                update={
-                    "reuse": settings.generate.reuse.model_copy(
-                        update={"method_min": 0.4, "method_named_min": 0.3}
-                    )
-                }
-            )
-        }
-    )
+    # baseline-0: a template class below the bar any class must clear doesn't win
+    strict = _reuse(settings, method_min=0.4, method_named_min=0.3, template_class_wins=False)
     assert decide(draft, templated, index, strict, choice).target == "TestFilesArchives"
+    # experiment 3 (the real suite's g08: the template's class ranked 7th on word overlap)
+    trusted = _reuse(settings, method_min=0.4, method_named_min=0.3, template_class_wins=True)
+    assert decide(draft, templated, index, trusted, choice).target == "TestFilesViewer"
 
 
 def test_a_draft_component_must_be_one_of_the_suites() -> None:
@@ -490,6 +505,7 @@ def test_the_templates_class_takes_the_method_when_the_ticket_names_its_feature(
     from ticket2test.models.retrieval import TemplateRef
 
     settings, index = setup
+    settings = _reuse(settings, template_class_wins=False)  # baseline-0 rule
     draft, _ = SCENARIOS["module"]
     ticket = Ticket(
         id=draft.ticket_id,
@@ -532,6 +548,7 @@ def test_the_domains_closest_template_counts_when_the_first_is_elsewhere(
     from ticket2test.models.retrieval import TemplateRef
 
     settings, index = setup
+    settings = _reuse(settings, template_class_wins=False)  # baseline-0 rule
     draft, _ = SCENARIOS["module"]
     ticket = Ticket(
         id=draft.ticket_id,
@@ -586,3 +603,92 @@ def test_the_domains_closest_template_counts_when_the_first_is_elsewhere(
         update={"hits": [h for h in retrieval.hits if h.chunk_id != own.id and h.kind == "test"]}
     )
     assert decide(draft, second, index, strict, choice).kind == "module"
+
+
+def test_an_area_without_a_class_of_the_drafts_kind_offers_its_other_classes(
+    setup: tuple[Settings, IndexData],
+) -> None:
+    """Found in the real suite's baseline: UI tests of a client application don't use the web
+    page-object root, so their classes count as API, and a UI draft found "no ui test class"
+    and became a new file. With ``generate.reuse.kind_fallback`` the area's classes of the other
+    kind are considered (noted); off, a new module as before."""
+    settings, index = setup
+    profiles = DomainChoice(domain=Domain("profiles", ("tests/profiles",)), reason="test")
+    api_draft = _listing_draft().model_copy(update={"test_kind": "api"})  # only UI classes there
+    decision = decide(api_draft, _empty_retrieval(), index, settings, profiles)
+    assert any("classes of any kind considered" in r for r in decision.reasons), decision.reasons
+    assert decision.kind == "method", decision.reasons
+    off = settings.model_copy(
+        update={
+            "generate": settings.generate.model_copy(
+                update={
+                    "reuse": settings.generate.reuse.model_copy(update={"kind_fallback": False})
+                }
+            )
+        }
+    )
+    before = decide(api_draft, _empty_retrieval(), index, off, profiles)
+    assert before.kind == "module" and any("no api test class" in r for r in before.reasons), (
+        before.reasons
+    )
+
+
+def _reuse(settings: Settings, **update: object) -> Settings:
+    reuse = settings.generate.reuse.model_copy(update=update)
+    return settings.model_copy(
+        update={"generate": settings.generate.model_copy(update={"reuse": reuse})}
+    )
+
+
+def test_every_class_of_the_area_is_scored_not_only_the_closest_tests(
+    setup: tuple[Settings, IndexData],
+) -> None:
+    """Found in experiment 1: the reference's class was "not a candidate", because only the
+    classes of the few closest tests were scored. With ``generate.reuse.classes_from_domain``
+    every class of the area is; off, only the closest tests' classes (baseline-0)."""
+    settings, index = setup
+    area = DomainChoice(domain=Domain("all", ("tests",)), reason="test")
+    draft = _listing_draft()
+    narrow = decide(draft, _empty_retrieval(), index, _reuse(settings, candidates=1), area)
+    wide = decide(
+        draft,
+        _empty_retrieval(),
+        index,
+        _reuse(settings, candidates=1, classes_from_domain=True),
+        area,
+    )
+    off = decide(
+        draft,
+        _empty_retrieval(),
+        index,
+        _reuse(settings, candidates=1, classes_from_domain=False),
+        area,
+    )
+    assert len(off.class_scores) == 1, off.class_scores
+    assert len(wide.class_scores) > 1 and wide.class_scores == narrow.class_scores
+
+
+def test_a_gated_template_class_is_flagged_without_failing(
+    setup: tuple[Settings, IndexData],
+) -> None:
+    """Found in experiment 3: with ``both_means_unspecified`` a gated class is only flagged,
+    never excluded, and the closest template sitting in one raised a KeyError."""
+    from ticket2test.models.retrieval import TemplateRef
+
+    settings, index = setup
+    legacy = next(
+        c
+        for c in index.chunks
+        if c.kind == "test" and c.class_name == "TestExceptionsLegacyList" and c.data_entries
+    )
+    retrieval = _empty_retrieval().model_copy(
+        update={
+            "templates": [
+                TemplateRef(chunk_id=legacy.id, entry_key=next(iter(legacy.data_entries)), why="t")
+            ]
+        }
+    )
+    decision = decide(_listing_draft(), retrieval, index, settings, EXCEPTIONS)
+    assert decision.home == f"{legacy.file_path}::TestExceptionsLegacyList"
+    assert decision.target == "TestExceptionsLegacyList", decision.reasons
+    assert any("runs only on cloud" in n for n in decision.review_notes)

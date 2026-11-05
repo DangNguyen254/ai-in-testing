@@ -20,7 +20,7 @@ from __future__ import annotations
 import dataclasses
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from ticket2test.config import Settings
 from ticket2test.gaps import check_pieces, from_generated, from_hints
@@ -392,7 +392,11 @@ def _regenerate(
         )
         outcome.notes.append(f"generated again with the proposed members; kept the first: {why}")
         return
-    outcome.first_generated = outcome.generated
+    outcome.first_generated = first = outcome.generated
+    if first is not None:  # the first pass's reasons (e.g. why a method became a module) stay
+        reasons = [*first.reuse_reasons]
+        reasons += [r for r in generated.reuse_reasons if r not in reasons]
+        generated = generated.model_copy(update={"reuse_reasons": reasons})
     outcome.generated, outcome.report, outcome.kind = generated, report, second.kind
     outcome.uses_proposals = used
     names = ", ".join(p.member for p in used)
@@ -424,6 +428,23 @@ def _variant_target(decision: ReuseDecision) -> str | None:
     return next((c.chunk_id for c in decision.candidates if c.param_ids), None)
 
 
+def placement(decision: ReuseDecision) -> dict[str, Any]:
+    """What the golden C1 diagnosis reads (``eval.reference.c1_why``)."""
+    return {
+        "domain": decision.domain,
+        "domain_folders": list(decision.domain_folders),
+        "class_scores": dict(decision.class_scores),
+        "excluded": dict(decision.excluded),
+        "home": decision.home,
+        "decided": decision.kind,  # before fallbacks; the output's reuse_kind is after them
+        "decided_class": (
+            f"{decision.target_file}::{decision.target}"
+            if decision.kind == "method" and decision.target_file
+            else None
+        ),
+    }
+
+
 def _method_target(decision: ReuseDecision) -> tuple[str, str] | None:
     if decision.kind == "method" and decision.target and decision.target_file:
         return decision.target, decision.target_file
@@ -445,6 +466,7 @@ def _done(
     outcome.generated = generated.model_copy(
         update={
             "reuse_reasons": [*generated.reuse_reasons, *outcome.notes],
+            "reuse_placement": placement(outcome.decision),
             "validation_report": report.model_dump(mode="json"),
         }
     )
@@ -460,6 +482,7 @@ def _module(
             "reuse_kind": "module",
             "reuse_target": outcome.decision.target,
             "reuse_reasons": [*outcome.decision.reasons, *outcome.notes],
+            "reuse_placement": placement(outcome.decision),
         }
     )
     return outcome
