@@ -114,8 +114,9 @@ compare pass@1. Every ticket gave the same C1 in both runs.
     class in the template's file that the template's own class inherits (in g10 its name has
     the test-class prefix, so importing it would collect it twice). Fixed: the scaffold brings
     such bases whole, before the class, and the class shell copies them in code
-    (`test_a_base_class_defined_in_the_templates_file_comes_with_the_new_module`). Not yet
-    re-measured.
+    (`test_a_base_class_defined_in_the_templates_file_comes_with_the_new_module`). Rerun
+    `fix-local-base` (g09, g10 × 2, $0.17): C7 4/4 (was 0/4), C1 still yes; C2 0 with C8
+    failing (helpers 0.50 / 0.80, g10 blocks 0.50): retrieval, as in the baseline analysis.
 - C2 stays the weakest: C8 passes but C2 fails on g01–g04, g06, g11, g13 ("had it, didn't use
   it": D1/D2's target). C8 misses (retrieval): g08, g09, g10, g12, g14, g15.
 
