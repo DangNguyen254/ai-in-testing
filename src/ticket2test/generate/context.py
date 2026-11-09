@@ -125,6 +125,27 @@ def template_piece(
     )
 
 
+DATALESS_NOTE = (
+    "This class keeps no data entries (no data file in its area): the new test reads no data "
+    "either. Write its values in the code, call no helper that reads a data entry, and return "
+    "an empty `entries` list."
+)
+
+
+def dataless_template_piece(chunk: Chunk, scaffold: str | None = None) -> Piece:
+    """The template test and its class scaffold, for a class that keeps no data entries."""
+    body = ""
+    if scaffold:
+        body += (
+            "Module imports and class scaffold (copy unchanged; new class name):\n"
+            f"```python\n{scaffold}\n```\n"
+        )
+    body += f"```python\n{chunk.code}\n```\n{DATALESS_NOTE}"
+    return Piece(
+        f"Template test: {chunk.qualname} ({chunk.file_path})", body, chunk.id, required=True
+    )
+
+
 def chains_piece(
     catalog: SymbolCatalog, page_object_qualnames: list[str], limit: int = 80
 ) -> Piece | None:

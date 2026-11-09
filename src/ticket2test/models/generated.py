@@ -31,6 +31,7 @@ CTX_CONVENTION_KEYS = "convention_keys"  # sections (nearly) every entry of the 
 CTX_TICKET_ID = "ticket_id"
 CTX_INHERITED_IDS = "inherited_ids"  # ids of tests the template class inherits
 CTX_SIBLING_ENTRIES = "sibling_entries"  # test id -> entry: the class's entries "copy" reads
+CTX_NO_DATA = "no_data"  # the template keeps no data: the new test must read none either
 
 # How a draft becomes code (generate/reuse.py): already covered by an existing test, a new
 # case of an existing parametrized test, a new method in an existing class, or a new module.
@@ -164,6 +165,16 @@ class GenerationResponse(BaseModel):
             i for i in ids if uses.get(function_of(i)) and uses[function_of(i)].reads_data
             and i not in keys
         ]  # fmt: skip
+        if ctx.get(CTX_NO_DATA):
+            readers = sorted({f for f, use in uses.items() if use.reads_data})
+            if self.entries or readers:
+                raise ValueError(
+                    "the template's class keeps no data entries (its area has no data files): "
+                    "the new test must not read a data entry or call a helper that reads one, "
+                    "and entries must be empty"
+                    + (f"; these tests read data: {readers}" if readers else "")
+                )
+            return self
         if len(extra) == 1 and len(missing) == 1:  # one mislabelled entry: re-keyed in code
             keys = [missing[0] if k == extra[0] else k for k in keys]
             extra, missing = [], []
@@ -289,7 +300,7 @@ class GeneratedTest(BaseModel):
 
     code: str
     file_name: str  # where it would go in the target repo (repo-relative); never written there
-    data_file_name: str
+    data_file_name: str  # "" when the test comes without a data file (its class keeps none)
     data_entries: list[dict[str, Any]]  # each with its id field, in code order
     data_format: DataFormat  # how the data file is written
     test_ids: list[str]

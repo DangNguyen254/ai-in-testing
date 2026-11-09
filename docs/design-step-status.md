@@ -65,6 +65,14 @@ Fixed on the new machine (2026-11-05; not committed, the copy has no git history
   `.scratch/pre-c3/catalog.py`: if the baseline rescore differs from the table above, rescore
   again with it in place to tell a setup problem from this fix.
 
+Experiment 3c (2026-11-09, one run each, $0.08): g09 and g13 placed right (C1 yes; both
+missed in all 3 baseline runs); g08 failed: "no template test with a JSON data entry". Counts
+by `.scratch/pair_facts.py`: g08's area keeps no data at all (44 test files, none with a data
+file; the reference reads no data). Fixed, not yet measured: a class that keeps no data gives
+a template without an entry; the new test reads no data and comes without a data file (the
+validation sends back a test that reads data anyway); a method patch then changes only the
+code. Tests: `tests/test_dataless.py` on the stand-in's `TestExceptionsWidgets`.
+
 ## Next steps, in order
 
 1. **Run experiment 3c** (not run: the VM hung), about $0.10:

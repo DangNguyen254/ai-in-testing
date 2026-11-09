@@ -105,6 +105,8 @@ class Subject:
         if own is not None or self.index is None:
             return own
         name = self.generated.data_file_name
+        if not name:  # no data file
+            return None
         found = next(
             (c for c in self.index.chunks if c.data_file == name and c.data_defaults), None
         )

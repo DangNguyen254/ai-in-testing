@@ -547,10 +547,11 @@ def _drafts(
 def _keep(folder: Path, generated: Any, settings: Settings) -> None:
     (folder / Path(generated.file_name).parent).mkdir(parents=True, exist_ok=True)
     (folder / generated.file_name).write_text(generated.code, encoding="utf-8", newline="\n")
-    data = format_entries(
-        generated.data_entries, settings.data, settings.style.json_files, generated.data_format
-    )
-    (folder / generated.data_file_name).write_text(data, encoding="utf-8", newline="\n")
+    if generated.data_file_name:  # none for a test whose class keeps no data
+        data = format_entries(
+            generated.data_entries, settings.data, settings.style.json_files, generated.data_format
+        )
+        (folder / generated.data_file_name).write_text(data, encoding="utf-8", newline="\n")
     (folder / "generated.json").write_text(generated.model_dump_json(indent=2), encoding="utf-8")
 
 

@@ -639,8 +639,13 @@ def method_retrieval(
             for c in in_class.values()
             for key in list(c.data_entries)[:1]
         ][:1]
+    if not templates and in_class:  # the class keeps no data: its closest test, without entry
+        ranked = [h.chunk_id for h in retrieval.hits if h.chunk_id in in_class]
+        chunk_id = (ranked or list(in_class))[0]
+        why = f"a test of {class_name}, which keeps no data entries"
+        templates = [TemplateRef(chunk_id=chunk_id, entry_key=None, why=why)]
     if not templates:
-        raise PatchError(f"no test in {class_name} has a data entry to use as a template")
+        raise PatchError(f"{class_name} has no test to use as a template")
     rest = [t for t in retrieval.templates if t.chunk_id not in in_class]
     return retrieval.model_copy(update={"templates": [*templates, *rest]})
 
@@ -785,11 +790,12 @@ def method_patch(
     if clash:
         raise PatchError(f"entries already exist for {clash}; the new test needs another name")
     all_entries = [*entries, *ours]
-    after_data = _data_after(data_text, all_entries, ours, None, layout, settings)
-    patches = [
-        FilePatch(file_path, source, after_code),
-        FilePatch(data_name, data_text or "", after_data),
-    ]
+    patches = [FilePatch(file_path, source, after_code)]
+    if ours or data_text is not None:
+        after_data = _data_after(data_text, all_entries, ours, None, layout, settings)
+        patches.append(FilePatch(data_name, data_text or "", after_data))
+    else:  # no new entries and no data file (a class that keeps no data): none is created
+        data_name = ""
     return generated.model_copy(
         update={
             "code": after_code,
@@ -847,8 +853,12 @@ def validate_patch(
             "test_ids": static_ids(index, generated.file_name),
         }
     )
-    after_text = format_entries(
-        generated.data_entries, settings.data, settings.style.json_files, generated.data_format
+    after_text = (
+        format_entries(
+            generated.data_entries, settings.data, settings.style.json_files, generated.data_format
+        )
+        if generated.data_file_name
+        else None  # no data file before or after
     )
     old = validate_generated(
         before, index.catalog, settings, roots, draft, data_text, imports, index

@@ -22,6 +22,7 @@ from ticket2test.generate.context import (
     build_context,
     chains_piece,
     chunk_piece,
+    dataless_template_piece,
     template_piece,
 )
 from ticket2test.generate.conventions import Conventions, convention_sections, with_conventions
@@ -49,6 +50,7 @@ from ticket2test.models.generated import (
     CTX_EXPECTATIONS,
     CTX_ID_FIELD,
     CTX_INHERITED_IDS,
+    CTX_NO_DATA,
     CTX_PER_ENTRY_KEYS,
     CTX_SEED_SECTIONS,
     CTX_SIBLING_ENTRIES,
@@ -105,8 +107,8 @@ class GenerationSetup:
     request: LLMRequest
     validation_context: dict[str, Any]
     template_chunk: Chunk
-    entry_key: str
-    base_entry: dict[str, Any]
+    entry_key: str | None  # None: the template keeps no data, and neither does the new test
+    base_entry: dict[str, Any] | None
     layout: DataFormat
     context: BuiltContext
     prompt_version: str
@@ -125,14 +127,12 @@ def prepare_generation(
 ) -> GenerationSetup:
     gen, data = settings.generate, settings.data
     chunks = {c.id: c for c in index.chunks}
-    template_chunk, entry_key = _template(retrieval, chunks)
+    template_chunk, found_key = _template(retrieval, chunks)
     siblings = class_entries(template_chunk, index)
-    entry_chunk, entry_key = (
-        closest_entry(template_chunk, entry_key, draft, index)
-        if gen.base_entry_from_class
-        else (template_chunk, entry_key)
-    )
-    base_entry = entry_chunk.data_entries[entry_key]
+    entry_chunk, entry_key = template_chunk, found_key
+    if found_key is not None and gen.base_entry_from_class:
+        entry_chunk, entry_key = closest_entry(template_chunk, found_key, draft, index)
+    base_entry = entry_chunk.data_entries[entry_key] if entry_key is not None else None
     layout: DataFormat = template_chunk.data_format or data.format
 
     conventions_ = convention_sections(template_chunk.file_path, index, settings)
@@ -191,6 +191,7 @@ def prepare_generation(
                 i for c in _inherited_chunks(template_chunk, index) for i in c.test_ids
             ],
             CTX_SIBLING_ENTRIES: siblings,
+            CTX_NO_DATA: entry_key is None,
         },
         template_chunk=template_chunk,
         entry_key=entry_key,
@@ -244,10 +245,13 @@ def assemble(
     entries: list[dict[str, Any]] = []
     conventional: set[str] = set()  # convention sections the plans left out, added by code
     output_redactions = code_scrub.redacted
+    base, base_id = setup.base_entry, setup.entry_key
     for plan in sorted(plans, key=lambda p: order.get(p.test_id, len(order))):
+        if base is None or base_id is None:  # no data template: the plans are empty (checked)
+            break
         entry = build_entry(
-            setup.base_entry,
-            setup.entry_key,
+            base,
+            base_id,
             plan.test_id,
             plan.copy_sections,
             plan.change_tuples(),
@@ -256,7 +260,7 @@ def assemble(
             test_prefix=settings.index.test_function_prefix,
             siblings=setup.siblings,
         )
-        entry, copied = with_conventions(entry, setup.base_entry, setup.conventions)
+        entry, copied = with_conventions(entry, base, setup.conventions)
         conventional.update(copied)
         entry, removed = strip_unread(entry, code, setup)
         fixes += removed
@@ -286,7 +290,14 @@ def assemble(
         )
     data_file_name = module_data_path(file_name, settings.index)
     tpl = setup.template_chunk
-    if order and layout_of(tpl.file_path, tpl.symbol_name, tpl.data_file, settings.index) == (
+    if setup.entry_key is None:  # the class keeps no data: the test comes without a data file
+        data_file_name = ""
+        checklist.append(
+            f"No data template: {tpl.class_name} keeps no data entries (its area has no data "
+            "files), so the test reads none and comes without a data file. If it needs data, "
+            "this area's tests set it up in code: confirm how."
+        )
+    elif order and layout_of(tpl.file_path, tpl.symbol_name, tpl.data_file, settings.index) == (
         "function"
     ):  # the area keeps one data file per test: name it after the (first) test
         functions = list(dict.fromkeys(function_of(i) for i in order))
@@ -303,8 +314,12 @@ def assemble(
         data_entries=entries,
         data_format=setup.layout,
         test_ids=[*order, *(i for i in inherited_ids if i not in order)],
-        template_entry_ref=TemplateEntryRef(
-            chunk_id=(setup.entry_chunk or setup.template_chunk).id, entry_key=setup.entry_key
+        template_entry_ref=(
+            TemplateEntryRef(
+                chunk_id=(setup.entry_chunk or setup.template_chunk).id, entry_key=setup.entry_key
+            )
+            if setup.entry_key is not None
+            else None  # no data template
         ),
         ticket_id=setup.draft.ticket_id,
         draft_ref=setup.draft.id,
@@ -805,35 +820,40 @@ def build_generation_context(
     index: IndexData,
     settings: Settings,
     template_chunk: Chunk,
-    entry_key: str,
+    entry_key: str | None,
     conventions: str | None = None,
     entry_chunk: Chunk | None = None,
 ) -> BuiltContext:
+    """``entry_key`` None: the template keeps no data, so no base entry, entry list or known
+    values are shown, and the template piece says the new test reads no data either."""
     chunks = {c.id: c for c in index.chunks}
     catalog = index.catalog
     pieces: list[Piece] = []
     if conventions:
         pieces.append(Piece("Team conventions for tests", conventions, required=True))
-    base = (entry_chunk or template_chunk).data_entries[entry_key]
-    entry_json = format_json(base, settings.style.json_files)
-    pieces.append(
-        template_piece(
-            template_chunk,
-            entry_key,
-            entry_json,
-            class_scaffold(template_chunk, index, settings.generate.scaffold_methods),
-            entry_chunk=entry_chunk,
+    scaffold = class_scaffold(template_chunk, index, settings.generate.scaffold_methods)
+    base_entry: dict[str, Any] | None = None
+    if entry_key is None:
+        pieces.append(dataless_template_piece(template_chunk, scaffold))
+    else:
+        base_entry = (entry_chunk or template_chunk).data_entries[entry_key]
+        entry_json = format_json(base_entry, settings.style.json_files)
+        pieces.append(
+            template_piece(template_chunk, entry_key, entry_json, scaffold, entry_chunk=entry_chunk)
         )
-    )
     others = (
         entries_piece(class_entries(template_chunk, index), entry_key, settings.data.id_field)
-        if settings.generate.context_entry_list
+        if settings.generate.context_entry_list and entry_key is not None
         else None
     )
     if others is not None:  # blocks the base lacks can be copied from them ("copy" changes)
         pieces.append(others)
 
-    known = entry_values(template_chunk, base, index, settings)
+    known = (
+        entry_values(template_chunk, base_entry, index, settings)
+        if base_entry is not None
+        else None
+    )
     if known:  # the suite's own values, so a changed field gets one of them, not a guess
         pieces.append(
             Piece(
@@ -894,14 +914,23 @@ def build_generation_context(
     return build_context(pieces, settings.context.max_tokens, settings.context.chars_per_token)
 
 
-def _template(retrieval: RetrievalResult, chunks: dict[str, Chunk]) -> tuple[Chunk, str]:
+def _template(retrieval: RetrievalResult, chunks: dict[str, Chunk]) -> tuple[Chunk, str | None]:
+    """The template test and the key of its entry. Without any test that has an entry (an
+    area that keeps no data files), a test without one: a template given without an entry
+    key (a class that keeps no data), else the closest retrieved test; its key is None and the
+    new test reads no data."""
     for ref in retrieval.templates:
         chunk = chunks.get(ref.chunk_id)
-        if chunk is not None and ref.entry_key in chunk.data_entries:
+        if chunk is not None and ref.entry_key is not None and ref.entry_key in chunk.data_entries:
             return chunk, ref.entry_key
+    dataless = [r.chunk_id for r in retrieval.templates if r.entry_key is None]
+    hits = [h.chunk_id for h in retrieval.hits if h.kind == "test"]
+    for chunk_id in [*dataless, *hits]:
+        chunk = chunks.get(chunk_id)
+        if chunk is not None and chunk.kind == "test":
+            return chunk, None
     raise GenerationError(
-        "no template test with a JSON data entry was retrieved; run `retrieve` against an "
-        "indexed suite that has data files"
+        "no template test was retrieved (none with a JSON data entry, and no test without one)"
     )
 
 

@@ -33,12 +33,13 @@ class RetrievedChunk(BaseModel):
 
 
 class TemplateRef(BaseModel):
-    """An existing test whose JSON entry can serve as the template for a new entry."""
+    """An existing test whose JSON entry can serve as the template for a new entry. Without an
+    entry key, a test of a class that keeps no data: the template for a test that reads none."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     chunk_id: str
-    entry_key: str
+    entry_key: str | None = None
     why: str
 
 

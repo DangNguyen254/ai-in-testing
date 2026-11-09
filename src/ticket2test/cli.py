@@ -792,9 +792,12 @@ def generate(
         data_path = folder / generated.data_file_name
     code_path.parent.mkdir(parents=True, exist_ok=True)
     code_path.write_text(generated.code, encoding="utf-8", newline="\n")
-    data_path.write_text(data_text, encoding="utf-8", newline="\n")
+    written.append(code_path)
+    if generated.data_file_name:  # none for a test whose class keeps no data
+        data_path.write_text(data_text, encoding="utf-8", newline="\n")
+        written.append(data_path)
     (folder / "generated.json").write_text(generated.model_dump_json(indent=2), encoding="utf-8")
-    written += [code_path, data_path, folder / "generated.json"]
+    written.append(folder / "generated.json")
     if outcome.missing:
         gaps_path = folder / "missing_pieces.json"
         gaps_path.write_text(
@@ -892,7 +895,11 @@ def validate(
             report = validate_patch(generated, index, settings, repo)
         else:
             data_path = path.parent / generated.data_file_name
-            data_text = data_path.read_text(encoding="utf-8") if data_path.is_file() else None
+            data_text = (
+                data_path.read_text(encoding="utf-8")
+                if generated.data_file_name and data_path.is_file()
+                else None
+            )
             report = validate_generated(
                 generated,
                 index.catalog,

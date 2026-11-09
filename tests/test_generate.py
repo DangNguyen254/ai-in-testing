@@ -441,7 +441,9 @@ def test_secrets_in_the_output_are_scrubbed(
 def test_no_template_is_a_clean_error(
     index: IndexData, retrieval: RetrievalResult, tmp_path: Path
 ) -> None:
-    empty = retrieval.model_copy(update={"templates": []})
+    # Without a template that has an entry, a retrieved test serves without one (a class that
+    # keeps no data, tests/test_dataless.py); with no test retrieved at all, it is an error.
+    empty = retrieval.model_copy(update={"templates": [], "hits": []})
     with pytest.raises(GenerationError, match="no template"):
         _generate(index, empty, tmp_path, FakeLLMClient([_reply()]))
 
