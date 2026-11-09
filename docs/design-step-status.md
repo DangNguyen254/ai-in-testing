@@ -120,24 +120,34 @@ compare pass@1. Every ticket gave the same C1 in both runs.
 - C2 stays the weakest: C8 passes but C2 fails on g01–g04, g06, g11, g13 ("had it, didn't use
   it": D1/D2's target). C8 misses (retrieval): g08, g09, g10, g12, g14, g15.
 
-## Next steps, in order
+## Next steps, in order (2026-11-09, end of day; all pushed up to 68e4545)
 
-1. **Run experiment 3c** (not run: the VM hung), about $0.10:
-   `uv run ticket2test golden <private>/golden.json --pairs g08,g09,g13 --repeat 1 --label exp3c-template-class`
-   - g08: if C1 says "decided right, output is module …", read its reasons (masked) for why the
-     method patch wasn't possible (`method not possible: …`), and fix that.
-   - g09: one of the two tickets where a new file is right; it must keep C1 with the switch on
-     (g10 kept it in experiment 3).
-2. If placement improves, **confirm on all 15 with `--repeat 2`** (every area with gated classes
-   is affected). Compare with baseline-0.
-3. g05: "template in another class": retrieval chose the wrong class; a retrieval problem, not
-   placement. g10: right placement but C2 0.00 / C3 0.17 with C8 0.80/0.44: the context lacked the
-   reference's helpers and data blocks (retrieval).
-4. Later, from the baseline analysis: the validator hole for invented members; class choice by
-   name match (D1/D6) if the switches don't cover it; dropped steps; g08's missing data template;
-   g09's area choice.
-5. If the word-overlap class match stays the weak spot: replace it with the retrieval ranking, or
-   a bounded model choice among the area's classes (a new LLM step: ask the human first).
+1. **baseline-1**: all 15 × 2 with every fix in (about $1), the new yardstick:
+   `uv run ticket2test golden <private>/golden.json --repeat 2 --label baseline-1`
+2. **g07, "not a candidate"** (free): placement scores only classes whose tests are of the
+   draft's kind, and a test counts as UI only when a `self.<chain>` starts at a chain root
+   (`index.chain_roots`). Suspect: the reference class's tests are classified as the other
+   kind (they reach pages another way), and `kind_fallback` doesn't fire because the area has
+   classes of the draft's kind. (An empty class is ruled out: it would read "not a new file
+   next to it".) Check: `uv run python .scratch/class_kinds.py <golden.json> <report.json> g07`.
+   If confirmed: classify a test as UI when it reaches a page object by any chain (the
+   catalog already resolves them), or score every class and let kind only break ties.
+3. **Template in another class** (g01, g04, g05, g06, g15): with `template_class_wins` the class
+   follows the template, and the template is the first test with data ranked by (same
+   component marker, same shape, retrieval score) whose class is in the area. First check, per
+   run: were the reference class's tests in the context at all, and does the chosen template
+   share its component marker and kind:
+   `uv run python .scratch/template_facts.py <golden.json> <report.json> g01 g04 g05 g06 g15`.
+   - not in the context: a recall problem (query, glossary entries for these features);
+   - in the context but ranked below a sibling: options, cheapest first:
+     a. rank classes, not single tests: sum the retrieval scores of each class's tests in the
+        area and take the template from the best class (deterministic, a switch);
+     b. glossary entries that name the feature's class (a human edit; `backed` already lets
+        the template's class win when the ticket names its feature);
+     c. a bounded model choice among the top few classes (a new LLM step: ask the human).
+4. **C2 "had it, didn't use it"** (g01–g04, g06, g11, g13): D1/D2 (step plan, contract cards).
+5. Later: the validator hole for invented members; dropped steps; C8 retrieval misses (g08,
+   g09, g10, g12, g14, g15).
 
 ## Reading results without leaking names
 
