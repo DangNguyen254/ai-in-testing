@@ -145,6 +145,19 @@ compare pass@1. Every ticket gave the same C1 in both runs.
      b. glossary entries that name the feature's class (a human edit; `backed` already lets
         the template's class win when the ticket names its feature);
      c. a bounded model choice among the top few classes (a new LLM step: ask the human).
+   **Read (2026-11-09, on confirm-placement's runs):**
+   - g07: the reference class is an API class (23 tests, all API, none reaching a page
+     object another way); the draft said UI in both runs. Kind is a hard filter and the area
+     has UI classes (13 of 44), so `kind_fallback` doesn't fire. Cause: the filter trusts the
+     draft's guess. Fix: kind as a preference (other-kind classes scored, with a factor).
+   - Recall (the reference class's tests never in the context): g01 (template from another
+     file and component), g05 (same file, other component), g06 (its only remaining test has
+     no data, so it can't be a template anyway). Retrieval work, not placement.
+   - Ranking (in the context, lost): g04 (reference class at context positions 2–3, but 1 of
+     its 179 tests has data; templates need data, so a data-keeping class in the same file
+     wins), g15 (positions 5–7 of 7; the template from another file and component). Fix:
+     choose the class from its tests' retrieval ranks (option a), then its template, with
+     the no-data path when the class keeps little data.
 4. **C2 "had it, didn't use it"** (g01–g04, g06, g11, g13): D1/D2 (step plan, contract cards).
 5. Later: the validator hole for invented members; dropped steps; C8 retrieval misses (g08,
    g09, g10, g12, g14, g15).
