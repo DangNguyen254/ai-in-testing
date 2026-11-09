@@ -76,6 +76,38 @@ Rerun of g08 with the fix (`exp3c-dataless`, one run, $0.02): generated for the 
 with the switches on, placed right (C1 yes), C3/C4/C5/C7 pass; C2 0.75 with C8 helpers 0.75:
 the one helper it missed was not in the context (retrieval).
 
+## Confirm-placement (all 15 tickets, 2 runs each, all switches on, C3 and no-data fixes)
+
+| Criterion | baseline-0 pass@1 | now pass@1 | now pass^k |
+|---|---|---|---|
+| C1 placement | 38% | **60%** | 60% |
+| C2 helpers | 11% | 7% | 7% |
+| C3 data blocks | 36% | 33% | 33% |
+| C4 no made-up values | 80% | 87% | 87% |
+| C5 case count | 82% | 93% | 93% |
+| C7 validators | 82% | **67%** | 67% |
+| C8 context recall | 62% | 57% | 53% |
+
+97 LLM calls, $0.93 (label `confirm-placement`). pass^k is over 2 runs, baseline-0's over 3:
+compare pass@1. Every ticket gave the same C1 in both runs.
+- C1: placed right on 9 of 15 (g02, g03, g08–g14). New since baseline: g08, g09, g13, g14.
+  The six misses: five are "template in another class" (g01, g04 by 0.31 vs 0.32, g05, g06,
+  g15): with `template_class_wins` placement follows the template, so these are template choice
+  (retrieval), not the class score. g07 is "not a candidate" even with `classes_from_domain`:
+  not yet explained.
+- C7 fell (g05, g06, g07, g09, g10 fail in both runs; read with `.scratch/c7_checks.py`, check
+  ids and message kinds only):
+  - g05, g06, g07 (all method patches into a class): one `ids` error from the first attempt to
+    the last, "orphan entries" (g05, g07) and "recorded ids differ" (g06). Our bug: patch
+    validation drops findings the unpatched file already had, matching them by message, and
+    both messages listed all of the file's ids, which the patch changes. A stale entry already
+    in the class's data file became the patch's own error. Fixed: one finding per stale entry,
+    the recorded-ids message gives only the differences, and findings match by test too
+    (`test_a_problem_the_file_already_had_is_not_reported_as_new`). Not yet re-measured.
+  - g09, g10 (new modules): one "undefined name" left after 3 repairs. Not yet read.
+- C2 stays the weakest: C8 passes but C2 fails on g01–g04, g06, g11, g13 ("had it, didn't use
+  it": D1/D2's target). C8 misses (retrieval): g08, g09, g10, g12, g14, g15.
+
 ## Next steps, in order
 
 1. **Run experiment 3c** (not run: the VM hung), about $0.10:
