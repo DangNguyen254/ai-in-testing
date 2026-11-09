@@ -321,7 +321,7 @@ table below to change **one or two keys**, then go back to C. Count rounds.
 | `style` | `not formatted to the suite's style` | `style.python.indent_width`, `line_length`, `quote_style`, `first_party` |
 | `style` | `type annotations are not used` | `style.python.strip_annotations: false` |
 | `data_file` | `not formatted to the suite's JSON style` | `style.json.indent`, `key_separator`, `final_newline` |
-| `ids` | `entries for ids the code doesn't produce` | `data.id_field`, `data.format` |
+| `ids` | `an entry for an id the code doesn't produce` | `data.id_field`, `data.format` |
 | `ids` | `the test reads its data entry but has none` | `index.data_file_suffix`, `data.access` |
 | `data_keys` | `custom key 'k' is never read` | add framework-applied keys to `data.seed_sections` or `data.per_entry_keys` |
 | `data_keys` | `'targets' is only read by self.verify_targets()...` | `data.expectation_sections` (helper names) |

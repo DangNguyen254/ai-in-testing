@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from typing import Any
 
 import pytest
@@ -663,3 +664,41 @@ def test_the_coverage_check_stops_a_covered_draft_and_steers_a_partial_one(
         generate_reusing(draft, retrieval, index, on, fake, "fake", "m", STANDIN)
     context = fake.requests[1].messages[-1].content
     assert "Already partly covered" in context and "the encrypted archive case" in context
+
+
+def test_a_problem_the_file_already_had_is_not_reported_as_new(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> None:
+    """A stale entry in the class's data file (its test long removed) was reported as the
+    patch's own error, because the message listed the file's ids, which the patch changes:
+    three repairs could not fix it (real golden runs)."""
+    root = tmp_path_factory.mktemp("repo") / "standin"
+    shutil.copytree(STANDIN, root)
+    path = "tests/files/test_files_archives.py"
+    data = root / path.replace(".py", ".json")
+    entries = json.loads(data.read_text(encoding="utf-8"))
+    data.write_text(
+        json.dumps([*entries, {"test_id": "test_files_archive_removed_long_ago"}], indent=3) + "\n",
+        encoding="utf-8",
+    )
+    settings = Settings.model_validate(
+        {"paths": {"cache_dir": str(tmp_path_factory.mktemp("cache"))}}
+    )
+    index, _, _ = update_index(root, settings)
+    base = next(
+        e
+        for c in index.chunks
+        if c.symbol_name == "test_files_archive_view_members"
+        for e in c.data_entries.values()
+    )
+    kept = {k: v for k, v in base.items() if k not in ("decision", "targets")}
+    entry = {**kept, "test_id": "test_files_archive_encrypted_members", "members": ["a.txt"]}
+    generated = method_patch(
+        _generated(GENERATED_CLASS, [entry]),
+        _decision("method", "TestFilesArchives", path),
+        index,
+        settings,
+        root,
+    )
+    report = validate_patch(generated, index, settings, root)
+    assert report.errors == [], [f.render() for f in report.errors]

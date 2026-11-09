@@ -384,8 +384,10 @@ def test_entries_keyed_in_the_wrong_stacked_order_are_caught(setup: Any) -> None
         for p in (1, 2)
     ]  # top decorator first: the wrong order
     messages = _messages(_validate(setup, code=STACKED, entries=wrong), "ids")
-    assert any("entries for ids the code doesn't produce" in m for m in messages)
-    missing = [f for f in _validate(setup, code=STACKED, entries=wrong).errors if f.test]
+    assert any("an entry for an id the code doesn't produce" in m for m in messages)
+    missing = [
+        f for f in _validate(setup, code=STACKED, entries=wrong).errors if "has none" in f.message
+    ]
     assert {f.test for f in missing} == {
         "test_rules_list_filter_paged[1-allow]",
         "test_rules_list_filter_paged[2-allow]",

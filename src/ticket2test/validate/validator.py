@@ -973,16 +973,22 @@ def check_ids_and_entries(s: Subject) -> Iterator[Finding]:
     )
     if duplicates:
         yield _f("ids", f"duplicate entries: {duplicates}")
-    orphans = [k for k in keys if isinstance(k, str) and k not in ids]
-    if orphans:
-        yield _f("ids", f"entries for ids the code doesn't produce: {orphans} (computed: {ids})")
+    # One finding per entry, naming only that entry: a patch compares findings with the
+    # unpatched file's, so a message must not change when the file gains a test.
+    for k in dict.fromkeys(k for k in keys if isinstance(k, str) and k not in ids):
+        yield _f("ids", f"an entry for an id the code doesn't produce: {k!r}", test=k)
     uses = s.uses
     for test_id in ids:
         use = uses.get(function_of(test_id))
         if use and use.reads_data and test_id not in keys:
             yield _f("ids", "the test reads its data entry but has none", test=test_id)
+    recorded = set(s.generated.test_ids)
     if sorted(ids) != sorted(s.generated.test_ids):
-        yield _f("ids", f"recorded test ids {s.generated.test_ids} differ from the code's {ids}")
+        yield _f(
+            "ids",
+            "recorded test ids differ from the code's: recorded only "
+            f"{sorted(recorded - set(ids))}, in the code only {sorted(set(ids) - recorded)}",
+        )
 
 
 def repo_testcases(index: IndexData | None) -> list[str]:

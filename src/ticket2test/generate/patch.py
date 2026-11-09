@@ -866,10 +866,10 @@ def validate_patch(
     new = validate_generated(
         generated, index.catalog, settings, roots, draft, after_text, imports, index
     )
-    known = Counter((f.check, f.message) for f in old.findings)
+    known = Counter((f.check, f.test, f.message) for f in old.findings)
     fresh: list[Finding] = []
     for finding in new.findings:
-        key = (finding.check, finding.message)
+        key = (finding.check, finding.test, finding.message)
         if known[key]:
             known[key] -= 1
         else:
