@@ -72,6 +72,9 @@ file; the reference reads no data). Fixed, not yet measured: a class that keeps 
 a template without an entry; the new test reads no data and comes without a data file (the
 validation sends back a test that reads data anyway); a method patch then changes only the
 code. Tests: `tests/test_dataless.py` on the stand-in's `TestExceptionsWidgets`.
+Rerun of g08 with the fix (`exp3c-dataless`, one run, $0.02): generated for the first time
+with the switches on, placed right (C1 yes), C3/C4/C5/C7 pass; C2 0.75 with C8 helpers 0.75:
+the one helper it missed was not in the context (retrieval).
 
 ## Next steps, in order
 
