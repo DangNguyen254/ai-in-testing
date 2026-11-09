@@ -19,7 +19,7 @@ warnings.filterwarnings("ignore", category=SyntaxWarning)
 
 app = typer.Typer(
     name="ticket2test",
-    help="Turn a bug ticket into draft test cases and runnable test code for QE review.",
+    help="Turn a ticket into draft test cases and runnable test code for QE review.",
     no_args_is_help=True,
     add_completion=False,
 )

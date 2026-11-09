@@ -16,7 +16,7 @@ Paste it as is, after naming the run folder in the first line.
 ```text
 RUN = /root/work/t2t-private/output/golden/<the run's folder>
 
-You are reviewing the output of a tool that writes pytest tests from bug tickets. For each
+You are reviewing the output of a tool that writes pytest tests from tickets. For each
 ticket, a person already wrote the real test (the reference). The tool ran without seeing it,
 several times per ticket. Your job is to read what the tool wrote next to the reference and say,
 precisely and in plain words, what is wrong. You change no code and fix nothing; you write notes.

@@ -24,7 +24,7 @@ Rules:
 
 ## Part 1. What the tool is
 
-ticket2test turns a **bug ticket** into a **draft test** for a human Quality Engineer (QE) to review: test code plus its JSON test data, written in the target suite's own style and reusing its own base classes, page objects and helpers.
+ticket2test turns a **ticket** (a bug, a feature, a change) into a **draft test** for a human Quality Engineer (QE) to review: test code plus its JSON test data, written in the target suite's own style and reusing its own base classes, page objects and helpers.
 
 - **Input:** one ticket (from a Jira JSON export or GitHub issues): title, description, steps to reproduce, expected and actual behaviour, components, labels, comments.
 - **Output**, one of:

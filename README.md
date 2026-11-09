@@ -1,6 +1,6 @@
 # ticket2test
 
-Turns a bug ticket into **structured draft test cases**, then into **runnable test code**, for a
+Turns a ticket (a bug, a feature, a change) into **structured draft test cases**, then into **runnable test code**, for a
 human QE to review. Generic and company-agnostic: ticket source, codebase, LLM endpoint, and
 conventions all sit behind adapters and config. Built and evaluated on public data only.
 
@@ -348,11 +348,12 @@ settings at import (`STANDIN_RUNTIME_ROOT`; the sandbox uses `standin/sandbox/st
 
 ## Running it inside a container
 
-When the target suite lives in a container, copy this project's last commit into it and
-run the tool there (the copy replaces the previous one; only committed files go):
+When the target suite lives in a container, either mount this repo into it read-only
+(`docs/container-setup.md`), or copy this project's last commit into it and run the tool there
+(the copy replaces the previous one; only committed files go):
 
 ```bash
-scripts	o-container.cmd <container>                      # Windows, from this folder
+scripts\to-container.cmd <container>                      # Windows, from this folder
 python scripts/to_container.py <container> --target /root/work/ai-prj
 ```
 

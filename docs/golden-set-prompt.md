@@ -11,7 +11,7 @@ nothing in the suite.
 ---
 
 ```text
-You are building an evaluation set for a tool that turns bug tickets into tests for a large
+You are building an evaluation set for a tool that turns tickets into tests for a large
 pytest suite. Each entry pairs a real ticket with the test a person actually wrote for it (the
 reference). The tool will later be run on each ticket with the reference hidden and scored
 against it, so a wrong pair makes every later score wrong. Be strict; fewer good pairs beat many

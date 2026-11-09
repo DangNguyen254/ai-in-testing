@@ -25,7 +25,7 @@ class Comment(BaseModel):
 
 
 class Ticket(BaseModel):
-    """A source-independent bug ticket.
+    """A source-independent ticket (a bug, a feature, a change).
 
     Fields the source did not provide are ``None`` or empty lists, never invented text.
     """

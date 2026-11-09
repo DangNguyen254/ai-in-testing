@@ -5,7 +5,7 @@ research and design step; what it found is in `docs/trial-findings.md`.*
 
 ## The idea in one paragraph
 
-When a bug is reported, someone on the QE team has to work out how to test it. They read the ticket, find the right place in a large test suite, copy the setup from a similar test, write the new test and its test data, and make sure it fits. This project does the first draft of that work. It reads a bug ticket and hands a person a ready-to-review test and its test data, written in the suite's own style and reusing its own classes, page objects and helpers. A human always reviews the result and runs it. The tool never runs anything against real systems and never changes the real test suite.
+When a ticket comes in (a bug, a new feature, a change), someone on the QE team has to work out how to test it. They read the ticket, find the right place in a large test suite, copy the setup from a similar test, write the new test and its test data, and make sure it fits. This project does the first draft of that work. It reads a ticket and hands a person a ready-to-review test and its test data, written in the suite's own style and reusing its own classes, page objects and helpers. A human always reviews the result and runs it. The tool never runs anything against real systems and never changes the real test suite.
 
 ## Why it is built the way it is
 
@@ -23,7 +23,7 @@ The backbone is a **fixed workflow**: the same steps in the same order every tim
 
 | Input | What it is | Where it comes from | Needed? |
 |---|---|---|---|
-| **Ticket** | A bug report: id, title, description, steps to reproduce, expected and actual behaviour, components, labels, comments, links. | A Jira export (JSON in Jira's REST shape), a GitHub issue, or a Markdown file filled in by hand from the tracker (`new-ticket` writes the template) while its API can't be used. Custom Jira fields are mapped in config. | Yes |
+| **Ticket** | A bug, feature or change: id, title, description, steps to reproduce, expected and actual behaviour, components, labels, comments, links. | A Jira export (JSON in Jira's REST shape), a GitHub issue, or a Markdown file filled in by hand from the tracker (`new-ticket` writes the template) while its API can't be used. Custom Jira fields are mapped in config. | Yes |
 | **Target repo** | A local, read-only checkout of the test suite (Python, pytest). Its git history is read only for evaluation. | The team's repository. | Yes |
 | **Config** | Every setting and limit: how the suite is shaped (data files, markers, style, base classes, page-object root, domains), which checks apply, budgets, the LLM, the sandbox. | `config.yaml` (defaults), a private override file (`T2T_CONFIG`), environment variables (`T2T_<SECTION>__<KEY>`). Secrets only in environment variables. | Yes |
 | **LLM access** | One model provider behind one interface: the Claude Code CLI (default), the Anthropic API, or Gemini. | The approved endpoint. | Yes |
