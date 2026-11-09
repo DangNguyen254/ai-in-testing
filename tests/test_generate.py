@@ -816,6 +816,45 @@ def test_a_scaffold_brings_the_classs_own_helpers_its_setup_and_the_new_tests_ne
     assert "def _check_row(" in called and "def _unused(" not in called
 
 
+def test_a_base_class_defined_in_the_templates_file_comes_with_the_new_module(
+    tmp_path: Path,
+) -> None:
+    """Found in golden runs: the template's class inherits a class its own file defines; a new
+    module copied the class line, had no import for that base, and repair never found one. The
+    base comes whole (importing it from a test module would collect its tests twice)."""
+    from types import SimpleNamespace
+
+    from ticket2test.generate.generator import class_scaffold, with_template_shell
+    from ticket2test.validate.validator import check_names
+
+    repo = tmp_path / "repo"
+    (repo / "tests").mkdir(parents=True)
+    (repo / "tests" / "test_a.py").write_text(
+        "from framework.base import Base\n\n\nclass Root(Base):\n    kind = 1\n\n\n"
+        "class Shared(Root):\n    def setup(self):\n        self.ready = True\n\n\n"
+        "class Other(Base):\n    pass\n\n\n"
+        "class TestA(Shared):\n    def test_one(self):\n        pass\n",
+        encoding="utf-8",
+    )
+    settings = _settings(tmp_path)
+    index, _, _ = update_index(repo, settings)
+    chunk = next(c for c in index.chunks if c.symbol_name == "test_one")
+    shell = class_scaffold(chunk, index, ["setup"]) or ""
+    assert shell.index("class Root(") < shell.index("class Shared(") < shell.index("class TestA(")
+    assert "class Other(" not in shell  # not a base of the template's class
+
+    code = "class TestB(Shared):\n    def test_two(self):\n        pass\n"
+    setup = SimpleNamespace(settings=settings, template_chunk=chunk, index=index)
+    result, note, _ = with_template_shell(code, setup)  # type: ignore[arg-type]
+    assert "class Shared(Root):" in result and "class Root(Base):" in result
+    assert "class TestB(Shared):" in result and "the base class(es) Root, Shared" in note
+    import ast
+
+    subject = SimpleNamespace(tree=ast.parse(result), catalog=index.catalog, settings=settings)
+    subject.module, subject.code = "tests.test_b", result
+    assert [f.message for f in check_names(subject)] == []  # type: ignore[arg-type]
+
+
 def test_an_expected_backend_result_built_in_code_is_flagged(
     index: IndexData, tmp_path: Path
 ) -> None:

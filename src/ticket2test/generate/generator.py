@@ -406,7 +406,9 @@ def with_template_shell(code: str, setup: GenerationSetup) -> tuple[str, str, li
         shell_tree = ast.parse(shell)
     except SyntaxError:
         return code, "", []
-    template = next(n for n in shell_tree.body if isinstance(n, ast.ClassDef))
+    template = next(
+        n for n in shell_tree.body if isinstance(n, ast.ClassDef) and n.name == chunk.class_name
+    )
 
     def name_of(node: ast.expr) -> str:
         return ast.unparse(node.func if isinstance(node, ast.Call) else node)
@@ -427,7 +429,12 @@ def with_template_shell(code: str, setup: GenerationSetup) -> tuple[str, str, li
     doc = ast.get_docstring(tree, clean=False)
     if doc is not None:
         rebuilt = f"{ast.get_source_segment(code, tree.body[0])}\n\n{rebuilt}"
-    copied = sorted(_methods_in(shell) - set(settings.generate.scaffold_methods) - defined)
+    copied = sorted(
+        _methods_in(ast.get_source_segment(shell, template) or "")
+        - set(settings.generate.scaffold_methods)
+        - defined
+    )
+    local = [n.name for n in shell_tree.body if isinstance(n, ast.ClassDef) and n is not template]
     try:
         spliced, _added = splice_methods(rebuilt + "\n", generated.name, code, settings)
         if bare:
@@ -443,6 +450,8 @@ def with_template_shell(code: str, setup: GenerationSetup) -> tuple[str, str, li
     note = f"class shell (imports, decorators, base, setup) from {chunk.class_name}"
     if copied:
         note += f", with its own methods {', '.join(copied)}"
+    if local:
+        note += f", and the base class(es) {', '.join(local)} copied from its file"
     return result, note, copied
 
 
@@ -751,7 +760,9 @@ def class_scaffold(
     """The template module's imports, its class decorators and class line, and the class's
     setup/teardown methods (``methods``), as written. With them come the class's own methods
     they call (``self.<name>``, also through each other), and those named in ``also``: a new
-    class copied from this one doesn't inherit it, so its own helpers would be missing."""
+    class copied from this one doesn't inherit it, so its own helpers would be missing. A base
+    class defined in the template's own file comes whole, before the class: a new module has
+    no import for it, and importing it from a test module would collect its tests twice."""
     record = index.files.get(chunk.file_path)
     if record is None or record.info is None or chunk.class_name is None:
         return None
@@ -761,6 +772,7 @@ def class_scaffold(
     bases = f"({', '.join(cls.bases)})" if cls.bases else ""
     header = [*(f"@{d}" for d in cls.decorators), f"class {cls.name}{bases}:"]
     imports = [*record.info.imports, ""] if record.info.imports else []
+    imports += [f"{c.code.rstrip()}\n\n" for c in local_bases(cls, record.info.classes)]
     names = class_own_helpers(cls, set(methods or []) | (also or set()), test_prefix)
     picked = [m for m in cls.methods if m.name in names]  # in the class's own order
     body = ["\n\n".join(_as_in_class(m.code, cls.code) for m in picked)] if picked else []
@@ -768,6 +780,27 @@ def class_scaffold(
 
 
 _SELF_NAME = re.compile(r"\bself\.(\w+)")
+
+
+def local_bases(cls: ClassInfo, classes: list[ClassInfo]) -> list[ClassInfo]:
+    """The classes of the same file that ``cls`` inherits (their own such bases first), in an
+    order where each comes after its bases. Bounded by the file's class count."""
+    own = {c.name: c for c in classes}
+    found: list[ClassInfo] = []
+
+    def visit(entry: ClassInfo, depth: int) -> None:
+        if depth > len(own):
+            return
+        for base in entry.bases:
+            local = own.get(base)
+            if local is None or local is cls or local in found:
+                continue
+            visit(local, depth + 1)
+            if local not in found:
+                found.append(local)
+
+    visit(cls, 0)
+    return found
 
 
 def _methods_in(source: str) -> set[str]:
