@@ -301,8 +301,32 @@ def test_parse_errors_are_logged_and_skipped(
     }
     assert "does not parse as Python 3" in reasons["framework/broken.py"]
     assert "UTF-8" in reasons["framework/latin1.py"]
-    assert "broken.py" in caplog.text
+    # one summary line per build, not one per file (a golden run indexes a copy per ticket)
+    warnings = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+    assert warnings == [
+        "Index: 3 file(s) skipped (e.g. not Python 3), 0 data file(s) with entries without a "
+        "unique 'test_id' (`ticket2test index` lists them)"
+    ]
     assert any(c.kind == "test" for c in data.chunks)  # everything else still indexed
+
+
+def test_data_entries_without_an_id_are_counted_not_logged_per_file(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    repo, settings = _copy_standin(tmp_path), _settings(tmp_path)
+    data_file = repo / "tests" / "profiles" / "test_profiles.json"
+    data_file.write_text(
+        data_file.read_text(encoding="utf-8").rstrip().removesuffix("]") + ',{"name": "no id"}]',
+        encoding="utf-8",
+    )
+    with caplog.at_level(logging.WARNING):
+        _, stats, _ = update_index(repo, settings)
+    assert stats.unkeyed == {"tests/profiles/test_profiles.json": 1}
+    assert "test_profiles.json" not in caplog.text and "1 data file(s)" in caplog.text
+    result = CliRunner().invoke(
+        app, ["index", str(repo)], env={"T2T_PATHS__CACHE_DIR": str(tmp_path / "cache")}
+    )
+    assert "tests/profiles/test_profiles.json: 1 entries without a unique id" in result.output
 
 
 def test_missing_data_file_is_not_fatal(tmp_path: Path) -> None:

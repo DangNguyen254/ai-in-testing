@@ -437,6 +437,11 @@ def index(
         typer.echo(f"  skipped: {skipped.reason}")
     if len(stats.skipped) > 10:
         typer.echo(f"  ... and {len(stats.skipped) - 10} more")
+    unkeyed = sorted(stats.unkeyed.items())
+    for data_path, count in unkeyed[:10]:
+        typer.echo(f"  data file {data_path}: {count} entries without a unique id")
+    if len(unkeyed) > 10:
+        typer.echo(f"  ... and {len(unkeyed) - 10} more data files")
 
 
 @app.command(name="map")

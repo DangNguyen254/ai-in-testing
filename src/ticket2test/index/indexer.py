@@ -86,6 +86,7 @@ class BuildStats(BaseModel):
     parsed: int = 0
     reused: int = 0
     skipped: list[SkippedFile] = Field(default_factory=list)
+    unkeyed: dict[str, int] = Field(default_factory=dict)  # data file -> entries without an id
     chunks_by_kind: dict[str, int] = Field(default_factory=dict)
     symbols: int = 0
     chains: int = 0
@@ -255,7 +256,7 @@ def build_index(
 
     def read_data(path: str) -> DataFile | None:
         if path not in read:
-            read[path] = _read_data_file(repo, path, settings.data)
+            read[path] = _read_data_file(repo, path, settings.data, stats.unkeyed)
         return read[path]
 
     chunks: list[Chunk] = []
@@ -296,6 +297,14 @@ def build_index(
         log.warning("Chain list cut at %d entries (index.max_chain_entries)", len(catalog.chains))
     for chunk in chunks:
         stats.chunks_by_kind[chunk.kind] = stats.chunks_by_kind.get(chunk.kind, 0) + 1
+    if stats.skipped or stats.unkeyed:  # one line per build; each file is logged at debug
+        log.warning(
+            "Index: %d file(s) skipped (e.g. not Python 3), %d data file(s) with entries "
+            "without a unique %r (`ticket2test index` lists them)",
+            len(stats.skipped),
+            len(stats.unkeyed),
+            settings.data.id_field,
+        )
     stats.seconds = round(time.perf_counter() - started, 3)
     return data, stats
 
@@ -327,13 +336,16 @@ def _python3_error(text: str) -> str | None:
 
 
 def _skip(stats: BuildStats, path: str, digest: str, reason: str) -> FileRecord:
-    log.warning("Skipping %s", reason)
+    log.debug("Skipping %s", reason)  # counted in the build's summary line
     stats.skipped.append(SkippedFile(path=path, reason=reason))
     return FileRecord(sha256=digest, error=reason)
 
 
 def _read_data_file(
-    repo: LocalPathRepoSource, path: str, data_cfg: DataSettings
+    repo: LocalPathRepoSource,
+    path: str,
+    data_cfg: DataSettings,
+    unkeyed: dict[str, int] | None = None,
 ) -> DataFile | None:
     """Entries by pytest id, from an array of entries (each with the id field, after an optional
     defaults row) or an object keyed by id."""
@@ -356,9 +368,11 @@ def _read_data_file(
         if isinstance(entry, dict) and isinstance(entry.get(id_field), str):
             entries[entry[id_field]] = entry
     if len(entries) < len(rows):
-        log.warning(
+        log.debug(
             "Data file %s: %d entries without a unique %r", path, len(rows) - len(entries), id_field
         )
+        if unkeyed is not None:
+            unkeyed[path] = len(rows) - len(entries)
     return DataFile(format="array", entries=entries, defaults=defaults)
 
 
