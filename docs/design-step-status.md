@@ -103,8 +103,14 @@ compare pass@1. Every ticket gave the same C1 in both runs.
     both messages listed all of the file's ids, which the patch changes. A stale entry already
     in the class's data file became the patch's own error. Fixed: one finding per stale entry,
     the recorded-ids message gives only the differences, and findings match by test too
-    (`test_a_problem_the_file_already_had_is_not_reported_as_new`). Not yet re-measured.
-  - g09, g10 (new modules): one "undefined name" left after 3 repairs. Not yet read.
+    (`test_a_problem_the_file_already_had_is_not_reported_as_new`). Rerun `fix-patch-ids`
+    (g05–g07 × 2, $0.16): C7 6/6 (was 0/6), 14 calls (no repairs wasted); C1 still no on all
+    three (template choice, as expected).
+  - g09, g10 (new modules): one "undefined name" left after 3 repairs. Read with
+    `.scratch/undefined_names.py` (facts only): a CapWords name defined only in the template's
+    own file, in the context, imported nowhere in the suite. Likely cause: `class_scaffold`
+    copies the template's class line and imports, but a base class defined in that same file
+    has no import to copy. To confirm (how the name is used) before fixing.
 - C2 stays the weakest: C8 passes but C2 fails on g01–g04, g06, g11, g13 ("had it, didn't use
   it": D1/D2's target). C8 misses (retrieval): g08, g09, g10, g12, g14, g15.
 
