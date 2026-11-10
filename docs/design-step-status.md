@@ -120,10 +120,37 @@ compare pass@1. Every ticket gave the same C1 in both runs.
 - C2 stays the weakest: C8 passes but C2 fails on g01–g04, g06, g11, g13 ("had it, didn't use
   it": D1/D2's target). C8 misses (retrieval): g08, g09, g10, g12, g14, g15.
 
+## Baseline-1 (2026-11-10: all 15 tickets, 2 runs each, every switch and fix in)
+
+The new yardstick. Compare pass@1 (baseline-0 had 3 runs).
+
+| Criterion | baseline-0 | confirm-placement | baseline-1 pass@1 | baseline-1 pass^k |
+|---|---|---|---|---|
+| C1 placement | 38% | 60% | 60% | 60% |
+| C2 helpers | 11% | 7% | **20%** | 13% |
+| C3 data blocks | 36% | 33% | 33% | 33% |
+| C4 no made-up values | 80% | 87% | 83% | 80% |
+| C5 case count | 82% | 93% | 87% | 87% |
+| C7 validators | 82% | 67% | **100%** | 100% |
+| C8 context recall | 62% | 57% | 63% | 60% |
+
+70 LLM calls, $0.59 (label `baseline-1`; confirm-placement took 97 calls, $0.93).
+- C7: 30/30. Both fixes (patch ids, local base classes) hold on every ticket, and no calls
+  go to repairs that can't succeed.
+- C1: unchanged and deterministic. The same 9 tickets are placed right, and the same 6
+  misses have the same ranks: g07 is "not a candidate", and g01, g04, g05, g06 and g15 are
+  "template in another class". This matches the 2026-11-09 read under step 3 below.
+- C2: 6/30 (g01 r1, g02 ×2, g05 ×2, g11 r2). It is still the weakest. Where C8 passes and C2
+  fails (g01 r2, g03, g04, g06, g11 r1, g13), the model had the helper and didn't use it.
+- C3: 10 of 15 fail, and on 7 of them C8's blocks are 1.00 (g02, g03, g05, g09, g11, g12,
+  g13). The data blocks were in the context, but the entry left them out. g05 and g11 are at
+  0.00, so their entry has none of the reference's paths. That is not yet explained.
+- C5 misses: g04 and g13 (both runs). C4 misses: g06 r1, g10, g15.
+- C8 misses (retrieval): g08, g09, g10, g12 r1, g14, g15. The same set as before.
+
 ## Next steps, in order (2026-11-09, end of day; all pushed up to 68e4545)
 
-1. **baseline-1**: all 15 × 2 with every fix in (about $1), the new yardstick:
-   `uv run ticket2test golden <private>/golden.json --repeat 2 --label baseline-1`
+1. **baseline-1**: done (above).
 2. **g07, "not a candidate"** (free): placement scores only classes whose tests are of the
    draft's kind, and a test counts as UI only when a `self.<chain>` starts at a chain root
    (`index.chain_roots`). Suspect: the reference class's tests are classified as the other
