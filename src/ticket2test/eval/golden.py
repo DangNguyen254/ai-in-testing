@@ -367,6 +367,7 @@ def config_snapshot(settings: Settings) -> dict[str, Any]:
         "generate.reuse.classes_from_domain": g.reuse.classes_from_domain,
         "generate.reuse.template_class_wins": g.reuse.template_class_wins,
         "generate.reuse.dataless_hit_class": g.reuse.dataless_hit_class,
+        "generate.reuse.dataless_class_max_share": g.reuse.dataless_class_max_share,
         "generate.context_helpers": g.context_helpers,
         "generate.context_entry_list": g.context_entry_list,
         "generate.base_entry_from_class": g.base_entry_from_class,

@@ -385,12 +385,14 @@ class ReuseSettings(_Section):
     # whatever its class match: search found the test, the word overlap often misses it.
     # False: it needs the class-match minimums or the ticket naming its feature (baseline-0).
     template_class_wins: bool = True
-    # Templates are tests with data, so a class that keeps little data loses the template (and
-    # the method) to a sibling. True: when search's best test in the domain has no data entry,
-    # its class is the template's class; the template then comes from that class (an entry of
-    # its own, or a test without data). False: the first template's class (baseline-1).
+    # Templates are tests with data, so a class that keeps almost no data loses the template
+    # (and the method) to a sibling. True: when search's best test in the domain has no data
+    # entry and at most ``dataless_class_max_share`` of its class's tests have one, its class is
+    # the template's class; the template then comes from that class (an entry of its own, or a
+    # test without data). False: the first template's class (baseline-1).
     # Off until measured on the golden set.
     dataless_hit_class: bool = False
+    dataless_class_max_share: float = Field(default=0.1, ge=0.0, le=1.0)
 
 
 class GenerateSettings(_Section):

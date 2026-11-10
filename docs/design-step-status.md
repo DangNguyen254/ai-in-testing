@@ -188,9 +188,13 @@ If g04 turns YES and nothing else moves: default it on, then baseline-2.
 
 Second replay (15 calls): base 9, with the rule 9. g04 gained, g11 lost: there, search's best
 test has no data and is in another class, and the rule moved the method away from the
-reference class the template ranking had picked. The rule stays off. A tighter form (only when
-the best test's class keeps almost no data, as in g04: 1 of 179) is not built; whether it
-spares g11 depends on how much data that other class keeps.
+reference class the template ranking had picked. The rule stays off.
+
+Tightened (built, off, not yet measured): the rule now also needs the best test's class to
+keep almost no data (`dataless_class_max_share: 0.1` of its tests at most; g04's class: 1 of
+179). Whether it spares g11 depends on how much data that other class keeps, which the replay
+now prints ("its class: n tests, m with data"). Run the same replay command again (15 small
+calls). g04 YES with g11 unchanged: default it on. g11 still lost: drop the switch.
 2. **g07, "not a candidate"** (free): placement scores only classes whose tests are of the
    draft's kind, and a test counts as UI only when a `self.<chain>` starts at a chain root
    (`index.chain_roots`). Suspect: the reference class's tests are classified as the other
