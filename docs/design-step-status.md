@@ -152,41 +152,39 @@ The new yardstick. Compare pass@1 (baseline-0 had 3 runs).
 
 1. **baseline-1**: done (above).
 
-**Built 2026-11-10, not yet measured** (two switches in `generate.reuse`, both **off** in
-`config.yaml` until measured; off = baseline-1):
-- `kind_as_preference` (with `other_kind_factor: 0.5`), for g07: classes whose tests are of the
-  other kind are scored too, with their class match multiplied by the factor, instead of being
-  filtered out. A method that lands in such a class gets a reviewer note. Variant still needs
-  the same kind.
-- `class_from_retrieval`, for g04 and g15: the template's class becomes the class whose
-  retrieved tests' scores sum highest (another kind's sum times the factor). Before, it was
-  the class of the first template with data. `method_retrieval` then takes the template from
-  that class (an entry of its own, or a test without data).
+**Placement replay (2026-11-10)**: one retrieval per ticket (16 model calls), then the
+placement decision in code under six settings. Tickets placed right, of 15:
 
-Review of the two (2026-11-10, second session). The code does what it says, but neither fix is
-shown to work yet:
-- g07: `kind_as_preference` only makes the reference class a candidate. It still wins only as
-  the template's class, and templates prefer the draft's kind (shape), so in practice it needs
-  `class_from_retrieval` too, with its tests' summed score times 0.5 beating every UI class.
-  Whether its tests are retrieved at all was never checked for g07.
-- g04, g15: the sum favours a class with many fair hits over a class with one good hit, and it
-  drops the component and shape preferences the template ranking has. On the stand-in it moves
-  a rightly placed test to another class
-  (`test_search_ranking_a_class_highest_together_can_outweigh_the_closest_template`), so it
-  can also move some of the 9 tickets placed right today.
-- Both were on by default and would have been measured together; the method is one change at
-  a time. They are off by default now.
+| Setting | Right | Against base |
+|---|---|---|
+| base (baseline-1's rules) | 8 | g11 is a miss here and was right in baseline-1: retrieval varies run to run |
+| kind as a preference | 5 | lost g09, g10 (a method where a new file was right), g12; gained none |
+| class by summed retrieval scores | 6 | lost g08, g12; gained none |
+| both | 4 | |
+| class of search's best test | 9 | gained g04; lost none |
+| best test, with kind as a preference | 7 | lost g09, g10 |
 
-Next: **placement replay** before any full run. It makes one retrieval per ticket (the only
-model calls, about 15 to 45 small ones), then decides placement in code under six settings
-(base, kind, class, both, and the last two counting only each class's best hit), and prints
-yes/no per ticket with no names:
+- Kind as a preference and the summed scores were removed from the code: both lost tickets
+  and gained none.
+- g07 is not a placement problem: no test of its reference class is retrieved, and the class
+  keeps no data. It moves to the recall group (g01, g05, g06, g07).
+- g04 is the one ticket a placement rule fixes: search ranks a test of the reference class
+  first, but 1 of its 179 tests has data, so it couldn't be the template.
+- g15 and g11: the reference class's tests are retrieved but rank last (g15: 2/2). No rule
+  over retrieval scores fixes that; it is ranking inside retrieval.
+
+**Built, not yet measured**: `generate.reuse.dataless_hit_class` (off in `config.yaml`). When
+search's best test in the area has no data entry, its class is the template's class. When it
+has data, the template ranking (component, shape, score) already weighed it and stands, so
+this is narrower than "class of search's best test" above and can't change a ticket where the
+best test has data. On the stand-in nothing else changes with it on. Check with the replay
+(16 small calls; it prints base against the rule, and whether the best test has data):
 
 ```bash
 podman exec -e T2T_CONFIG=/root/work/t2t-private/company.yaml t2t uv run python .scratch/placement_replay.py /root/work/t2t-private/golden.json
 ```
 
-Turn on only what the replay shows to help without moving the 9, then run baseline-2 with it.
+If g04 turns YES and nothing else moves: default it on, then baseline-2.
 2. **g07, "not a candidate"** (free): placement scores only classes whose tests are of the
    draft's kind, and a test counts as UI only when a `self.<chain>` starts at a chain root
    (`index.chain_roots`). Suspect: the reference class's tests are classified as the other

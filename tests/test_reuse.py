@@ -723,86 +723,36 @@ def _templated(index: IndexData, test: str, hits: list[tuple[str, float]]) -> Re
     )
 
 
-AGENT = DomainChoice(domain=Domain("agent", ("tests/agent",)), reason="test")
-
-
-def test_a_class_of_the_other_kind_can_take_the_method_with_kind_as_a_preference(
+def test_a_class_that_keeps_little_data_gets_the_method_when_search_ranks_its_test_first(
     setup: tuple[Settings, IndexData],
 ) -> None:
-    """Found in baseline-1 (g07): the draft guessed UI, the person's class is all API, and the
-    area has UI classes, so the kind filter left that class out ("not a candidate"). With
-    ``generate.reuse.kind_as_preference`` it is scored, its match weighed down, and as the
-    closest template's class it takes the method; off, it isn't a candidate."""
+    """Found in baseline-1 (g04) and measured with the placement replay: search ranked a test
+    of the person's class first, but it had no data entry (1 of the class's 179 tests has),
+    so a sibling class's test became the template and took the method. With
+    ``generate.reuse.dataless_hit_class`` the class of search's best test wins when that test
+    has no data; when it has data, the template ranking already weighed it and stands."""
     settings, index = setup
-    limit = next(
-        c for c in index.chunks if c.class_name == "TestAgentBrowserLimit" and c.data_entries
-    )
-    retrieval = _templated(index, limit.symbol_name, [(limit.symbol_name, 1.0)])
-    draft = _draft(
-        "X-8",
-        "A fourth agent browser session is refused at a browser limit of three",
-        ["Open three agent browser sessions", "Open a fourth"],
-        "The fourth session is refused",
-    )
-    off = decide(draft, retrieval, index, settings, AGENT)
-    assert f"{limit.file_path}::TestAgentBrowserLimit" not in off.class_scores
-    assert off.target != "TestAgentBrowserLimit", off.reasons
-    on = decide(draft, retrieval, index, _reuse(settings, kind_as_preference=True), AGENT)
-    assert on.kind == "method" and on.target == "TestAgentBrowserLimit", on.reasons
-    assert any("scored too, times 0.5" in r for r in on.reasons), on.reasons
-    assert any("the draft says ui" in n for n in on.review_notes), on.review_notes
-    assert not off.review_notes
-    unweighted = decide(
-        draft, retrieval, index, _reuse(settings, kind_as_preference=True, other_kind_factor=1.0),
-        AGENT,
-    )  # fmt: skip
-    key = f"{limit.file_path}::TestAgentBrowserLimit"
-    assert on.class_scores[key] == pytest.approx(unweighted.class_scores[key] * 0.5)
-
-
-def test_the_template_class_can_be_the_one_search_ranks_highest_together(
-    setup: tuple[Settings, IndexData],
-) -> None:
-    """Found in baseline-1 (g04, g15): the person's class had several tests in the context,
-    but the single closest test with data was another class's, so the method went there. With
-    ``generate.reuse.class_from_retrieval`` the class whose retrieved tests score highest
-    together is the template's class; off, the closest template's."""
-    settings, index = setup
-    viewer = next(c for c in index.chunks if c.class_name == "TestFilesViewer" and c.data_entries)
-    archives = [
-        c.symbol_name
+    dataless = next(
+        c
         for c in index.chunks
-        if c.class_name == "TestFilesArchives" and c.kind == "test"
-    ][:2]
+        if c.kind == "test" and c.class_name == "TestExceptions" and not c.data_entries
+    )
+    expiry = next(
+        c for c in index.chunks if c.class_name == "TestExceptionsExpiry" and c.data_entries
+    )
     retrieval = _templated(
-        index, viewer.symbol_name, [(viewer.symbol_name, 1.0), *((a, 0.7) for a in archives)]
+        index, expiry.symbol_name, [(dataless.symbol_name, 1.0), (expiry.symbol_name, 0.7)]
     )
-    files = DomainChoice(domain=Domain("files", ("tests/files",)), reason="test")
-    draft, _ = SCENARIOS["method"]
-    off = decide(draft, retrieval, index, settings, files)
-    assert off.target == "TestFilesViewer", off.reasons
-    on = decide(draft, retrieval, index, _reuse(settings, class_from_retrieval=True), files)
-    assert on.kind == "method" and on.target == "TestFilesArchives", on.reasons
-    assert on.home == "tests/files/test_files_archives.py::TestFilesArchives"
-    assert any("rank highest in search together" in r for r in on.reasons), on.reasons
-
-
-def test_search_ranking_a_class_highest_together_can_outweigh_the_closest_template(
-    setup: tuple[Settings, IndexData],
-) -> None:
-    """The trade-off of ``class_from_retrieval``, on the stand-in: a draft about the viewer
-    listing an archive's members finds one archives test (the template) and two viewer tests
-    that score more together, so the viewer class takes the method; off, the archives class."""
-    settings, index = setup
-    draft, target = SCENARIOS["method"]
-    ticket = Ticket(
-        id=draft.ticket_id,
-        title=draft.intent,
-        description=" ".join(draft.steps) + " " + draft.expected_outcome,
-        source=SourceInfo(system="jira", ref=draft.ticket_id),
+    on_settings = _reuse(settings, dataless_hit_class=True)
+    off = decide(_listing_draft(), retrieval, index, settings, EXCEPTIONS)
+    assert off.target == "TestExceptionsExpiry", off.reasons
+    on = decide(_listing_draft(), retrieval, index, on_settings, EXCEPTIONS)
+    assert on.kind == "method" and on.target == "TestExceptions", on.reasons
+    assert on.home == f"{dataless.file_path}::TestExceptions"
+    assert any("has no data" in r for r in on.reasons), on.reasons
+    # search's best test has data: nothing changes
+    with_data = _templated(
+        index, expiry.symbol_name, [(expiry.symbol_name, 1.0), (dataless.symbol_name, 0.7)]
     )
-    retrieval = retrieve(ticket, index, settings, None, draft)
-    choice = choose_domain(retrieval, index, settings, ticket, draft)
-    assert decide(draft, retrieval, index, settings, choice).target == target
-    on = decide(draft, retrieval, index, _reuse(settings, class_from_retrieval=True), choice)
-    assert on.target == "TestFilesViewer", on.reasons
+    kept = decide(_listing_draft(), with_data, index, on_settings, EXCEPTIONS)
+    assert kept.target == "TestExceptionsExpiry", kept.reasons

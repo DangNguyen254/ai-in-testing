@@ -205,9 +205,7 @@ generate:
     kind_fallback: true            # no class of the draft's kind in the area: consider any kind
     classes_from_domain: true      # a new method may join any class of the domain, not only the closest tests'
     template_class_wins: true      # the closest template's class takes the new method whatever its class match
-    kind_as_preference: false      # true: other-kind classes are scored too, times other_kind_factor (not yet measured)
-    other_kind_factor: 0.5
-    class_from_retrieval: false    # true: the template's class is the one whose retrieved tests score highest together (not yet measured)
+    dataless_hit_class: false      # true: search's best test has no data, so its class is the template's class (not yet measured)
   variant_prompt: variant_v1      # only when a new case can't be planned in code
 
 validation:                     # deterministic checks of generated tests (Phase 7)
