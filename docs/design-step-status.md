@@ -167,7 +167,7 @@ The new yardstick. Compare pass@1 (baseline-0 had 3 runs).
   This can flip tickets that are placed right today, so check C1 on the 9 tickets placed right
   before.
 - Next: **baseline-2**, all 15 × 2 (about $0.60):
-  `uv run ticket2test golden <private>/golden.json --repeat 2 --label baseline-2`.
+  the command under "Running in the container" with `--label baseline-2`.
   If C1 drops on the 9, run each switch alone to see which one caused it.
 2. **g07, "not a candidate"** (free): placement scores only classes whose tests are of the
    draft's kind, and a test counts as UI only when a `self.<chain>` starts at a chain root
@@ -206,6 +206,17 @@ The new yardstick. Compare pass@1 (baseline-0 had 3 runs).
 4. **C2 "had it, didn't use it"** (g01–g04, g06, g11, g13): D1/D2 (step plan, contract cards).
 5. Later: the validator hole for invented members; dropped steps; C8 retrieval misses (g08,
    g09, g10, g12, g14, g15).
+
+## Running in the container
+
+The `t2t` container was created before `company.yaml` existed, so it has no `T2T_CONFIG`.
+Pass the config on every exec, for example:
+
+```bash
+podman exec -e T2T_CONFIG=/root/work/t2t-private/company.yaml t2t uv run ticket2test golden /root/work/t2t-private/golden.json --repeat 2 --label <label>
+```
+
+The `t2t-private` folder name isn't secret; only its contents and the real suite's names are.
 
 ## Reading results without leaking names
 
