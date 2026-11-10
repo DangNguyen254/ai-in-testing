@@ -204,8 +204,10 @@ class Retriever:
         """Tests with data entries: same component first, then the draft's shape (UI or API,
         then add / edit / delete / other; see ``retrieve/shape.py``), then retrieval score.
 
-        The component comes from the draft and from the ticket's own components; a free-text
-        draft component ("rule search") also matches a component word it contains ("rule[s]").
+        The component comes from the draft and from the ticket's own components (with
+        ``knowledge.use_in_templates``, also the markers of the glossary terms it matched); a
+        free-text draft component ("rule search") also matches a component word it contains
+        ("rule[s]").
         """
         wanted = {c.strip().lower() for c in (ticket_components or []) if c.strip()}
         if draft is not None:
@@ -428,7 +430,16 @@ def retrieve(
             if request.done or set(pool) == before:
                 break
 
-    templates = retriever.templates(pool, draft, ticket.components)
+    components = list(ticket.components)
+    if settings.knowledge.use_in_templates:  # the suite's marker values for the ticket's words
+        sep = settings.markers.value_separator
+        components += [
+            part.strip()
+            for term in matched
+            for marker in term.markers
+            for part in (marker.split(sep) if sep else [marker])
+        ]
+    templates = retriever.templates(pool, draft, components)
     final = ranked_top(pool)
     if investigation is not None:  # what the investigator kept stays, even below the top_k
         in_final = {r.chunk.id for r in final}

@@ -221,6 +221,29 @@ see the same retrieval (`--fresh` retrieves again). Same command as above.
 - Next: the replay with `--fresh` (15 small calls; the saved retrievals hold the old
   templates), to see what the fix does to g15 and that g02, g03, g14 stay.
 
+**Fresh replay after the joined-marker fix (2026-11-10): base 8.** g02, g03, g14 and g15's
+reference tests now match the component. No ticket changed because of it: in g14 and g15 a
+sibling class matches the same component and wins on action and score. g13 came back and g14
+went, as before with no code change: a fresh retrieval is too noisy to credit one ticket to a
+change.
+
+What the glossary says for the same tickets:
+- g04, g12, g13: a matched, confirmed term has the reference class's marker, and the template
+  ranking didn't use it (it takes the ticket's and the draft's words only). Built, off, not yet
+  measured: `knowledge.use_in_templates`, the matched terms' markers count as the ticket's
+  components (`test_a_matched_terms_marker_counts_as_the_tickets_component_for_the_template`).
+  The same marker is also on the class that wins today, so it may tie rather than decide.
+- g02, g03, g14, g15: a matched, confirmed term names the reference class itself. Open: does
+  a term also name the sibling that wins in g14 and g15? If not, "a class a confirmed term
+  names is the template's class" would settle them.
+- g01, g05, g07: a term matched, with no markers, classes or folders. g06, g08, g09, g10: none
+  matched. These are the glossary's gaps (`docs/glossary-gaps-prompt.md`).
+
+The replay now records the model's replies per ticket and gives them back in order, so after
+one recording run (15 small calls) every later run is free and sees the same replies: only the
+code or a setting differs. It compares the settings in its `VARIANTS` (today: base, and
+`knowledge.use_in_templates` on).
+
 2. **g07, "not a candidate"** (free): placement scores only classes whose tests are of the
    draft's kind, and a test counts as UI only when a `self.<chain>` starts at a chain root
    (`index.chain_roots`). Suspect: the reference class's tests are classified as the other

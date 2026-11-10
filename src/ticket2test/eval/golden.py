@@ -360,6 +360,7 @@ def config_snapshot(settings: Settings) -> dict[str, Any]:
         "guides.framework": settings.guides.framework,
         "knowledge.use_in_draft": k.use_in_draft,
         "knowledge.use_in_generation": k.use_in_generation,
+        "knowledge.use_in_templates": k.use_in_templates,
         "knowledge.glossary": str(k.glossary) if k.glossary else None,
         "generate.reuse.coverage_check": g.reuse.coverage_check,
         "generate.reuse.both_means_unspecified": g.reuse.both_means_unspecified,

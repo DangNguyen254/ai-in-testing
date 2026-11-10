@@ -353,3 +353,34 @@ def test_component_choices_come_from_the_suite_map_and_the_guide_from_config(
     assert "Allowed components: rules, unknown" in prompt  # from the rules area's markers
     assert "Priority guide: p2 for most tests." in prompt
     assert result.drafts[0].markers.component == "rules"
+
+
+def test_a_matched_terms_marker_counts_as_the_tickets_component_for_the_template(
+    index: IndexData, tmp_path: Path
+) -> None:
+    """Found with the placement replay on the real suite: the glossary had the suite's marker
+    for the ticket's component, but the template was chosen by the tracker's own word, which
+    no marker spells, so the component told nothing (or pointed at another class). With
+    ``knowledge.use_in_templates`` the matched terms' markers count; off, as before."""
+    glossary = tmp_path / "glossary.yaml"
+    glossary.write_text(
+        "version: 1\nterms:\n"
+        '  - term: "Guardrail Overrides"\n    kind: component\n    markers: [exceptions]\n',
+        encoding="utf-8",
+    )
+    ticket = _ticket(
+        title="The list shows the wrong names after an entry is deleted",
+        components=["Guardrail Overrides"],
+    )
+
+    def first_template(use: bool) -> str:
+        settings = Settings.model_validate(
+            {
+                "paths": {"cache_dir": str(tmp_path / f"c{use}")},
+                "knowledge": {"glossary": str(glossary), "use_in_templates": use},
+            }
+        )
+        return retrieve(ticket, index, settings).templates[0].why
+
+    assert not first_template(False).startswith("same component")
+    assert first_template(True).startswith("same component 'exceptions'")
