@@ -185,6 +185,12 @@ podman exec -e T2T_CONFIG=/root/work/t2t-private/company.yaml t2t uv run python 
 ```
 
 If g04 turns YES and nothing else moves: default it on, then baseline-2.
+
+Second replay (15 calls): base 9, with the rule 9. g04 gained, g11 lost: there, search's best
+test has no data and is in another class, and the rule moved the method away from the
+reference class the template ranking had picked. The rule stays off. A tighter form (only when
+the best test's class keeps almost no data, as in g04: 1 of 179) is not built; whether it
+spares g11 depends on how much data that other class keeps.
 2. **g07, "not a candidate"** (free): placement scores only classes whose tests are of the
    draft's kind, and a test counts as UI only when a `self.<chain>` starts at a chain root
    (`index.chain_roots`). Suspect: the reference class's tests are classified as the other
@@ -233,6 +239,18 @@ podman exec -e T2T_CONFIG=/root/work/t2t-private/company.yaml t2t uv run ticket2
 ```
 
 The `t2t-private` folder name isn't secret; only its contents and the real suite's names are.
+
+A golden run saves its report after every run (2026-11-10). If it stops, or you stop it with
+Ctrl+C to continue the next day, run the same command with `--resume` and the run's folder:
+
+```bash
+podman exec -e T2T_CONFIG=/root/work/t2t-private/company.yaml t2t uv run ticket2test golden /root/work/t2t-private/golden.json --repeat 2 --resume /root/work/t2t-private/output/golden/<label>-<time>
+```
+
+The command prints this folder when it starts. The config must be the same as when the run
+began. Runs that failed on a model call (a lost connection) are made again; the others are kept.
+Each run's folder now also keeps `retrieval.json`, so placement can be replayed with no model
+calls.
 
 ## Reading results without leaking names
 

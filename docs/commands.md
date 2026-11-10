@@ -244,6 +244,13 @@ criterion; writes `c6.csv` (your yes/no) and `open-coding.md` (your notes) next 
 | `--collect` | Also load each test in the sandbox. |
 | `--pairs <ids>` | Only these pairs, by id (repeatable, or comma-separated: `--pairs g09,g10`), e.g. one failure group while trying a change. |
 | `--out <dir>` | Report folder. Default: `<output>/golden`. |
+| `--resume <folder>` | Continue a stopped run from its folder (the one holding `report.json`). |
+
+The report is saved after every run, so a run that stops (a crash, a lost connection, Ctrl+C)
+loses at most the run in progress. `--resume <folder>` with the same set, `--repeat` and
+configuration keeps the runs the report has and makes the rest. Runs that failed on a model
+call are made again. A changed configuration is refused, so one report never mixes two. Each
+run's folder also keeps its `retrieval.json`.
 
 ### `golden-rescore <REPORT_FILE> --set <PAIR_SET>`
 

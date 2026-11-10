@@ -16,6 +16,15 @@ class Usage(BaseModel):
     cost_usd: float = 0.0
     unpriced_calls: int = 0  # responses without a cost: the total is then a lower bound
 
+    def plus(self, other: Usage) -> Usage:
+        return Usage(
+            calls=self.calls + other.calls,
+            input_tokens=self.input_tokens + other.input_tokens,
+            output_tokens=self.output_tokens + other.output_tokens,
+            cost_usd=round(self.cost_usd + other.cost_usd, 6),
+            unpriced_calls=self.unpriced_calls + other.unpriced_calls,
+        )
+
     def minus(self, earlier: Usage) -> Usage:
         return Usage(
             calls=self.calls - earlier.calls,

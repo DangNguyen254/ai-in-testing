@@ -6,6 +6,10 @@ one), scored by ``eval.reference``. The report gives, per criterion, **pass@1** 
 runs that pass) and **pass^k** (the share of tickets whose k runs all pass): one lucky run no
 longer looks like a fix, and an old problem coming back shows as a low pass^k.
 
+The report is saved after every run (``checkpoint``), so a run that stops, by a crash, a lost
+connection or Ctrl+C, loses at most the run in progress and continues from its report
+(``resume``): the runs it holds are skipped, except those that failed on a model call.
+
 Written next to the report: ``c6.csv`` (a person's yes/no per run: do the checks cover the
 expected outcome?), merged back with ``golden-report --c6``, and ``open-coding.md`` (one line
 per run for the error analysis: the first failure, in a person's words).
@@ -106,22 +110,50 @@ def run_golden(
     keep_dir: Path,
     collect: bool = False,
     progress: Callable[[str], None] | None = None,
+    checkpoint: Path | None = None,
+    resume: GoldenReport | None = None,
 ) -> GoldenReport:
     """Two phases, so at most one index is in memory at a time (a large suite's index is over a
     gigabyte): first, with the full index, each pair's reference facts and leave-one-out copy;
-    then, pair by pair, the copy's index and its runs."""
+    then, pair by pair, the copy's index and its runs.
+
+    ``checkpoint``: the report so far is written there after every run. ``resume``: an earlier,
+    unfinished report of the same set and configuration (``ValueError`` otherwise): its runs
+    are kept, and only the missing ones, and those that failed on a model call, are run."""
     say = progress or (lambda _: None)
     repeat = max(1, min(repeat, settings.eval.max_golden_repeat))
+    config = config_snapshot(settings)
+    report = GoldenReport(
+        label=label,
+        set_name=pair_set.name,
+        created_at=datetime.now(UTC),
+        repeat=repeat,
+        config=config,
+    )
+    if resume is not None:
+        _check_resumable(resume, pair_set, config)
+        kept_runs = [r for r in resume.runs if not _retry(r)]
+        report = resume.model_copy(update={"repeat": repeat, "runs": kept_runs})
+        say(
+            f"resuming {resume.label}: {len(kept_runs)} run(s) kept, "
+            f"{len(resume.runs) - len(kept_runs)} failed on a model call and run again"
+        )
+    have = {(r.pair_id, r.run) for r in report.runs}
+    order = {p.id: n for n, p in enumerate(pair_set.pairs)}
+    todo = [p for p in pair_set.pairs if any((p.id, n) not in have for n in range(1, repeat + 1))]
+    if not todo:
+        say("nothing left to run")
+        return report
     repo = project_root / pair_set.repo_path
     say(f"indexing the suite: {repo}")
     index: IndexData | None = update_index(repo, settings)[0]
     assert index is not None
     prepared: list[tuple[EvalPair, ReferenceFacts | None, Path, set[str]]] = []
-    for number, pair in enumerate(pair_set.pairs, start=1):
+    for number, pair in enumerate(todo, start=1):
         linked = {manifest_test_to_chunk_id(t) for t in pair.tests} | hidden_tests(pair.hide, index)
         facts = reference_facts(pair.tests, index, settings, linked)
         copy = loo_copy(pair, repo, index, linked, settings, whole=collect)
-        say(f"[{number}/{len(pair_set.pairs)}] {pair.id}: copy without {len(linked)} test(s) ready")
+        say(f"[{number}/{len(todo)}] {pair.id}: copy without {len(linked)} test(s) ready")
         prepared.append((pair, facts, copy, linked))
     index = None  # the full index isn't needed again: free it before the copies are indexed
     clear_index_caches()
@@ -133,22 +165,37 @@ def run_golden(
         if pair_set.conventions_doc
         else None
     )
-    report = GoldenReport(
-        label=label,
-        set_name=pair_set.name,
-        created_at=datetime.now(UTC),
-        repeat=repeat,
-        config=config_snapshot(settings),
-    )
     started = time.monotonic()
     before = usage_of(metered)
-    total = len(prepared) * repeat
-    done = 0
+    earlier_usage, earlier_seconds = report.usage, report.elapsed_seconds
+
+    def save() -> None:
+        """The totals so far (earlier sessions included), and the report on disk."""
+        report.runs.sort(key=lambda r: (order.get(r.pair_id, len(order)), r.run))
+        report.llm_calls = sum(r.result.llm_calls for r in report.runs)
+        after = usage_of(metered)
+        if before is not None and after is not None:
+            spent = after.minus(before)
+            report.usage = earlier_usage.plus(spent) if earlier_usage else spent
+        report.elapsed_seconds = round(earlier_seconds + time.monotonic() - started, 1)
+        if checkpoint is not None:  # written whole, then swapped in: a crash can't cut it short
+            checkpoint.parent.mkdir(parents=True, exist_ok=True)
+            partial = checkpoint.with_name(checkpoint.name + ".partial")
+            partial.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+            partial.replace(checkpoint)
+
+    total = len(pair_set.pairs) * repeat
+    done = len(have)
     for pair, facts, copy, linked in prepared:
         say(f"{pair.id}: indexing its copy")
         used_index = update_index(copy, loo_settings(settings))[0]
         for run in range(1, repeat + 1):
+            if (pair.id, run) in have:
+                continue
             folder = keep_dir / pair.id / f"r{run}"
+            leftover = keep_dir / pair.id / pair.id
+            if leftover.exists():  # a run that was cut short
+                shutil.rmtree(leftover)
             capture: dict[str, Any] = {}
             run_started = time.monotonic()
             result = _one(
@@ -186,15 +233,40 @@ def run_golden(
                     kept=str(folder) if folder.exists() else "",
                 )
             )
-        del used_index, capture  # one copy's index at a time
+            save()
+        del used_index  # one copy's index at a time
         clear_index_caches()
         gc.collect()
-    report.llm_calls = sum(r.result.llm_calls for r in report.runs)
-    after = usage_of(metered)
-    if before is not None and after is not None:
-        report.usage = after.minus(before)
-    report.elapsed_seconds = round(time.monotonic() - started, 1)
+    save()
     return report
+
+
+def _retry(run: GoldenRun) -> bool:
+    """A run to make again on resume: it failed on a model call (a lost connection, a timeout,
+    a reply that never parsed), not on a bug of ours, which would only fail again."""
+    result = run.result
+    return result.status == "failed" and not result.error.startswith("unexpected ")
+
+
+def _check_resumable(earlier: GoldenReport, pair_set: PairSet, config: dict[str, Any]) -> None:
+    """A report continues only with the set and the configuration it began with: one report
+    never mixes two. Raises ``ValueError`` naming what differs."""
+    if earlier.set_name != pair_set.name:
+        raise ValueError(
+            f"the report is of the set {earlier.set_name!r}, not {pair_set.name!r}: not resumed"
+        )
+    known = {p.id for p in pair_set.pairs}
+    gone = sorted({r.pair_id for r in earlier.runs} - known)
+    if gone:
+        raise ValueError(f"the report has runs of pairs not in this set ({gone}): not resumed")
+    differing = sorted(k for k in earlier.config.keys() | config.keys()
+                       if earlier.config.get(k) != config.get(k))  # fmt: skip
+    if differing:
+        raise ValueError(
+            "the configuration changed since the report began ("
+            + ", ".join(differing)
+            + "): not resumed. Start a new run, or restore the configuration."
+        )
 
 
 def select_pairs(pair_set: PairSet, wanted: list[str] | None) -> PairSet:

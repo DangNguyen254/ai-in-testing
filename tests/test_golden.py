@@ -5,6 +5,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
+
+import pytest
 
 from ticket2test.config import Settings
 from ticket2test.eval.generation import GenerationPairResult
@@ -299,3 +302,107 @@ def test_a_misplaced_run_says_why_without_names(index: IndexData) -> None:
     assert why({**base, "class_scores": {"a::B": 0.5, key: 0.2}}) == (
         "rank 2/2 (0.20 vs 0.50); no template in the area"
     )
+
+
+def _golden_smoke(tmp_path: Path) -> tuple[Any, Settings, list[str]]:
+    """The stand-in ticket as a golden set, its settings, and one run's model replies."""
+    from .test_eval_harness import _STND104, _generation_reply, _rewrite, _settings
+
+    pair = _STND104.pairs[0].model_copy(
+        update={"tests": ["tests/rules/test_rules.py::TestRules::test_rules_add_with_condition"]}
+    )
+    one_run = [_rewrite(["delete", "rule"], []), _generation_reply()]
+    return _STND104.model_copy(update={"pairs": [pair]}), _settings(tmp_path), one_run
+
+
+def test_a_stopped_golden_run_continues_from_its_report(tmp_path: Path) -> None:
+    """A run cut short in its second run (a lost connection, Ctrl+C): the report on disk holds
+    the first, and resuming makes only the second; the totals add up over both sessions. Each
+    run's retrieval is kept next to its output."""
+    from ticket2test.eval.golden import GoldenReport, run_golden
+    from ticket2test.llm.base import LLMRequest, LLMResponse
+    from ticket2test.llm.fake import FakeLLMClient
+
+    from .test_eval_harness import _DRAFT, ROOT, _draft_reply
+
+    golden_set, settings, one_run = _golden_smoke(tmp_path)
+
+    class Cut(FakeLLMClient):
+        def complete(self, request: LLMRequest) -> LLMResponse:
+            if not self.remaining:
+                raise KeyboardInterrupt
+            return super().complete(request)
+
+    checkpoint = tmp_path / "report.json"
+    with pytest.raises(KeyboardInterrupt):
+        run_golden(
+            golden_set, ROOT, settings, Cut([_draft_reply(_DRAFT), *one_run]), 2, "smoke",
+            tmp_path / "runs", checkpoint=checkpoint,
+        )  # fmt: skip
+    saved = GoldenReport.model_validate_json(checkpoint.read_text(encoding="utf-8"))
+    assert [(r.pair_id, r.run) for r in saved.runs] == [("standin-104", 1)]
+    assert saved.runs[0].result.status == "generated" and saved.llm_calls == 3
+    assert Path(saved.runs[0].kept, "retrieval.json").is_file()
+
+    lines: list[str] = []
+    rest = FakeLLMClient(one_run)  # the draft is cached, run 1 isn't made again
+    report = run_golden(
+        golden_set, ROOT, settings, rest, 2, "ignored", tmp_path / "runs",
+        progress=lines.append, checkpoint=checkpoint, resume=saved,
+    )  # fmt: skip
+    assert rest.remaining == 0 and any(line.startswith("run 2/2 ") for line in lines), lines
+    assert [(r.pair_id, r.run) for r in report.runs] == [("standin-104", 1), ("standin-104", 2)]
+    assert report.runs[0] == saved.runs[0] and report.label == "smoke"
+    assert report.llm_calls == 5 and report.usage is not None and report.usage.calls == 5
+    assert report.elapsed_seconds >= saved.elapsed_seconds
+    on_disk = GoldenReport.model_validate_json(checkpoint.read_text(encoding="utf-8"))
+    assert on_disk == report and not checkpoint.with_name("report.json.partial").exists()
+    # nothing left: no model call, no indexing
+    again = run_golden(
+        golden_set, ROOT, settings, FakeLLMClient([]), 2, "smoke", tmp_path / "runs",
+        resume=report,
+    )  # fmt: skip
+    assert again.runs == report.runs
+
+
+def test_resuming_runs_again_what_failed_on_a_model_call_and_refuses_another_config(
+    tmp_path: Path,
+) -> None:
+    """A run that failed on a model call (the fake ran out of replies, as a lost connection
+    would) is made again on resume; a run that failed on a bug of ours is kept. A report never
+    continues under another configuration."""
+    from ticket2test.eval.golden import _retry, run_golden
+    from ticket2test.llm.fake import FakeLLMClient
+
+    from .test_eval_harness import _DRAFT, ROOT, _draft_reply
+
+    golden_set, settings, one_run = _golden_smoke(tmp_path)
+    first = run_golden(
+        golden_set, ROOT, settings, FakeLLMClient([_draft_reply(_DRAFT), *one_run]), 2, "smoke",
+        tmp_path / "runs",
+    )  # fmt: skip
+    assert [r.result.status for r in first.runs] == ["generated", "failed"]
+    assert _retry(first.runs[1]) and not _retry(first.runs[0])
+    bug = first.runs[1].model_copy(deep=True)
+    bug.result.error = "unexpected KeyError: 'x'"
+    assert not _retry(bug)
+
+    report = run_golden(
+        golden_set, ROOT, settings, FakeLLMClient(one_run), 2, "smoke", tmp_path / "runs",
+        resume=first,
+    )  # fmt: skip
+    assert [r.result.status for r in report.runs] == ["generated", "generated"]
+
+    changed = settings.model_copy(
+        update={"context": settings.context.model_copy(update={"max_tokens": 8000})}
+    )
+    with pytest.raises(ValueError, match=r"configuration changed.*context\.max_tokens"):
+        run_golden(
+            golden_set, ROOT, changed, FakeLLMClient([]), 2, "smoke", tmp_path / "runs",
+            resume=first,
+        )  # fmt: skip
+    other = golden_set.model_copy(update={"name": "another-set"})
+    with pytest.raises(ValueError, match="not resumed"):
+        run_golden(
+            other, ROOT, settings, FakeLLMClient([]), 2, "smoke", tmp_path / "runs", resume=first
+        )

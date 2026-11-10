@@ -1075,12 +1075,28 @@ def golden(
     out: Annotated[
         Path | None, typer.Option(help="Report directory (default: <output_dir>/golden).")
     ] = None,
+    resume: Annotated[
+        Path | None,
+        typer.Option(
+            "--resume",
+            help="Continue a stopped run from its folder (the one holding report.json): the "
+            "runs it has are kept, the rest are made. Same set, --repeat and configuration; "
+            "--label and --out are taken from the folder.",
+        ),
+    ] = None,
 ) -> None:
     """Run the golden set k times per ticket and score each run against the reference test
-    (design step 1): pass@1 and pass^k per criterion, plus sheets for C6 and open coding."""
+    (design step 1): pass@1 and pass^k per criterion, plus sheets for C6 and open coding.
+    The report is saved after every run, so a stopped run continues with --resume."""
     from datetime import UTC, datetime
 
-    from ticket2test.eval.golden import render_report, run_golden, select_pairs, write_sheets
+    from ticket2test.eval.golden import (
+        GoldenReport,
+        render_report,
+        run_golden,
+        select_pairs,
+        write_sheets,
+    )
     from ticket2test.eval.pairs import load_pair_set
     from ticket2test.llm.base import LLMError
     from ticket2test.llm.factory import create_llm_client
@@ -1088,24 +1104,40 @@ def golden(
     state: AppState = ctx.obj
     settings = state.settings
     stem = f"{_safe_name(label)}-{datetime.now(UTC):%Y%m%dT%H%M%S}"
-    folder = (out or settings.paths.output_dir / "golden") / stem
+    folder = resume or (out or settings.paths.output_dir / "golden") / stem
     try:
+        earlier = (
+            GoldenReport.model_validate_json((resume / "report.json").read_text(encoding="utf-8"))
+            if resume is not None
+            else None
+        )
         golden_set = select_pairs(load_pair_set(pair_set), pairs)
         client = create_llm_client(settings, debug_log=state.debug_log)
+        typer.echo(
+            f"The report is saved after every run. If this stops, continue with: --resume {folder}",
+            err=True,
+        )
         report = run_golden(
             golden_set,
             Path.cwd(),
             settings,
             client,
             repeat,
-            label,
+            earlier.label if earlier else label,
             folder / "runs",
             collect=collect,
             progress=lambda line: typer.echo(line, err=True),
+            checkpoint=folder / "report.json",
+            resume=earlier,
         )
     except (OSError, ValueError, LLMError) as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
+    except KeyboardInterrupt:
+        typer.echo(
+            f"\nStopped. The finished runs are saved; continue with: --resume {folder}", err=True
+        )
+        raise typer.Exit(code=130) from None
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "report.json").write_text(report.model_dump_json(indent=2), encoding="utf-8")
     markdown = render_report(report)

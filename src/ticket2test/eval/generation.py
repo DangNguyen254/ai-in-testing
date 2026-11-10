@@ -375,6 +375,11 @@ def _one(
         result.test_kind = primary.test_kind
         retrieval = retrieve(ticket, used_index, settings, client, primary)
         result.llm_calls += retrieval.llm_calls
+        if keep_dir is not None:  # kept whatever comes next: placement can be replayed from it
+            (keep_dir / pair.id).mkdir(parents=True, exist_ok=True)
+            (keep_dir / pair.id / "retrieval.json").write_text(
+                retrieval.model_dump_json(indent=2), encoding="utf-8"
+            )
         outcome = generate_reusing(
             primary,
             retrieval,
