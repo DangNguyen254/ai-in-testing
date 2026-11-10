@@ -385,6 +385,16 @@ class ReuseSettings(_Section):
     # whatever its class match: search found the test, the word overlap often misses it.
     # False: it needs the class-match minimums or the ticket naming its feature (baseline-0).
     template_class_wins: bool = True
+    # The draft's kind (UI / API) is the model's guess: classes of the other kind are scored
+    # too, their class match times ``other_kind_factor``, instead of being left out. False:
+    # kind is a hard filter (baseline-1).
+    kind_as_preference: bool = True
+    other_kind_factor: float = Field(default=0.5, ge=0.0, le=1.0)
+    # The template's class is the class whose tests search ranks highest together (the sum of
+    # their retrieval scores; another kind's times ``other_kind_factor``), not the class of the
+    # single closest test with data; the template then comes from that class, or is one of its
+    # tests without data when it keeps none. False: the closest template's class (baseline-1).
+    class_from_retrieval: bool = True
 
 
 class GenerateSettings(_Section):

@@ -151,6 +151,24 @@ The new yardstick. Compare pass@1 (baseline-0 had 3 runs).
 ## Next steps, in order (2026-11-09, end of day; all pushed up to 68e4545)
 
 1. **baseline-1**: done (above).
+
+**Built 2026-11-10, not yet measured** (two switches in `generate.reuse`, both on in
+`config.yaml`; off = baseline-1):
+- `kind_as_preference` (with `other_kind_factor: 0.5`), for g07: classes whose tests are of the
+  other kind are scored too, with their class match multiplied by the factor, instead of being
+  filtered out. Variant still needs the same kind.
+- `class_from_retrieval`, for g04 and g15: the template's class becomes the class whose
+  retrieved tests' scores sum highest (another kind's sum times the factor). Before, it was
+  the class of the first template with data. `method_retrieval` then takes the template from
+  that class (an entry of its own, or a test without data).
+- The trade-off, seen on the stand-in
+  (`test_search_ranking_a_class_highest_together_can_outweigh_the_closest_template`): a class
+  with two fair hits beats a class with one good hit, even when that one hit is the template.
+  This can flip tickets that are placed right today, so check C1 on the 9 tickets placed right
+  before.
+- Next: **baseline-2**, all 15 × 2 (about $0.60):
+  `uv run ticket2test golden <private>/golden.json --repeat 2 --label baseline-2`.
+  If C1 drops on the 9, run each switch alone to see which one caused it.
 2. **g07, "not a candidate"** (free): placement scores only classes whose tests are of the
    draft's kind, and a test counts as UI only when a `self.<chain>` starts at a chain root
    (`index.chain_roots`). Suspect: the reference class's tests are classified as the other

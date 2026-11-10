@@ -25,8 +25,12 @@ STANDIN = REPO_ROOT / "standin"
 
 @pytest.fixture(scope="module")
 def setup(tmp_path_factory: pytest.TempPathFactory) -> tuple[Settings, IndexData]:
+    # baseline-1's placement rules; the tests of the later switches turn them on themselves
     settings = Settings.model_validate(
-        {"paths": {"cache_dir": str(tmp_path_factory.mktemp("cache"))}}
+        {
+            "paths": {"cache_dir": str(tmp_path_factory.mktemp("cache"))},
+            "generate": {"reuse": {"kind_as_preference": False, "class_from_retrieval": False}},
+        }
     )
     index, _, _ = update_index(STANDIN, settings)
     return settings, index
@@ -692,3 +696,115 @@ def test_a_gated_template_class_is_flagged_without_failing(
     assert decision.home == f"{legacy.file_path}::TestExceptionsLegacyList"
     assert decision.target == "TestExceptionsLegacyList", decision.reasons
     assert any("runs only on cloud" in n for n in decision.review_notes)
+
+
+def _templated(index: IndexData, test: str, hits: list[tuple[str, float]]) -> RetrievalResult:
+    """A retrieval whose first template is ``test`` and whose hits are (test name, score)."""
+    from ticket2test.models.retrieval import RetrievedChunk, TemplateRef
+
+    by_name = {c.symbol_name: c for c in index.chunks if c.kind == "test"}
+    template = by_name[test]
+    return _empty_retrieval().model_copy(
+        update={
+            "templates": [
+                TemplateRef(
+                    chunk_id=template.id, entry_key=next(iter(template.data_entries)), why="t"
+                )
+            ],
+            "hits": [
+                RetrievedChunk(
+                    chunk_id=by_name[name].id,
+                    file_path=by_name[name].file_path,
+                    qualname=by_name[name].qualname,
+                    kind="test",
+                    start_line=by_name[name].start_line,
+                    score=score,
+                    reasons=[],
+                )
+                for name, score in hits
+            ],
+        }
+    )
+
+
+AGENT = DomainChoice(domain=Domain("agent", ("tests/agent",)), reason="test")
+
+
+def test_a_class_of_the_other_kind_can_take_the_method_with_kind_as_a_preference(
+    setup: tuple[Settings, IndexData],
+) -> None:
+    """Found in baseline-1 (g07): the draft guessed UI, the person's class is all API, and the
+    area has UI classes, so the kind filter left that class out ("not a candidate"). With
+    ``generate.reuse.kind_as_preference`` it is scored, its match weighed down, and as the
+    closest template's class it takes the method; off, it isn't a candidate."""
+    settings, index = setup
+    limit = next(
+        c for c in index.chunks if c.class_name == "TestAgentBrowserLimit" and c.data_entries
+    )
+    retrieval = _templated(index, limit.symbol_name, [(limit.symbol_name, 1.0)])
+    draft = _draft(
+        "X-8",
+        "A fourth agent browser session is refused at a browser limit of three",
+        ["Open three agent browser sessions", "Open a fourth"],
+        "The fourth session is refused",
+    )
+    off = decide(draft, retrieval, index, settings, AGENT)
+    assert f"{limit.file_path}::TestAgentBrowserLimit" not in off.class_scores
+    assert off.target != "TestAgentBrowserLimit", off.reasons
+    on = decide(draft, retrieval, index, _reuse(settings, kind_as_preference=True), AGENT)
+    assert on.kind == "method" and on.target == "TestAgentBrowserLimit", on.reasons
+    assert any("scored too, times 0.5" in r for r in on.reasons), on.reasons
+    unweighted = decide(
+        draft, retrieval, index, _reuse(settings, kind_as_preference=True, other_kind_factor=1.0),
+        AGENT,
+    )  # fmt: skip
+    key = f"{limit.file_path}::TestAgentBrowserLimit"
+    assert on.class_scores[key] == pytest.approx(unweighted.class_scores[key] * 0.5)
+
+
+def test_the_template_class_can_be_the_one_search_ranks_highest_together(
+    setup: tuple[Settings, IndexData],
+) -> None:
+    """Found in baseline-1 (g04, g15): the person's class had several tests in the context,
+    but the single closest test with data was another class's, so the method went there. With
+    ``generate.reuse.class_from_retrieval`` the class whose retrieved tests score highest
+    together is the template's class; off, the closest template's."""
+    settings, index = setup
+    viewer = next(c for c in index.chunks if c.class_name == "TestFilesViewer" and c.data_entries)
+    archives = [
+        c.symbol_name
+        for c in index.chunks
+        if c.class_name == "TestFilesArchives" and c.kind == "test"
+    ][:2]
+    retrieval = _templated(
+        index, viewer.symbol_name, [(viewer.symbol_name, 1.0), *((a, 0.7) for a in archives)]
+    )
+    files = DomainChoice(domain=Domain("files", ("tests/files",)), reason="test")
+    draft, _ = SCENARIOS["method"]
+    off = decide(draft, retrieval, index, settings, files)
+    assert off.target == "TestFilesViewer", off.reasons
+    on = decide(draft, retrieval, index, _reuse(settings, class_from_retrieval=True), files)
+    assert on.kind == "method" and on.target == "TestFilesArchives", on.reasons
+    assert on.home == "tests/files/test_files_archives.py::TestFilesArchives"
+    assert any("rank highest in search together" in r for r in on.reasons), on.reasons
+
+
+def test_search_ranking_a_class_highest_together_can_outweigh_the_closest_template(
+    setup: tuple[Settings, IndexData],
+) -> None:
+    """The trade-off of ``class_from_retrieval``, on the stand-in: a draft about the viewer
+    listing an archive's members finds one archives test (the template) and two viewer tests
+    that score more together, so the viewer class takes the method; off, the archives class."""
+    settings, index = setup
+    draft, target = SCENARIOS["method"]
+    ticket = Ticket(
+        id=draft.ticket_id,
+        title=draft.intent,
+        description=" ".join(draft.steps) + " " + draft.expected_outcome,
+        source=SourceInfo(system="jira", ref=draft.ticket_id),
+    )
+    retrieval = retrieve(ticket, index, settings, None, draft)
+    choice = choose_domain(retrieval, index, settings, ticket, draft)
+    assert decide(draft, retrieval, index, settings, choice).target == target
+    on = decide(draft, retrieval, index, _reuse(settings, class_from_retrieval=True), choice)
+    assert on.target == "TestFilesViewer", on.reasons

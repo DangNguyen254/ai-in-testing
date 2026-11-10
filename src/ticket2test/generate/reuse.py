@@ -26,6 +26,10 @@ test). Then, in order:
 4. **module**: a new module; its base and scaffold come from the domain's class whose tests are
    of the same kind and closest in flow (one base class may serve several domains).
 
+The draft's kind filters the classes a method may join, or with ``kind_as_preference`` only
+weighs them; the closest template's class is retrieval's first template with data, or with
+``class_from_retrieval`` the class whose tests search ranks highest together.
+
 Every decision records the candidates, their scores, and why each earlier option was rejected.
 """
 
@@ -222,22 +226,42 @@ def decide(
             for c in pool
         )
     )
-    if any_kind:
+    preference = reuse.kind_as_preference and kind != "hybrid"
+    if any_kind and not preference:
         decision.reasons.append(
             f"no {kind} test class in the domain: classes of any kind considered "
             "(generate.reuse.kind_fallback)"
         )
 
     def kind_ok(c: Candidate) -> bool:
-        return any_kind or kind == "hybrid" or c.kind == kind
+        return any_kind or preference or kind == "hybrid" or c.kind == kind
+
+    def kind_weight(c: Candidate) -> float:
+        """Another kind's match counts less (generate.reuse.kind_as_preference)."""
+        return reuse.other_kind_factor if preference and c.kind != kind else 1.0
 
     classes: dict[tuple[str, str], list[float]] = {}
+    class_weights: dict[str, float] = {}  # a class with any test of the draft's kind: 1.0
     for c in pool:
         key = f"{c.file_path}::{c.class_name}"
         if c.class_name is not None and kind_ok(c) and key not in excluded:
-            classes.setdefault((c.file_path, c.class_name), []).append(c.flow)
+            classes.setdefault((c.file_path, c.class_name), []).append(c.flow * kind_weight(c))
+            class_weights[key] = max(class_weights.get(key, 0.0), kind_weight(c))
     scores = {f"{path}::{name}": max(flows_) for (path, name), flows_ in classes.items()}
     decision.class_scores = dict(sorted(scores.items(), key=lambda kv: -kv[1]))
+    if preference and any(w < 1.0 for w in class_weights.values()):
+        decision.reasons.append(
+            f"classes whose tests are not {kind} scored too, times {reuse.other_kind_factor} "
+            "(generate.reuse.kind_as_preference)"
+        )
+    if reuse.class_from_retrieval and scores:
+        by_search = _class_by_retrieval(retrieval, index, class_weights)
+        if by_search is not None and by_search != home:
+            decision.reasons.append(
+                f"{by_search.split('::', 1)[1]}: its tests rank highest in search together "
+                "(generate.reuse.class_from_retrieval)"
+            )
+            home = decision.home = by_search
 
     def named_words(key: str) -> set[str]:
         name = key.split("::", 1)[1]
@@ -309,9 +333,10 @@ def decide(
         if c.class_name and kind_ok(c) and f"{c.file_path}::{c.class_name}" not in excluded
     ]
     # scaffolded from the closest template's class when it is eligible, else the best flow
+    # (of the draft's kind first, when other kinds are eligible too)
     template = next(
         (c for c in eligible if f"{c.file_path}::{c.class_name}" == home),
-        eligible[0] if eligible else candidates[0],
+        min(eligible, key=lambda c: kind_weight(c) < 1.0) if eligible else candidates[0],
     )
     decision.target, decision.target_file = template.class_name, template.file_path
     decision.reasons.append(
@@ -344,6 +369,25 @@ def _template_class(
     hits = [h.chunk_id for h in retrieval.hits if h.kind == "test"]
     top_hit = first_in(hits)
     return first_in([t.chunk_id for t in retrieval.templates]) or top_hit, top_hit
+
+
+def _class_by_retrieval(
+    retrieval: RetrievalResult, index: IndexData, weights: dict[str, float]
+) -> str | None:
+    """The ``path::Class`` among ``weights``' keys whose retrieved tests' scores sum highest,
+    each sum times the class's weight; None when no retrieved test is in one of them. A class
+    with several tests in the context beats one holding only the single closest test."""
+    chunks = {c.id: c for c in index.chunks}
+    sums: dict[str, float] = {}
+    for hit in retrieval.hits:
+        chunk = chunks.get(hit.chunk_id)
+        if chunk is None or chunk.kind != "test" or chunk.class_name is None:
+            continue
+        key = f"{chunk.file_path}::{chunk.class_name}"
+        if key in weights:
+            sums[key] = sums.get(key, 0.0) + max(hit.score, 0.0) * weights[key]
+    best = max(sums.items(), key=lambda kv: (kv[1], kv[0]), default=None)
+    return best[0] if best is not None and best[1] > 0 else None
 
 
 def _excluded_classes(
