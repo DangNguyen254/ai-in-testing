@@ -239,6 +239,12 @@ What the glossary says for the same tickets:
 - g01, g05, g07: a term matched, with no markers, classes or folders. g06, g08, g09, g10: none
   matched. These are the glossary's gaps (`docs/glossary-gaps-prompt.md`).
 
+The glossary is thin (about 12 terms, many without markers or classes): it was built before
+most of the golden tickets were pasted. `docs/glossary-gaps-prompt.md` is now a full update
+prompt for Haiku: every ticket reread, a marker check and classes for every term, feature
+phrases, empty entries reworked, the golden set off limits. After it: confirm the entries you
+agree with, then the replay with `--fresh`.
+
 The replay now records the model's replies per ticket and gives them back in order, so after
 one recording run (15 small calls) every later run is free and sees the same replies: only the
 code or a setting differs. It compares the settings in its `VARIANTS` (today: base, and

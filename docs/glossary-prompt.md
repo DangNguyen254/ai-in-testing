@@ -5,6 +5,11 @@ private folder, the tool and the real repo (the same setup as for `docs/company-
 The same prompt builds the glossary the first time and updates it later: the glossary is a living
 file, kept current as tickets, the tracker and the suite change.
 
+**For an update, use `docs/glossary-gaps-prompt.md`.** It does what this prompt does and also
+rereads every ticket, checks the component marker and the classes for every term, adds feature
+phrases, and keeps the session away from the golden set. This prompt stays as the first build's
+record.
+
 ---
 
 ## Prompt (copy from here)
