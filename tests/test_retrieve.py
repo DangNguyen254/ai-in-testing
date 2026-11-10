@@ -497,3 +497,31 @@ def test_hit_and_file_hit_say_whether_search_found_the_area(tmp_path: Path) -> N
     assert index is not None
     kinds = {c.id: c.kind for c in index.chunks}
     assert 0 < len(pair.retrieved) <= 10 and {kinds[r] for r in pair.retrieved} == {"test"}
+
+
+def test_a_joined_component_marker_matches_by_each_of_its_values(index: IndexData) -> None:
+    """Found with the placement replay on the real suite: classes marked with joined values
+    ("a,b") never counted as the ticket's component in the template ranking, which compared
+    the marker whole (the rest of the tool splits it), so another class's test became the
+    template. The stand-in's class marked "exceptions,rules" matches a draft about either."""
+    from ticket2test.retrieve.pipeline import Retriever, _Candidate
+
+    joined = next(
+        c
+        for c in index.chunks
+        if c.kind == "test" and c.class_name == "TestExceptionsRules" and c.data_entries
+    )
+    other = next(
+        c
+        for c in index.chunks
+        if c.kind == "test" and c.file_path.startswith("tests/files/") and c.data_entries
+    )
+    pool = {
+        other.id: _Candidate(chunk=other, score=1.0),
+        joined.id: _Candidate(chunk=joined, score=0.1),
+    }
+    retriever = Retriever(index, Settings())
+    for component in ("rules", "exceptions"):
+        first = retriever.templates(pool, None, [component])[0]
+        assert first.chunk_id == joined.id and first.why.startswith(f"same component '{component}'")
+    assert retriever.templates(pool, None, ["reports"])[0].chunk_id == other.id

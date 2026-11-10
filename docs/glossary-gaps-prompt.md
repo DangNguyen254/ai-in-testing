@@ -103,6 +103,11 @@ For each ticket in TICKETS_TO_CHECK:
 4. Write the entries.
    - A routing word: add `classes` (and `markers`, `chains`, `data` where the evidence gives
      them) to its entry, or create the entry (kind component, epic or label).
+   - Always check the component marker for a routing word: find the component marker value(s)
+     on the classes that test the feature (a class decorator; a joined value such as "a,b"
+     counts as each of its parts) and put them in `markers`. When the tracker's word and the
+     suite's marker value are spelled differently, this is the entry's most useful field. When
+     the classes carry no component marker, say so in `note`.
    - A feature phrase: add a `phrase` entry. Write the phrase as it appears in tickets, short
      enough to recur in other tickets about the same feature (two or three words is typical),
      and specific enough not to match unrelated tickets. Check that with a search over TICKETS:

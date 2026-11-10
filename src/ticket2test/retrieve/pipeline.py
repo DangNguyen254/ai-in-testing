@@ -213,13 +213,11 @@ class Retriever:
         words = {w for c in wanted for w in re.findall(r"[a-z0-9]+", c)}
         with_data = [c for c in pool.values() if c.chunk.kind == "test" and c.chunk.data_entries]
 
+        separator = self.settings.markers.value_separator
+
         def component_of(candidate: _Candidate) -> str | None:
-            for value in (
-                str(a).lower()
-                for m in candidate.chunk.markers
-                if m.name == "component"
-                for a in m.args
-            ):
+            # joined values ("a,b") part by part, as everywhere else markers are compared
+            for value in sorted(component_values(candidate.chunk, separator)):
                 singular = value.removesuffix("s")
                 if value in wanted or value in words or (singular and singular in words):
                     return value

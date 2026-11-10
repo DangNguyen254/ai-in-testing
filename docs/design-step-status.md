@@ -204,6 +204,23 @@ see the same retrieval (`--fresh` retrieves again). Same command as above.
   search, so it can help g15 and the tickets whose tests aren't retrieved. It can't make a
   class without data the template's class, so it doesn't fix g04 (or g06, g07) alone.
 
+**Replay facts (2026-11-10, on saved retrievals).**
+- 39% of the suite's tests are in classes that can't supply a template: 215 of 428 classes
+  have no data entry (24% of the tests), 4 more have almost none (15%).
+- g04 and g11 are mirror images: in g04 search's best test is right and the action-matching
+  template is wrong; in g11 the reverse. No ordering of component, action, score and data
+  fixes one without breaking the other. No rule for g04.
+- The reference class matched the wanted component on 1 ticket of 13. Three causes:
+  - **our bug (fixed, not yet measured)**: the template ranking compared a joined marker
+    ("a,b") whole; the rest of the tool splits it. g02, g03, g14, g15: all their reference
+    tests match once split. `test_a_joined_component_marker_matches_by_each_of_its_values`.
+  - vocabulary: g04, g12, g13 have a single-valued marker that isn't the ticket's or the
+    draft's component. In g12 and g13 the component matches another class and pulls the
+    template there. For Haiku: `docs/glossary-gaps-prompt.md` (the `markers` field).
+  - no marker at all on the reference class: g01, g05, g06, g07, g08. Component can't help.
+- Next: the replay with `--fresh` (15 small calls; the saved retrievals hold the old
+  templates), to see what the fix does to g15 and that g02, g03, g14 stay.
+
 2. **g07, "not a candidate"** (free): placement scores only classes whose tests are of the
    draft's kind, and a test counts as UI only when a `self.<chain>` starts at a chain root
    (`index.chain_roots`). Suspect: the reference class's tests are classified as the other
