@@ -189,6 +189,21 @@ What the three replays showed:
   diagnosis: per miss, where the reference's tests drop out (never found, cut by the top-k or
   the per-file cap, or reranked down), and a retrieval-only score to judge changes on.
 
+**g04 and g15, next facts (2026-11-10).** The replay script now also prints how the template
+ranking sees search's best test, the winning template and the reference class's best retrieved
+test (component match, kind, action, data, rank), and once, how much of the suite sits in
+classes that keep no or almost no data. It saves each retrieval under
+`t2t-private/output/placement-replay/`, so only the first run makes model calls and later runs
+see the same retrieval (`--fresh` retrieves again). Same command as above.
+- g04: if its best test matches component and shape as well as the winning template, and g11's
+  doesn't, let tests without data compete in the template ranking. If a large share of the
+  suite is in dataless classes, this is worth doing whatever g11 shows.
+- g15: if the winning template matched the wanted component and the reference's tests didn't,
+  the component points elsewhere (draft or glossary); if neither matched, it is ranking.
+- Glossary route: `docs/glossary-gaps-prompt.md`, for Haiku. An entry lifts a class's tests in
+  search, so it can help g15 and the tickets whose tests aren't retrieved. It can't make a
+  class without data the template's class, so it doesn't fix g04 (or g06, g07) alone.
+
 2. **g07, "not a candidate"** (free): placement scores only classes whose tests are of the
    draft's kind, and a test counts as UI only when a `self.<chain>` starts at a chain root
    (`index.chain_roots`). Suspect: the reference class's tests are classified as the other
