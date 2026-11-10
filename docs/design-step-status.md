@@ -152,23 +152,41 @@ The new yardstick. Compare pass@1 (baseline-0 had 3 runs).
 
 1. **baseline-1**: done (above).
 
-**Built 2026-11-10, not yet measured** (two switches in `generate.reuse`, both on in
-`config.yaml`; off = baseline-1):
+**Built 2026-11-10, not yet measured** (two switches in `generate.reuse`, both **off** in
+`config.yaml` until measured; off = baseline-1):
 - `kind_as_preference` (with `other_kind_factor: 0.5`), for g07: classes whose tests are of the
   other kind are scored too, with their class match multiplied by the factor, instead of being
-  filtered out. Variant still needs the same kind.
+  filtered out. A method that lands in such a class gets a reviewer note. Variant still needs
+  the same kind.
 - `class_from_retrieval`, for g04 and g15: the template's class becomes the class whose
   retrieved tests' scores sum highest (another kind's sum times the factor). Before, it was
   the class of the first template with data. `method_retrieval` then takes the template from
   that class (an entry of its own, or a test without data).
-- The trade-off, seen on the stand-in
-  (`test_search_ranking_a_class_highest_together_can_outweigh_the_closest_template`): a class
-  with two fair hits beats a class with one good hit, even when that one hit is the template.
-  This can flip tickets that are placed right today, so check C1 on the 9 tickets placed right
-  before.
-- Next: **baseline-2**, all 15 × 2 (about $0.60):
-  the command under "Running in the container" with `--label baseline-2`.
-  If C1 drops on the 9, run each switch alone to see which one caused it.
+
+Review of the two (2026-11-10, second session). The code does what it says, but neither fix is
+shown to work yet:
+- g07: `kind_as_preference` only makes the reference class a candidate. It still wins only as
+  the template's class, and templates prefer the draft's kind (shape), so in practice it needs
+  `class_from_retrieval` too, with its tests' summed score times 0.5 beating every UI class.
+  Whether its tests are retrieved at all was never checked for g07.
+- g04, g15: the sum favours a class with many fair hits over a class with one good hit, and it
+  drops the component and shape preferences the template ranking has. On the stand-in it moves
+  a rightly placed test to another class
+  (`test_search_ranking_a_class_highest_together_can_outweigh_the_closest_template`), so it
+  can also move some of the 9 tickets placed right today.
+- Both were on by default and would have been measured together; the method is one change at
+  a time. They are off by default now.
+
+Next: **placement replay** before any full run. It makes one retrieval per ticket (the only
+model calls, about 15 to 45 small ones), then decides placement in code under six settings
+(base, kind, class, both, and the last two counting only each class's best hit), and prints
+yes/no per ticket with no names:
+
+```bash
+podman exec -e T2T_CONFIG=/root/work/t2t-private/company.yaml t2t uv run python .scratch/placement_replay.py /root/work/t2t-private/golden.json
+```
+
+Turn on only what the replay shows to help without moving the 9, then run baseline-2 with it.
 2. **g07, "not a candidate"** (free): placement scores only classes whose tests are of the
    draft's kind, and a test counts as UI only when a `self.<chain>` starts at a chain root
    (`index.chain_roots`). Suspect: the reference class's tests are classified as the other

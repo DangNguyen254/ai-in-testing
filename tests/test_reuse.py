@@ -25,12 +25,8 @@ STANDIN = REPO_ROOT / "standin"
 
 @pytest.fixture(scope="module")
 def setup(tmp_path_factory: pytest.TempPathFactory) -> tuple[Settings, IndexData]:
-    # baseline-1's placement rules; the tests of the later switches turn them on themselves
     settings = Settings.model_validate(
-        {
-            "paths": {"cache_dir": str(tmp_path_factory.mktemp("cache"))},
-            "generate": {"reuse": {"kind_as_preference": False, "class_from_retrieval": False}},
-        }
+        {"paths": {"cache_dir": str(tmp_path_factory.mktemp("cache"))}}
     )
     index, _, _ = update_index(STANDIN, settings)
     return settings, index
@@ -754,6 +750,8 @@ def test_a_class_of_the_other_kind_can_take_the_method_with_kind_as_a_preference
     on = decide(draft, retrieval, index, _reuse(settings, kind_as_preference=True), AGENT)
     assert on.kind == "method" and on.target == "TestAgentBrowserLimit", on.reasons
     assert any("scored too, times 0.5" in r for r in on.reasons), on.reasons
+    assert any("the draft says ui" in n for n in on.review_notes), on.review_notes
+    assert not off.review_notes
     unweighted = decide(
         draft, retrieval, index, _reuse(settings, kind_as_preference=True, other_kind_factor=1.0),
         AGENT,

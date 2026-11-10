@@ -254,14 +254,15 @@ def decide(
             f"classes whose tests are not {kind} scored too, times {reuse.other_kind_factor} "
             "(generate.reuse.kind_as_preference)"
         )
+    home_why = "the closest template test is in this class"
     if reuse.class_from_retrieval and scores:
         by_search = _class_by_retrieval(retrieval, index, class_weights)
         if by_search is not None and by_search != home:
+            home, home_why = by_search, "its tests rank highest in search together"
+            decision.home = home
             decision.reasons.append(
-                f"{by_search.split('::', 1)[1]}: its tests rank highest in search together "
-                "(generate.reuse.class_from_retrieval)"
+                f"{home.split('::', 1)[1]}: {home_why} (generate.reuse.class_from_retrieval)"
             )
-            home = decision.home = by_search
 
     def named_words(key: str) -> set[str]:
         name = key.split("::", 1)[1]
@@ -299,7 +300,7 @@ def decide(
             # when search also ranks its tests first in the domain, nor need its flow.
             if home != target:
                 decision.reasons.append(
-                    f"{home.split('::', 1)[1]}: the closest template test is in this class "
+                    f"{home.split('::', 1)[1]}: {home_why} "
                     f"(class match {scores[home]:.2f}; best match was {score:.2f})"
                 )
             target, score, home_chosen = home, scores[home], True
@@ -317,6 +318,11 @@ def decide(
             decision.kind, decision.target, decision.target_file = "method", name, path
             if target in gated:
                 decision.review_notes.append(gated[target])
+            if class_weights[target] < 1.0:  # chosen against the draft's kind: for the reviewer
+                decision.review_notes.append(
+                    f"the draft says {kind}, but none of {name}'s tests is {kind}: confirm "
+                    "the test belongs in this class"
+                )
             why = f"class match {score:.2f}" + (f", named after {sorted(named)}" if named else "")
             decision.reasons.append(f"new method in {name} ({why})")
             return decision

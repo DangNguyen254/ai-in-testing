@@ -387,14 +387,15 @@ class ReuseSettings(_Section):
     template_class_wins: bool = True
     # The draft's kind (UI / API) is the model's guess: classes of the other kind are scored
     # too, their class match times ``other_kind_factor``, instead of being left out. False:
-    # kind is a hard filter (baseline-1).
-    kind_as_preference: bool = True
+    # kind is a hard filter (baseline-1). Off until measured on the golden set.
+    kind_as_preference: bool = False
     other_kind_factor: float = Field(default=0.5, ge=0.0, le=1.0)
     # The template's class is the class whose tests search ranks highest together (the sum of
     # their retrieval scores; another kind's times ``other_kind_factor``), not the class of the
     # single closest test with data; the template then comes from that class, or is one of its
     # tests without data when it keeps none. False: the closest template's class (baseline-1).
-    class_from_retrieval: bool = True
+    # Off until measured on the golden set.
+    class_from_retrieval: bool = False
 
 
 class GenerateSettings(_Section):
