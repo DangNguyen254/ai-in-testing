@@ -26,10 +26,6 @@ test). Then, in order:
 4. **module**: a new module; its base and scaffold come from the domain's class whose tests are
    of the same kind and closest in flow (one base class may serve several domains).
 
-The closest template's class is that of retrieval's first template with data, or with
-``dataless_hit_class`` that of search's best test in the domain when it has no data and its
-class keeps almost none.
-
 Every decision records the candidates, their scores, and why each earlier option was rejected.
 """
 
@@ -242,18 +238,6 @@ def decide(
             classes.setdefault((c.file_path, c.class_name), []).append(c.flow)
     scores = {f"{path}::{name}": max(flows_) for (path, name), flows_ in classes.items()}
     decision.class_scores = dict(sorted(scores.items(), key=lambda kv: -kv[1]))
-    home_why = "the closest template test is in this class"
-    if reuse.dataless_hit_class:
-        dataless = _dataless_top_class(
-            retrieval, index, set(scores), reuse.dataless_class_max_share
-        )
-        if dataless is not None and dataless != home:
-            home, home_why = dataless, "search's closest test is in this class, which keeps no data"
-            decision.home = home
-            decision.reasons.append(
-                f"{home.split('::', 1)[1]}: {home_why}, so it couldn't hold the template "
-                "(generate.reuse.dataless_hit_class)"
-            )
 
     def named_words(key: str) -> set[str]:
         name = key.split("::", 1)[1]
@@ -291,7 +275,7 @@ def decide(
             # when search also ranks its tests first in the domain, nor need its flow.
             if home != target:
                 decision.reasons.append(
-                    f"{home.split('::', 1)[1]}: {home_why} "
+                    f"{home.split('::', 1)[1]}: the closest template test is in this class "
                     f"(class match {scores[home]:.2f}; best match was {score:.2f})"
                 )
             target, score, home_chosen = home, scores[home], True
@@ -360,35 +344,6 @@ def _template_class(
     hits = [h.chunk_id for h in retrieval.hits if h.kind == "test"]
     top_hit = first_in(hits)
     return first_in([t.chunk_id for t in retrieval.templates]) or top_hit, top_hit
-
-
-def _dataless_top_class(
-    retrieval: RetrievalResult, index: IndexData, within: set[str], max_share: float
-) -> str | None:
-    """The ``path::Class`` of search's best test among the classes ``within``, when that test
-    has no data entry and at most ``max_share`` of its class's tests have one; else None.
-    Templates are chosen among tests with data, so a class that keeps almost none loses the
-    template to a sibling even when search ranks its test first. A dataless test of a class
-    that does keep data says nothing: the template ranking saw that class's other tests."""
-    chunks = {c.id: c for c in index.chunks}
-    for hit in sorted(retrieval.hits, key=lambda h: -h.score):
-        chunk = chunks.get(hit.chunk_id)
-        if chunk is None or chunk.kind != "test" or chunk.class_name is None:
-            continue
-        key = f"{chunk.file_path}::{chunk.class_name}"
-        if key not in within:
-            continue
-        if chunk.data_entries:
-            return None
-        own = [
-            c
-            for c in index.chunks
-            if c.kind == "test"
-            and c.file_path == chunk.file_path
-            and c.class_name == chunk.class_name
-        ]
-        return key if sum(bool(c.data_entries) for c in own) <= max_share * len(own) else None
-    return None
 
 
 def _excluded_classes(

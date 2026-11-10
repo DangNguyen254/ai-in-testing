@@ -173,28 +173,22 @@ placement decision in code under six settings. Tickets placed right, of 15:
 - g15 and g11: the reference class's tests are retrieved but rank last (g15: 2/2). No rule
   over retrieval scores fixes that; it is ranking inside retrieval.
 
-**Built, not yet measured**: `generate.reuse.dataless_hit_class` (off in `config.yaml`). When
-search's best test in the area has no data entry, its class is the template's class. When it
-has data, the template ranking (component, shape, score) already weighed it and stands, so
-this is narrower than "class of search's best test" above and can't change a ticket where the
-best test has data. On the stand-in nothing else changes with it on. Check with the replay
-(16 small calls; it prints base against the rule, and whether the best test has data):
+**The data rule, tried twice and removed.** "When search's best test has no data, its class
+is the template's class" gained g04 and lost g11 (replay 2: base 9, rule 9). Tightened to
+"and its class keeps almost no data", it did the same (replay 3: base 8, rule 8): g11's other
+class is as dataless as g04's (110 tests, 0 with data, against 179 with 1). Nothing about data
+separates the two, so the switch is gone and placement is baseline-1's again.
 
-```bash
-podman exec -e T2T_CONFIG=/root/work/t2t-private/company.yaml t2t uv run python .scratch/placement_replay.py /root/work/t2t-private/golden.json
-```
+What the three replays showed:
+- Base placed 8, 9 and 8 of 15 right with no change to the code: g11 and g14 flip with the
+  retrieval. A placement change worth one ticket can't be told from this noise in a single
+  run.
+- Every remaining C1 miss is retrieval: the reference class's tests are not retrieved (g01,
+  g05, g06, g07) or rank below another class's (g04, g11, g15).
+- So baseline-1 stays the yardstick; no baseline-2 for placement. Next is the retrieval
+  diagnosis: per miss, where the reference's tests drop out (never found, cut by the top-k or
+  the per-file cap, or reranked down), and a retrieval-only score to judge changes on.
 
-If g04 turns YES and nothing else moves: default it on, then baseline-2.
-
-Second replay (15 calls): base 9, with the rule 9. g04 gained, g11 lost: there, search's best
-test has no data and is in another class, and the rule moved the method away from the
-reference class the template ranking had picked. The rule stays off.
-
-Tightened (built, off, not yet measured): the rule now also needs the best test's class to
-keep almost no data (`dataless_class_max_share: 0.1` of its tests at most; g04's class: 1 of
-179). Whether it spares g11 depends on how much data that other class keeps, which the replay
-now prints ("its class: n tests, m with data"). Run the same replay command again (15 small
-calls). g04 YES with g11 unchanged: default it on. g11 still lost: drop the switch.
 2. **g07, "not a candidate"** (free): placement scores only classes whose tests are of the
    draft's kind, and a test counts as UI only when a `self.<chain>` starts at a chain root
    (`index.chain_roots`). Suspect: the reference class's tests are classified as the other

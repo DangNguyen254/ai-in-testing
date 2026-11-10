@@ -12,9 +12,8 @@ from tests.conftest import REPO_ROOT
 from ticket2test.adapters.tickets.jira import JiraExportSource
 from ticket2test.config import Settings
 from ticket2test.generate.domain import Domain, DomainChoice, choose_domain, domains, full_match
-from ticket2test.generate.reuse import ReuseDecision, _named_case, decide
+from ticket2test.generate.reuse import _named_case, decide
 from ticket2test.index.indexer import IndexData, update_index
-from ticket2test.models.chunk import Chunk
 from ticket2test.models.draft import TestCaseDraft
 from ticket2test.models.retrieval import RetrievalResult
 from ticket2test.models.ticket import SourceInfo, Ticket
@@ -693,67 +692,3 @@ def test_a_gated_template_class_is_flagged_without_failing(
     assert decision.home == f"{legacy.file_path}::TestExceptionsLegacyList"
     assert decision.target == "TestExceptionsLegacyList", decision.reasons
     assert any("runs only on cloud" in n for n in decision.review_notes)
-
-
-def _templated(index: IndexData, test: str, hits: list[tuple[str, float]]) -> RetrievalResult:
-    """A retrieval whose first template is ``test`` and whose hits are (test name, score)."""
-    from ticket2test.models.retrieval import RetrievedChunk, TemplateRef
-
-    by_name = {c.symbol_name: c for c in index.chunks if c.kind == "test"}
-    template = by_name[test]
-    return _empty_retrieval().model_copy(
-        update={
-            "templates": [
-                TemplateRef(
-                    chunk_id=template.id, entry_key=next(iter(template.data_entries)), why="t"
-                )
-            ],
-            "hits": [
-                RetrievedChunk(
-                    chunk_id=by_name[name].id,
-                    file_path=by_name[name].file_path,
-                    qualname=by_name[name].qualname,
-                    kind="test",
-                    start_line=by_name[name].start_line,
-                    score=score,
-                    reasons=[],
-                )
-                for name, score in hits
-            ],
-        }
-    )
-
-
-def test_a_class_that_keeps_no_data_gets_the_method_when_search_ranks_its_test_first(
-    setup: tuple[Settings, IndexData],
-) -> None:
-    """Found in baseline-1 (g04) and measured with the placement replay: search ranked a test
-    of the person's class first, but the class keeps almost no data (1 of its 179 tests has an
-    entry), so a sibling class's test became the template and took the method. With
-    ``generate.reuse.dataless_hit_class`` the class of search's best test wins when that test
-    has no data and its class keeps almost none. A dataless test of a class that keeps data
-    changes nothing (g11 in the second replay: it moved a rightly placed test), nor does a
-    best test with data: the template ranking already weighed those classes."""
-    settings, index = setup
-    tests = [c for c in index.chunks if c.kind == "test"]
-    widget = next(c for c in tests if c.class_name == "TestExceptionsWidgets")  # no data at all
-    stray = next(c for c in tests if c.class_name == "TestExceptions" and not c.data_entries)
-    expiry = next(c for c in tests if c.class_name == "TestExceptionsExpiry" and c.data_entries)
-    draft = _listing_draft().model_copy(update={"test_kind": "hybrid"})
-    on_settings = _reuse(settings, dataless_hit_class=True)
-
-    def placed(first: Chunk, switched: Settings) -> ReuseDecision:
-        retrieval = _templated(
-            index, expiry.symbol_name, [(first.symbol_name, 1.0), (expiry.symbol_name, 0.7)]
-        )
-        return decide(draft, retrieval, index, switched, EXCEPTIONS)
-
-    assert placed(widget, settings).target == "TestExceptionsExpiry"
-    on = placed(widget, on_settings)
-    assert on.kind == "method" and on.target == "TestExceptionsWidgets", on.reasons
-    assert on.home == f"{widget.file_path}::TestExceptionsWidgets"
-    assert any("keeps no data" in r for r in on.reasons), on.reasons
-    # a dataless test of a class that keeps data: the template's class stands
-    assert placed(stray, on_settings).target == "TestExceptionsExpiry"
-    # search's best test has data: nothing changes
-    assert placed(expiry, on_settings).target == "TestExceptionsExpiry"

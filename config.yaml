@@ -205,8 +205,6 @@ generate:
     kind_fallback: true            # no class of the draft's kind in the area: consider any kind
     classes_from_domain: true      # a new method may join any class of the domain, not only the closest tests'
     template_class_wins: true      # the closest template's class takes the new method whatever its class match
-    dataless_hit_class: false      # true: search's best test has no data and its class keeps almost none: that class is the template's (not yet measured)
-    dataless_class_max_share: 0.1  # "almost none": at most this share of the class's tests have a data entry
   variant_prompt: variant_v1      # only when a new case can't be planned in code
 
 validation:                     # deterministic checks of generated tests (Phase 7)
