@@ -1,4 +1,33 @@
-# Design step: where the work stopped (2026-11-05)
+# Design step: status
+
+## Start here (2026-11-11)
+
+How the work is done is in `CLAUDE.md` ("How the work is done now"). This file is the record:
+the newest state is in this block, and the history below it is in the order it happened.
+
+- **Yardstick: baseline-2** (15 × 2, label `baseline-2`): C1 53%, C2 17%, C3 40%, C4 83%,
+  C5 87%, C7 97%, C8 63%. The same as baseline-1 within noise.
+- **Placement (C1) is parked** at 9 of 15 on the recorded replay. Seven rules were tried and
+  each traded one ticket for another. Misses: g01, g04, g05, g06, g07, g15. The cheap answer
+  left is D6 (the QE names the nearest test).
+- **Now: C2 (helpers called).** No miss is an inlined helper. Most are steps the template
+  lacks, and half were never shown in use in the context. `generate.context_member_cards`
+  (off) is built for this and **is being measured**: label `member-cards`, to compare with
+  baseline-2 (C2 up, C7 and C4 not down).
+- **Next:** read that run; then C3 (11 of 17 misses had every block in the context); then
+  D1 (a step plan) if helpers are still skipped.
+- **Open:** g06 fails to generate 2 times in 3 (the code doesn't parse from line 1);
+  `.scratch/c2_misses.py` can't read the template's code in 13 runs; C8 tests names only (a
+  stricter "shown in a call" variant is worth adding to the scorer); g12's glossary entry
+  wants a person's look; a blind try on new tickets (3 to 5 with a framework, 1 or 2
+  without).
+- **On:** `knowledge.use_in_templates`, the joined-marker fix, the updated and reviewed
+  glossary. **Off:** `knowledge.search_named_classes`, `generate.reuse.glossary_class_wins`,
+  `generate.context_member_cards`. **Removed:** `kind_as_preference`,
+  `class_from_retrieval`, `dataless_hit_class`.
+- Local commits are not pushed (origin is at `68e4545`); push only when the human says so.
+
+## Where the work stopped on the old machine (2026-11-05)
 
 Branch `design-step`, last code commit `dbc2970`. Method (`docs/design-step-plan.md`): measure on
 the golden set, do error analysis, then change one thing at a time behind a config switch and

@@ -199,3 +199,73 @@ Complete each phase fully, with passing tests, before starting the next. At the 
 - If a task seems to require private data, real company systems, or bypassing a constraint, stop and ask.
 - The `standin/` repo must use only generic, invented names: no real company, product, URL, or internal tool names. Use `example.com` / `localhost` for hosts.
 - **Git:** Claude may run `git init` and `git commit` locally. Never `git push` without explicit permission from the human. Never add Claude / Claude Code as a co-author in commits (no `Co-Authored-By: Claude ...` trailer) and no "Generated with Claude Code" lines in commit messages or PR descriptions.
+
+---
+
+## How the work is done now (the design step; added 2026-11-11)
+
+Read these at the start of a session, in this order: `docs/design-step-status.md` (its "Start
+here" block says where the work is), `docs/design-step-plan.md` (the method and the planned
+changes D1–D6), and `.scratch/session-notes.md` (git-ignored notes kept across sessions).
+
+### Who does what
+- Claude designs and writes code in this repo and tests it on the stand-in. `config.yaml` is
+  the stand-in's config.
+- The human runs the tool on the real suite, inside a container, with a private config, and
+  pastes the results back. Claude never runs anything there and never reads the real suite or
+  the private folder, on the host or in the container.
+- "Haiku" / "Sonnet" alone means a Claude Code session on another account that can read the
+  real suite. "Haiku API" / "Sonnet API" means the model the tool calls. Work that needs to
+  understand the real suite (a glossary, a review, an investigation) is written as a prompt in
+  `docs/*-prompt.md`; the human pastes it to that session and relays a numbers-only reply.
+- Tickets are any tickets (features, stories, tasks), not only bugs.
+
+### The real suite's names stay out
+- Never write or say the real suite's names, keys or values: not in the repo, not in chat, not
+  in a commit message. Reports the human pastes may carry some; never repeat them.
+- The real suite's folder is written `<repo>`. The private folder's name, `t2t-private`, is
+  fine to write; its contents are not.
+- To learn something from private output, write a script in `.scratch/` that prints **counts
+  and yes/no only**, check it on the stand-in first (with the fake model), then give the human
+  the one command to run. `.scratch/c2_misses.py` and `.scratch/placement_replay.py` are the
+  patterns to copy. Say when a line could still carry a name, so the human checks it.
+- Every container command carries the config:
+  `podman exec -e T2T_CONFIG=/root/work/t2t-private/company.yaml t2t uv run ticket2test ...`.
+  Give each command in its own code block, complete, ready to paste.
+
+### Runs
+- Ask before any run that costs money, and say about how much. Heavy jobs one at a time. Ask
+  before touching the container while something runs in it.
+- The repo is mounted into the container: **never edit `src/` while a run is going there.**
+  Docs and `.scratch/` are fine.
+- A golden run saves its report after every run; `--resume <folder>` continues it and makes
+  again the runs that failed on a model call. After Ctrl+C on `podman exec`, the process may
+  still be running inside: check before resuming.
+
+### The method (don't skip steps)
+1. **Measure first.** The golden set (15 tickets, criteria C1–C8, `eval/reference.py`) is the
+   yardstick. No change is kept because it looks right or fixes one ticket.
+2. **Free checks before paid ones.** Most questions can be answered from a report and the
+   kept runs with a masked script and no model call. The placement replay records the model's
+   replies once and then compares settings for free.
+3. **One change at a time, behind a config switch, off by default.** `config.yaml` must match
+   the code's defaults (`tests/test_config.py`). A switch goes on only after a run shows a
+   gain on its criterion without a loss on another. A switch that measures no gain is removed
+   or stays off; say which, and why, in the status doc.
+4. **Respect the noise.** One run is 3 points on a 15 × 2 set, and retrieval varies between
+   runs: one or two runs' difference is not a result. Compare tickets that pass in both runs.
+5. **Distrust your own measure.** Check what a criterion or a script really tests before
+   building on it (C8 only tests that a name occurs in the context). When a reading was
+   wrong, say so plainly and correct the status doc.
+6. **A rule that trades one ticket for another is not a gain.** Seven placement rules did
+   exactly that; the status doc lists them so they aren't tried again.
+7. **Record as you go.** After every run or decision, update `docs/design-step-status.md`
+   (numbers, the reading, what is on, off or removed) and commit it. Code and docs go in
+   separate commits, with messages that say what changed in plain words.
+
+### Talking to the human
+- Short and straight to the point: the finding first, then what it means, then the next step
+  with its command. Tables for numbers. No long background unless asked.
+- Don't re-ask decisions already made, and don't offer a list of options when one is clearly
+  better: recommend it.
+- When unsure whether a result is real, say what would settle it and how much it costs.
