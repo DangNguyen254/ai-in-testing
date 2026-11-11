@@ -281,8 +281,25 @@ class without data uses the no-data path. Several named classes, or a term nobod
 change nothing. `test_the_one_class_a_confirmed_glossary_term_names_takes_the_method`.
 Expected from the facts: g06 and g07 (one named class each, not today's winner); g05 and g01
 depend on how many classes their terms name in the area; g04 and g15 name two and won't move.
-Next: the replay, free (columns: base, named-classes, glossary-class, both; one line says how
-many classes the confirmed terms name in the area).
+
+**`glossary_class_wins` measured (free replay): 9 against 9, stays off.** It gained g07 (the
+only class the terms name; an API class under a UI draft) and lost g12: there the one class a
+confirmed term names in the area is not the reference class. Where exactly one class is named
+and the reference class still has tests (g07, g08, g11, g12, g13), the glossary is right on 4
+of 5 and today's placement on 4 of 5: the rule is as good as the glossary's entry, no better.
+g06 names two classes, g01's naming term is only proposed: unchanged. Worth a person's look:
+g12's entry (is that class a second valid home, or a wrong entry?).
+
+**Where placement stands (2026-11-11).** 9 of 15 on the recorded replies, after seven rules
+tried: each one traded a ticket for another. With 15 tickets and one ticket of run-to-run
+noise, placement can't be tuned further on this set. Kept from the work: the joined-marker fix,
+`knowledge.use_in_templates` (on), the updated and reviewed glossary, checkpoints and
+`--resume`, the kept retrievals, the replay with recorded replies. Off: `search_named_classes`,
+`glossary_class_wins`.
+
+Next: **baseline-2** (all 15 × 2, `--resume` if it stops). The replay only sees placement;
+the new glossary also feeds the draft, search and the generation context, so C2, C3 and C8 may
+have moved. Then the weakest criteria: C2 (20%) and C3 (33%), both far below C1 (60%).
 
 The glossary is thin (about 12 terms, many without markers or classes): it was built before
 most of the golden tickets were pasted. `docs/glossary-gaps-prompt.md` is now a full update
