@@ -397,6 +397,10 @@ class GenerateSettings(_Section):
     context_helpers: bool = True  # the code of the helpers the template calls, in the context
     context_entry_list: bool = True  # the class's other entries and their blocks, in the context
     base_entry_from_class: bool = True  # the base entry: the class entry the draft names most
+    # One line per member the test can call (its class's and bases' helpers, the members of
+    # the pages its class reaches), ranked by the draft's words. Off until a run measures it.
+    context_member_cards: bool = False
+    member_cards_max: int = Field(default=60, ge=1)
     # Team conventions for tests (Markdown). Always placed in the context when set.
     conventions_doc: Path | None = None
     # Always on the reviewer checklist: things only a real run can confirm.

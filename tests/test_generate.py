@@ -998,6 +998,43 @@ def test_the_context_shows_the_bodies_of_the_helpers_the_template_calls(
     assert "\n   def " not in piece.body  # dedented like the class's own methods
 
 
+def test_member_cards_list_what_the_test_can_call_beyond_the_template(
+    index: IndexData, retrieval: RetrievalResult, tmp_path: Path
+) -> None:
+    """Found on the golden set: 43 of 51 helpers the reference calls and the new test doesn't
+    are steps the template lacks, and half were never shown in a call. A card per member of
+    the class's helpers and its pages, the draft's words first; off unless switched on."""
+    from ticket2test.generate.generator import _template, build_generation_context
+    from ticket2test.generate.members import member_cards_piece
+
+    settings = _settings(tmp_path)
+    chunk = next(c for c in index.chunks if c.id == TEMPLATE_CHUNK)
+    draft = _draft(steps=["Open the rules list", "Add a rule with a condition", "Save"])
+    pages = [q for q, c in index.catalog.classes.items() if c.name == "RuleListPage"]
+    piece = member_cards_piece(draft, chunk, pages, index, settings)
+    assert piece is not None and piece.title.startswith("Members this test can call")
+    lines = piece.body.splitlines()
+    # the delete template never adds a rule: the member is offered, with what it takes
+    assert "- `self.nav.rules.list.add_rule()` (action, RuleListPage)" in lines
+    assert any(ln.startswith("- `self.nav.rules.wizard.condition_field` (value") for ln in lines)
+    assert any(ln.startswith("- `self.go_to(path)` (action, BaseTest): ") for ln in lines)
+    assert lines.index("- `self.nav.rules.list.add_rule()` (action, RuleListPage)") < next(
+        n for n, ln in enumerate(lines) if "delete_selected" in ln
+    )  # the draft's words first
+    assert not any("`self.nav.rules`" in ln or ".test_" in ln for ln in lines)  # no hops, tests
+    assert len([ln for ln in lines if ln.startswith("- ")]) <= settings.generate.member_cards_max
+
+    template, key = _template(retrieval, {c.id: c for c in index.chunks})
+    off = build_generation_context(draft, retrieval, index, settings, template, key)
+    assert not any(p.title.startswith("Members this test can call") for p in off.pieces)
+    on = settings.model_copy(
+        update={"generate": settings.generate.model_copy(update={"context_member_cards": True})}
+    )
+    built = build_generation_context(draft, retrieval, index, on, template, key)
+    titles = [p.title.split(":")[0].split(" (")[0] for p in built.pieces]
+    assert titles.index("Members this test can call") < titles.index("Similar test")
+
+
 def test_a_copy_change_takes_a_block_from_another_entry_of_the_class() -> None:
     """Found in the real trial: the base entry lacked the agent's rule block, and the model
     would have had to write ~60 lines by hand. A "copy" change takes it from a sibling."""

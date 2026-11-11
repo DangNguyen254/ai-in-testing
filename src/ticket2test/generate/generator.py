@@ -28,6 +28,7 @@ from ticket2test.generate.context import (
 from ticket2test.generate.conventions import Conventions, convention_sections, with_conventions
 from ticket2test.generate.entries import build_entry, function_of
 from ticket2test.generate.inspect import data_use
+from ticket2test.generate.members import member_cards_piece
 from ticket2test.index.catalog import SymbolCatalog
 from ticket2test.index.datafile import function_data_path, layout_of, module_data_path
 from ticket2test.index.extract import ClassInfo, module_name
@@ -904,6 +905,7 @@ def build_generation_context(
     )
     if helpers is not None:  # what they check and return, so the test doesn't redo it
         pieces.append(helpers)
+    cards_at = len(pieces)  # member cards go here, once the pages in play are known
 
     # The base test class (and its in-repo bases), so inherited helpers are visible.
     used: set[str] = {template_chunk.id}
@@ -931,6 +933,12 @@ def build_generation_context(
         used.add(chunk.id)
 
     page_objects = _page_objects_for(template_chunk, examples, hits, index)
+    if settings.generate.context_member_cards:
+        cards = member_cards_piece(
+            draft, template_chunk, [q for q, _ in page_objects], index, settings
+        )
+        if cards is not None:  # before the base classes and examples, so the budget keeps it
+            pieces.insert(cards_at, cards)
     chains = chains_piece(catalog, [q for q, _ in page_objects])
     if chains is not None:
         pieces.append(chains)
