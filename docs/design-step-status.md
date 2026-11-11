@@ -340,6 +340,29 @@ means the model copies the template's steps, which D1 (a step plan from a menu) 
 "in the context, same page used" means it picked the wrong member, which D2 (contract cards)
 targets; "out of reach" is placement, not generation.
 
+**First run of the script (baseline-2, 24 runs missing C2, 51 missing helpers):**
+- Inlined: 0 of 51. The trial's "helper body copied" failure isn't what C2 catches now.
+- Out of reach (a reference-class method, output elsewhere): 10, all g14 r2 and g15.
+  Placement, not generation.
+- The template calls it: 8 of 51 (g03, g13, one each in g04 r1 and g09 r1). The other 43 are
+  steps the template doesn't have. Where the template's calls could be read, the new test
+  mostly repeats them (g03 3 of 3, g04 5 of 6, g13 5 of 8).
+- Same page or class used, other member: 20. Page or class not touched at all: 31.
+- 10 of the 24 runs miss by one helper (g01, g03, g07 r1, g08 r2, g11, g12).
+- Name in the context: 43 of 51, but this is C8's test, and C8 only asks whether the word
+  occurs anywhere in the context. A common member name passes even when it is another page's.
+  So "had it, didn't use it" is weaker evidence than it looked.
+- Not trusted yet: 11 runs show a template with 0 `self` calls, and several new tests make 1
+  or 2. Either those tests work through calls C2 doesn't count (locals, constructors, module
+  functions) or the template wasn't read.
+
+The script now also counts `shown` (a chunk in the context calls that member on that page),
+`def` (its definition is in the context), `common` / `rare` (how many of the reference
+class's other tests call it), and all calls next to `self` calls. That run decides: mostly
+not shown and not defined means the generator never saw the member as a choice (a member
+menu for the pages in play); shown but unused means it needs to know what the member does
+(D2) or be made to map each step to a member (D1).
+
 Read: search is not the bottleneck for C2 and C3. Two thirds of their misses happen with the
 helper or block already in the context. Next is step 4 below (what the generator does with
 what it has), not more retrieval or placement rules.
