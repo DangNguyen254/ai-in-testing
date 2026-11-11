@@ -777,8 +777,9 @@ class KnowledgeSettings(_Section):
     unmapped_log: Path | None = None
     use_in_search: bool = True  # matched terms' folders lift results in the search
     # Matched terms' component markers count as the ticket's components when the template is
-    # chosen (the tracker's word and the suite's marker value often differ). Off until measured.
-    use_in_templates: bool = False
+    # chosen (the tracker's word and the suite's marker value often differ). False: only the
+    # ticket's and the draft's own components (baseline-1).
+    use_in_templates: bool = True
     use_in_domain: bool = True  # matched terms' folders steer the area choice
     use_in_draft: bool = True  # the draft gets the matched terms' suite words and values
     use_in_generation: bool = True  # the context gets the known values of the entry's keys

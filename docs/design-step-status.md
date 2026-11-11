@@ -239,6 +239,16 @@ What the glossary says for the same tickets:
 - g01, g05, g07: a term matched, with no markers, classes or folders. g06, g08, g09, g10: none
   matched. These are the glossary's gaps (`docs/glossary-gaps-prompt.md`).
 
+**Recorded replay (2026-11-10, both columns on the same recorded replies): base 8, with
+`knowledge.use_in_templates` 9.** g13 gained (a new module became a method in the reference
+class), none lost. g04 and g12 unchanged: the glossary's marker is also on the class that wins
+there, so it ties. In g15 the glossary names both the reference class and the sibling that
+wins, so "a class the glossary names wins" can't separate them: not built. The switch is on by
+default since 2026-11-11.
+
+Next: the glossary update with Haiku (below), then the replay with `--fresh`, then baseline-2
+(with `--resume` available).
+
 The glossary is thin (about 12 terms, many without markers or classes): it was built before
 most of the golden tickets were pasted. `docs/glossary-gaps-prompt.md` is now a full update
 prompt for Haiku: every ticket reread, a marker check and classes for every term, feature

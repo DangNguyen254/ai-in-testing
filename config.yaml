@@ -303,7 +303,7 @@ knowledge:                       # the suite's vocabulary (docs/knowledge-plan.m
   glossary: null                 # tracker-to-suite glossary (YAML, docs/glossary-prompt.md)
   unmapped_log: null             # default: <glossary>-unmapped.txt next to it
   use_in_search: true            # matched terms' folders lift results in the search
-  use_in_templates: false        # true: matched terms' markers count as the ticket's components for the template (not yet measured)
+  use_in_templates: true         # matched terms' markers count as the ticket's components when the template is chosen
   use_in_domain: true            # matched terms' folders steer the area choice
   use_in_draft: true             # the draft gets the matched terms' suite words and values
   use_in_generation: true        # the context gets the known values of the entry's keys
