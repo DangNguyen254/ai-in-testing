@@ -301,6 +301,36 @@ Next: **baseline-2** (all 15 × 2, `--resume` if it stops). The replay only sees
 the new glossary also feeds the draft, search and the generation context, so C2, C3 and C8 may
 have moved. Then the weakest criteria: C2 (20%) and C3 (33%), both far below C1 (60%).
 
+### Baseline-2 (2026-11-11: all 15 × 2, updated and reviewed glossary, `use_in_templates` on)
+
+| Criterion | baseline-1 pass@1 | baseline-2 pass@1 | baseline-2 pass^k |
+|---|---|---|---|
+| C1 placement | 60% | 53% | 47% |
+| C2 helpers | 20% | 17% | 13% |
+| C3 data blocks | 33% | 40% | 33% |
+| C4 no made-up values | 83% | 83% | 80% |
+| C5 case count | 87% | 87% | 80% |
+| C7 validators | 100% | 97% | 93% |
+| C8 context recall | 63% | 63% | 53% |
+
+69 LLM calls, $0.70 (label `baseline-2`). **Nothing moved beyond noise**: one run is 3 points,
+and every difference is one or two runs.
+- One failed run, g06 r1: the model's code didn't parse on all 3 attempts. g06 r2 generated,
+  so chance. It costs every criterion one run; `--resume` makes it again.
+- C1: 16/30. The same 6 tickets miss in both runs (g01, g04, g05, g06, g07, g15). g11 and g14
+  are right in one run and wrong in the other: the run-to-run retrieval noise the replay
+  showed. The glossary work didn't lift placement in a full run, as the replays said.
+- C2: 5/30 (g02 ×2, g05 ×2, g07 r2). Of the 24 misses, 16 had every reference helper in the
+  context (C8 helpers 1.00): the model had them and didn't call them. Generation, not search.
+- C3: 12/30. g05 now passes (was 0.00). Of the 17 misses, 11 had every block in the context
+  (g02, g03 r2, g09, g11, g12, g13); 6 lacked some (g10, g14, g15). g11 is still at 0.00.
+- C4 misses: g10, g15. C5 misses: g04 r1, g13.
+- C8 misses: g08, g09 r2, g10, g12 r2, g14, g15. The same tickets as baseline-1.
+
+Read: search is not the bottleneck for C2 and C3. Two thirds of their misses happen with the
+helper or block already in the context. Next is step 4 below (what the generator does with
+what it has), not more retrieval or placement rules.
+
 The glossary is thin (about 12 terms, many without markers or classes): it was built before
 most of the golden tickets were pasted. `docs/glossary-gaps-prompt.md` is now a full update
 prompt for Haiku: every ticket reread, a marker check and classes for every term, feature
