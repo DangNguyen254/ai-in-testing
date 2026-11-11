@@ -90,6 +90,26 @@ class Retriever:
             for rank, h in enumerate(hits, start=1)
         ]
 
+    def class_tests(self, key: str, query: str, limit: int) -> RankedList:
+        """The tests of one class (``path::Class``) closest to the query; when none shares a
+        word with it, the class's first tests, so a named class is never left out."""
+        own = [
+            c
+            for c in self.index.chunks
+            if c.kind == "test" and f"{c.file_path}::{c.class_name}" == key
+        ]
+        if not own:
+            return []
+        ids = {c.id for c in own}
+        hits = self._search.search(query, top_k=len(self.index.chunks), kinds={"test"})
+        found = [h.chunk for h in hits if h.chunk.id in ids][:limit]
+        chosen = found or sorted(own, key=lambda c: c.start_line)[:limit]
+        name = key.rsplit("::", 1)[-1]
+        return [
+            (c, Reason(source="bm25", detail=f"query=glossary class {name} rank={rank}"))
+            for rank, c in enumerate(chosen, start=1)
+        ]
+
     def grep(self, identifier: str, label: str = "grep") -> RankedList:
         """Exact identifier search over syntax-tree references: definitions first, then the
         chunks that reference it most (comments, docstrings and strings don't count)."""
@@ -380,6 +400,25 @@ def retrieve(
         lists.extend(fallback)
         pool = _build_pool(retriever, lists)
         searches_run.append("bm25: <glossary terms> (the ticket's words found none of its places)")
+    if settings.knowledge.search_named_classes and settings.knowledge.use_in_search:
+        # a class a term names, with none of its tests among the results: search inside it
+        know = settings.knowledge
+        top = {
+            f"{r.chunk.file_path}::{r.chunk.class_name}"
+            for r in ranked_top(pool)
+            if r.chunk.kind == "test"
+        }
+        named = list(dict.fromkeys(c for t in matched for c in t.classes if c not in top))
+        query = " ".join([text, *(rewrite.terms if rewrite else [])])
+        inside = [
+            found
+            for key in named[: know.named_classes_max]
+            if (found := retriever.class_tests(key, query, know.named_class_tests))
+        ]
+        if inside:
+            lists.extend(inside)
+            pool = _build_pool(retriever, lists)
+            searches_run.append(f"bm25 inside {len(inside)} class(es) the glossary names")
     searches_run += [f"grep: {name}" for name in identifiers]
     investigation: Investigation | None = None
     if use_llm and cfg.investigator.enabled:

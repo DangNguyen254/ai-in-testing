@@ -780,6 +780,13 @@ class KnowledgeSettings(_Section):
     # chosen (the tracker's word and the suite's marker value often differ). False: only the
     # ticket's and the draft's own components (baseline-1).
     use_in_templates: bool = True
+    # A class a matched term names with none of its tests among the results: its tests closest
+    # to the ticket's words join the search (``named_class_tests`` of each, for at most
+    # ``named_classes_max`` classes). Without it a named class is only lifted when the ticket's
+    # own words already found it. Off until measured.
+    search_named_classes: bool = False
+    named_class_tests: int = Field(default=3, ge=1)
+    named_classes_max: int = Field(default=6, ge=1)
     use_in_domain: bool = True  # matched terms' folders steer the area choice
     use_in_draft: bool = True  # the draft gets the matched terms' suite words and values
     use_in_generation: bool = True  # the context gets the known values of the entry's keys

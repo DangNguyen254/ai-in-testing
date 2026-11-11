@@ -304,6 +304,9 @@ knowledge:                       # the suite's vocabulary (docs/knowledge-plan.m
   unmapped_log: null             # default: <glossary>-unmapped.txt next to it
   use_in_search: true            # matched terms' folders lift results in the search
   use_in_templates: true         # matched terms' markers count as the ticket's components when the template is chosen
+  search_named_classes: false    # true: a class a matched term names, with no test among the results, is searched itself (not yet measured)
+  named_class_tests: 3           # ... this many of its tests, closest to the ticket's words
+  named_classes_max: 6           # ... for at most this many classes
   use_in_domain: true            # matched terms' folders steer the area choice
   use_in_draft: true             # the draft gets the matched terms' suite words and values
   use_in_generation: true        # the context gets the known values of the entry's keys

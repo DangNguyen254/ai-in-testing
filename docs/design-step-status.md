@@ -252,6 +252,24 @@ field checked again from the suite, unsupported values removed, confirmed entrie
 `reviewed: model <date>`). Then the replay with `--fresh`, then baseline-2 (with `--resume`
 available).
 
+**Fresh replay with the updated, reviewed glossary (2026-11-11): 9 of 15 placed right.**
+- The glossary now reaches every ticket: a matched term names the reference class on 14 of 15
+  (4 before the update).
+- Placement didn't move with it (9; the markers switch on or off gives the same 9 now). Right:
+  g02, g03, g08–g14. Misses: g01, g04, g05, g06, g07, g15.
+- g01, g05, g06, g07: the glossary names the reference class and still none of its tests is
+  retrieved. Cause, in `retrieve`: a named class is only lifted in the ranking, so its tests
+  must already be found by the ticket's own words; the fallback search in the glossary's words
+  runs only when no named place has any hit, so with several matched terms one term's hit
+  keeps another term's class out. Built, off, not yet measured:
+  `knowledge.search_named_classes` (each named class without a test among the results is
+  searched itself: its `named_class_tests` closest tests join, for at most
+  `named_classes_max` classes).
+  `test_a_class_the_glossary_names_is_searched_when_the_tickets_words_miss_it`.
+- g04 and g15: the glossary names both the reference class and the class that wins; unchanged.
+- Next: the replay again, free on the recorded replies (columns: base, named-classes; one line
+  per setting says whether the reference class's tests are retrieved).
+
 The glossary is thin (about 12 terms, many without markers or classes): it was built before
 most of the golden tickets were pasted. `docs/glossary-gaps-prompt.md` is now a full update
 prompt for Haiku: every ticket reread, a marker check and classes for every term, feature

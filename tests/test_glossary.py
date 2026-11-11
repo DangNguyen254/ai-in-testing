@@ -384,3 +384,45 @@ def test_a_matched_terms_marker_counts_as_the_tickets_component_for_the_template
 
     assert not first_template(False).startswith("same component")
     assert first_template(True).startswith("same component 'exceptions'")
+
+
+def test_a_class_the_glossary_names_is_searched_when_the_tickets_words_miss_it(
+    index: IndexData, tmp_path: Path
+) -> None:
+    """Found with the placement replay on the real suite: after the glossary update a matched
+    term named the right class on 14 of 15 tickets, but on four of them no test of that class
+    was retrieved. A named class was only lifted when the ticket's own words had already found
+    it, and the fallback search ran only when no named place had any hit, so a second term's
+    hit kept the first term's class out. With ``knowledge.search_named_classes`` each named
+    class without a test among the results is searched itself."""
+    glossary = tmp_path / "glossary.yaml"
+    glossary.write_text(
+        "version: 1\nterms:\n"
+        '  - term: "Asset Handover"\n    kind: component\n    status: confirmed\n'
+        "    folders: [tests/files]\n"
+        '  - term: "Quarter Close"\n    kind: label\n    status: confirmed\n'
+        "    classes: [tests/reports/test_reports_raw.py::TestReportsRaw]\n",
+        encoding="utf-8",
+    )
+    ticket = _ticket(
+        title="A downloaded archive is blocked although its file type is allowed",
+        components=["Asset Handover"],
+        labels=["Quarter Close"],
+    )
+
+    def hits(search: bool) -> list[tuple[str, list[str]]]:
+        settings = Settings.model_validate(
+            {
+                "paths": {"cache_dir": str(tmp_path / f"c{search}")},
+                "knowledge": {"glossary": str(glossary), "search_named_classes": search},
+                "retrieval": {"top_k": 40},
+            }
+        )
+        result = retrieve(ticket, index, settings)
+        assert result.glossary_terms == ["Asset Handover", "Quarter Close"]
+        return [(h.qualname, [r.detail for r in h.reasons]) for h in result.hits]
+
+    before, after = hits(False), hits(True)
+    assert not any(name.startswith("TestReportsRaw.") for name, _ in before)
+    found = [details for name, details in after if name.startswith("TestReportsRaw.")]
+    assert found and any(d.startswith("query=glossary class TestReportsRaw") for d in found[0])
