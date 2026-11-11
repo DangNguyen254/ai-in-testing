@@ -327,6 +327,19 @@ and every difference is one or two runs.
 - C4 misses: g10, g15. C5 misses: g04 r1, g13.
 - C8 misses: g08, g09 r2, g10, g12 r2, g14, g15. The same tickets as baseline-1.
 
+`--resume` made g06 r1 again and it failed the same way ($0.73 in all), so g06 failed 2 of 3
+generations: more than chance. Its parse error's message is printed by the script below.
+
+First step on C2, free: `.scratch/c2_misses.py <golden.json> <report.json>` counts, per
+missing helper and without names, whether it was in the context, whether the template calls
+it, whether another test of the output's class calls it, whether the new test used another
+member of the same page, whether it was inlined, and whether it is out of reach (a method of
+the reference class, output in another class). It also counts how many of the new test's calls
+its template makes. Reading: mostly "template doesn't call it" and "calls all in the template"
+means the model copies the template's steps, which D1 (a step plan from a menu) targets;
+"in the context, same page used" means it picked the wrong member, which D2 (contract cards)
+targets; "out of reach" is placement, not generation.
+
 Read: search is not the bottleneck for C2 and C3. Two thirds of their misses happen with the
 helper or block already in the context. Next is step 4 below (what the generator does with
 what it has), not more retrieval or placement rules.
