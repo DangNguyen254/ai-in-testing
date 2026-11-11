@@ -363,7 +363,35 @@ not shown and not defined means the generator never saw the member as a choice (
 menu for the pages in play); shown but unused means it needs to know what the member does
 (D2) or be made to map each step to a member (D1).
 
-Read: search is not the bottleneck for C2 and C3. Two thirds of their misses happen with the
+**Second run (the sharper counts), of the 51 missing helpers:**
+- Shown in a call by some chunk in the context: 25. Not shown anywhere: 26. Its definition
+  in the context: 2 (undercounted for base-class helpers, whose chunk is the class header).
+- No other test of the reference class calls it (`rare`): 27, of which 14 are g09 and g10,
+  whose reference class has no other test. At least half call it (`common`): 13, of which 7
+  are out of reach (g14 r2, g15).
+- The new tests are not thin: 3 to 19 calls in all each. C2 counts `self` calls only.
+- Still open: 13 runs show a template with no calls at all, so the template's code wasn't
+  read by the script there. "Follows the template" holds only where it was read.
+
+Reading, corrected: about half of the misses were never an option the generator could see in
+use, so "the model had it and didn't use it" (from C8) was too strong, and for C2 the context
+is part of the problem. The context shows the calls the template and the similar tests make;
+a step none of them has is at most a name in the chain list.
+
+**Built, off by default: `generate.context_member_cards`** (`generate/members.py`, D2 in its
+smallest form). One line per member the new test can call: the non-test methods of the
+template's class and its in-repo bases, and the members of the pages the template, the
+examples and the class's other tests reach. Each line has the call, whether it is an action
+or a value, its parameters, its owner, the first sentence of its docstring, and "returns a
+value" / "asserts" from its body. The draft's words rank them; `member_cards_max` (60) caps
+them; a shared base page's members come once, last. The piece sits before the base classes
+and examples, so the budget keeps it. No prompt change, no LLM call.
+`test_member_cards_list_what_the_test_can_call_beyond_the_template`.
+To measure: `T2T_GENERATE__CONTEXT_MEMBER_CARDS=true` on a golden run, against baseline-2
+(C2 first; C7 and C4 must not fall). It can't reach the 10 out-of-reach misses or a member of
+a page no test of the class touches.
+
+Read: search is not the bottleneck for C3. Two thirds of their misses happen with the
 helper or block already in the context. Next is step 4 below (what the generator does with
 what it has), not more retrieval or placement rules.
 
