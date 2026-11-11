@@ -192,5 +192,6 @@ Before finishing:
 1. Read the new and reworked entries in `glossary.yaml` yourself (they are `proposed`). Set the
    ones you agree with to `status: confirmed`: confirmed entries lift search more than proposed
    ones.
+   For entries you can't judge, a new session can check them: `docs/glossary-review-prompt.md`.
 2. Run the placement replay again with `--fresh` (the recorded replies were made with the old
    glossary's search words) and compare with the last one.

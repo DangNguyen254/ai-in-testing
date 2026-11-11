@@ -246,8 +246,11 @@ there, so it ties. In g15 the glossary names both the reference class and the si
 wins, so "a class the glossary names wins" can't separate them: not built. The switch is on by
 default since 2026-11-11.
 
-Next: the glossary update with Haiku (below), then the replay with `--fresh`, then baseline-2
-(with `--resume` available).
+Glossary updated by Haiku (2026-11-11). Its entries are `proposed`. Many are outside what the
+human can judge, so a new Haiku session reviews them: `docs/glossary-review-prompt.md` (every
+field checked again from the suite, unsupported values removed, confirmed entries marked
+`reviewed: model <date>`). Then the replay with `--fresh`, then baseline-2 (with `--resume`
+available).
 
 The glossary is thin (about 12 terms, many without markers or classes): it was built before
 most of the golden tickets were pasted. `docs/glossary-gaps-prompt.md` is now a full update
