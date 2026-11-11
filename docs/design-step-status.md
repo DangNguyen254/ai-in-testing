@@ -267,8 +267,22 @@ available).
   `named_classes_max` classes).
   `test_a_class_the_glossary_names_is_searched_when_the_tickets_words_miss_it`.
 - g04 and g15: the glossary names both the reference class and the class that wins; unchanged.
-- Next: the replay again, free on the recorded replies (columns: base, named-classes; one line
-  per setting says whether the reference class's tests are retrieved).
+
+**`search_named_classes` measured (free replay): 9 against 9, stays off.** It got one more
+reference test retrieved (g05), none for g01, g06, g07 (their added tests rank below the top
+10), and it pushed g12's reference tests down. No placement change.
+
+**Built, off, not yet measured: `generate.reuse.glossary_class_wins`.** The retrieval route
+keeps running into the template step (tests must be found, rank high, and have data). The
+glossary is a shorter route: when the confirmed terms a ticket matched name exactly one class
+in the chosen area, that class holds the template and takes the method, whatever search ranked
+first and whatever kind the draft guessed (flagged for the reviewer when the kind differs). A
+class without data uses the no-data path. Several named classes, or a term nobody confirmed,
+change nothing. `test_the_one_class_a_confirmed_glossary_term_names_takes_the_method`.
+Expected from the facts: g06 and g07 (one named class each, not today's winner); g05 and g01
+depend on how many classes their terms name in the area; g04 and g15 name two and won't move.
+Next: the replay, free (columns: base, named-classes, glossary-class, both; one line says how
+many classes the confirmed terms name in the area).
 
 The glossary is thin (about 12 terms, many without markers or classes): it was built before
 most of the golden tickets were pasted. `docs/glossary-gaps-prompt.md` is now a full update

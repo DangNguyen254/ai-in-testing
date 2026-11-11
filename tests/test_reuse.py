@@ -692,3 +692,47 @@ def test_a_gated_template_class_is_flagged_without_failing(
     assert decision.home == f"{legacy.file_path}::TestExceptionsLegacyList"
     assert decision.target == "TestExceptionsLegacyList", decision.reasons
     assert any("runs only on cloud" in n for n in decision.review_notes)
+
+
+def _with_glossary(settings: Settings, path: Path, classes: list[str], status: str) -> Settings:
+    """Settings with a glossary whose term "Guardrail Overrides" names ``classes``."""
+    listed = ", ".join(classes)
+    path.write_text(
+        "version: 1\nterms:\n"
+        f'  - term: "Guardrail Overrides"\n    kind: component\n    status: {status}\n'
+        f"    classes: [{listed}]\n",
+        encoding="utf-8",
+    )
+    knowledge = settings.knowledge.model_copy(update={"glossary": path})
+    return _reuse(settings.model_copy(update={"knowledge": knowledge}), glossary_class_wins=True)
+
+
+def test_the_one_class_a_confirmed_glossary_term_names_takes_the_method(
+    setup: tuple[Settings, IndexData], tmp_path: Path
+) -> None:
+    """Found with the placement replay on the real suite: after the glossary update a matched
+    term named the right class on 14 of 15 tickets, but placement followed search's template,
+    and classes that keep no data or are of another kind than the draft guessed never got the
+    method. With ``generate.reuse.glossary_class_wins`` the one class in the area a confirmed
+    term names takes it (flagged when the kind differs); two named classes, or a term nobody
+    confirmed, change nothing."""
+    settings, index = setup
+    widgets = "tests/exceptions/test_exceptions_widgets.py::TestExceptionsWidgets"  # api, no data
+    expiry = "tests/exceptions/test_exceptions_expiry.py::TestExceptionsExpiry"
+    retrieval = _empty_retrieval().model_copy(update={"glossary_terms": ["guardrail overrides"]})
+    draft = _listing_draft()  # a UI draft
+    before = decide(draft, retrieval, index, settings, EXCEPTIONS)
+    assert before.target != "TestExceptionsWidgets" and widgets not in before.class_scores
+
+    one = _with_glossary(settings, tmp_path / "one.yaml", [widgets], "confirmed")
+    on = decide(draft, retrieval, index, one, EXCEPTIONS)
+    assert on.kind == "method" and on.target == "TestExceptionsWidgets", on.reasons
+    assert on.home == widgets and any("only class in the area" in r for r in on.reasons)
+    assert any("the draft says ui" in n for n in on.review_notes), on.review_notes
+
+    two = _with_glossary(settings, tmp_path / "two.yaml", [widgets, expiry], "confirmed")
+    assert decide(draft, retrieval, index, two, EXCEPTIONS).target == before.target
+    unchecked = _with_glossary(settings, tmp_path / "proposed.yaml", [widgets], "proposed")
+    assert decide(draft, retrieval, index, unchecked, EXCEPTIONS).target == before.target
+    unmatched = _empty_retrieval()  # the ticket matched no term
+    assert decide(draft, unmatched, index, one, EXCEPTIONS).target == before.target

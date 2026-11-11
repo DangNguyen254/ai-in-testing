@@ -39,6 +39,7 @@ from ticket2test.config import ReuseSettings, Settings
 from ticket2test.generate.domain import DomainChoice, is_legacy
 from ticket2test.index.indexer import IndexData
 from ticket2test.index.tokens import split_identifier
+from ticket2test.knowledge.glossary import GlossaryError, load_glossary, normalized
 from ticket2test.models.chunk import Chunk
 from ticket2test.models.draft import TestCaseDraft
 from ticket2test.models.generated import ReuseKind
@@ -237,6 +238,28 @@ def decide(
         if c.class_name is not None and kind_ok(c) and key not in excluded:
             classes.setdefault((c.file_path, c.class_name), []).append(c.flow)
     scores = {f"{path}::{name}": max(flows_) for (path, name), flows_ in classes.items()}
+    other_kind: str | None = None
+    if reuse.glossary_class_wins:
+        # the one class in the area a confirmed glossary term names: it holds the template,
+        # whatever the search ranked first and whatever kind the draft guessed
+        glossary_named = [
+            k
+            for k in _glossary_classes(retrieval, settings)
+            if k in in_domain and k not in excluded
+        ]
+        if len(glossary_named) == 1 and glossary_named[0] != home:
+            home = decision.home = glossary_named[0]
+            name = home.split("::", 1)[1]
+            decision.reasons.append(
+                f"{name}: the only class in the area a confirmed glossary term names "
+                "(generate.reuse.glossary_class_wins)"
+            )
+            if home not in scores:  # left out by the draft's kind
+                scores[home] = max(c.flow for c in pool if f"{c.file_path}::{c.class_name}" == home)
+                other_kind = (
+                    f"the draft says {kind}, but none of {name}'s tests is {kind}; the "
+                    "glossary names this class for the ticket: confirm the test belongs here"
+                )
     decision.class_scores = dict(sorted(scores.items(), key=lambda kv: -kv[1]))
 
     def named_words(key: str) -> set[str]:
@@ -293,6 +316,8 @@ def decide(
             decision.kind, decision.target, decision.target_file = "method", name, path
             if target in gated:
                 decision.review_notes.append(gated[target])
+            if other_kind and target == home:
+                decision.review_notes.append(other_kind)
             why = f"class match {score:.2f}" + (f", named after {sorted(named)}" if named else "")
             decision.reasons.append(f"new method in {name} ({why})")
             return decision
@@ -344,6 +369,25 @@ def _template_class(
     hits = [h.chunk_id for h in retrieval.hits if h.kind == "test"]
     top_hit = first_in(hits)
     return first_in([t.chunk_id for t in retrieval.templates]) or top_hit, top_hit
+
+
+def _glossary_classes(retrieval: RetrievalResult, settings: Settings) -> list[str]:
+    """The classes (``path::Class``) named by the confirmed glossary terms the ticket matched."""
+    try:
+        glossary = load_glossary(settings.knowledge.glossary)
+    except GlossaryError:
+        return []
+    if glossary is None:
+        return []
+    matched = {normalized(t) for t in retrieval.glossary_terms}
+    return list(
+        dict.fromkeys(
+            c
+            for term in glossary.terms
+            if term.status == "confirmed" and normalized(term.term) in matched
+            for c in term.classes
+        )
+    )
 
 
 def _excluded_classes(

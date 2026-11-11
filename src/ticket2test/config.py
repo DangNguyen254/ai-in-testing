@@ -385,6 +385,10 @@ class ReuseSettings(_Section):
     # whatever its class match: search found the test, the word overlap often misses it.
     # False: it needs the class-match minimums or the ticket naming its feature (baseline-0).
     template_class_wins: bool = True
+    # When the confirmed glossary terms the ticket matched name exactly one class in the area,
+    # that class holds the template (and takes the method), whatever search ranked first and
+    # whatever kind the draft guessed; several named classes change nothing. Off until measured.
+    glossary_class_wins: bool = False
 
 
 class GenerateSettings(_Section):
