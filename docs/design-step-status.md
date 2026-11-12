@@ -15,8 +15,8 @@ the newest state is in this block, and the history below it is in the order it h
   was built for this and **measured no gain** (label `member-cards`: C2 20% against 17%, g12
   gained and g07 lost; everything else within noise). It stays off.
   The missed-helper count didn't drop either (54 against 51).
-  `generate.step_plan` (off) is built on the cards and **waits for its run** (label
-  `step-plan`).
+  `generate.step_plan` (D1's smallest form) measured **no gain** either (C2 17%, g01
+  gained, g05 lost). Both stay off.
 - **Next:** read that run; then C3 (11 of 17 misses had every block in the context).
 - **Open:** g06 fails to generate 2 times in 3 (the code doesn't parse from line 1);
   `.scratch/c2_misses.py` can't read the template's code in 13 runs; C8 tests names only (a
@@ -471,6 +471,25 @@ are its menu either way). `test_step_plan_puts_the_member_for_each_step_into_the
 - To measure: `T2T_GENERATE__STEP_PLAN=true` on a golden run, label `step-plan`, against
   baseline-2: C2 and the missed-helper count (51) first; C7 and C4 must not fall. About 30
   more Haiku API calls, so about $0.75.
+
+**Measured (2026-11-12, label `step-plan`, 15 × 2, 108 calls, $0.87): no gain. Off.**
+
+| Criterion | baseline-2 | member-cards | step-plan |
+|---|---|---|---|
+| C1 | 53% | 53% | 57% |
+| C2 | 17% | 20% | 17% |
+| C3 | 40% | 43% | 43% |
+| C4 | 83% | 90% | 87% |
+| C5 | 87% | 87% | 83% |
+| C7 | 97% | 97% | 97% |
+| C8 | 63% | 63% | 70% |
+
+- C2: 5 of 30 again. g01 r2 gained; g05 lost both runs (it passed in baseline-2 and in
+  member-cards). One ticket for another.
+- C8's rise is not a gain: the plan's text is in the context C8 reads, so it adds names.
+- g15 r2 failed (the code didn't parse, 3 attempts), as g06 did before.
+- Reading: neither listing the members nor having a model pick one per step makes the
+  generator call them. The missed-helper count was not taken (usage was short).
 
 Read: search is not the bottleneck for C3. Two thirds of their misses happen with the
 helper or block already in the context. Next is step 4 below (what the generator does with
