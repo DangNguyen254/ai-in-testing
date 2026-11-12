@@ -566,6 +566,8 @@ applied by the framework, so the stripper never removes them.
   $0.73): no gain. Off.** C3 40% (baseline-2 40%); recall rose where it reaches (g12 0.40 ->
   0.60, g10 r2 0.17 -> 0.33) but no ticket passed because of it. C4 80% (g06 ×2, g10 r2, g15
   r2), C7 93% (the two failed runs): within noise. To resume after A1.
+- Resumed (both runs generated, $0.81 in all): C1 60%, C2 20%, C3 43%, C4 87%, C5 93%, C7
+  100%, C8 63%. C3 is 13/30 against 12/30: one run, noise. The verdict stands: off.
 
 ## A new plan (2026-11-12): fix the yardstick before more changes
 
