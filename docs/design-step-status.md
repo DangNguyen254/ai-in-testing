@@ -18,7 +18,8 @@ the newest state is in this block, and the history below it is in the order it h
   `generate.step_plan` (D1's smallest form) measured **no gain** either (C2 17%, g01
   gained, g05 lost). Both stay off.
 - **Next:** C3, D1 paused. Most C3 misses are whole sections the model left out with the
-  base or a sibling holding them (see "C3: what the misses are"); a code floor is the candidate.
+  base or a sibling holding them (see "C3: what the misses are"). `generate.seed_floor`
+  (off) is built and waits for its run; its reach is small (g10, g12).
 - **Open:** g06 fails to generate 2 times in 3 (the code doesn't parse from line 1);
   `.scratch/c2_misses.py` can't read the template's code in 13 runs; C8 tests names only (a
   stricter "shown in a call" variant is worth adding to the scorer); g12's glossary entry
@@ -26,7 +27,7 @@ the newest state is in this block, and the history below it is in the order it h
   without).
 - **On:** `knowledge.use_in_templates`, the joined-marker fix, the updated and reviewed
   glossary. **Off:** `knowledge.search_named_classes`, `generate.reuse.glossary_class_wins`,
-  `generate.context_member_cards`, `generate.step_plan`. **Removed:** `kind_as_preference`,
+  `generate.context_member_cards`, `generate.step_plan`, `generate.seed_floor`. **Removed:** `kind_as_preference`,
   `class_from_retrieval`, `dataless_hit_class`.
 - Local commits are not pushed (origin is at `68e4545`); push only when the human says so.
 
@@ -547,6 +548,20 @@ first, free: which sections the 13 dropped ones are (seed or expectation), and w
 - An expectation section can't be put back by code unless the test calls its helper, and the
   custom keys only matter if the code reads them. Both are the model's choice of what the test
   does, the same as C2.
+
+**Built, off by default: `generate.seed_floor`** (`generator.seed_floor`). After an entry is
+built from the model's plan, code adds every seed section (`data.seed_sections`) the base entry
+has and the new entry lacks, relabelled like a copied section, with a note. Seed sections are
+applied by the framework, so the stripper never removes them.
+`test_seed_floor_keeps_the_base_seed_sections_the_model_left_out`.
+- A first version also gave an entry to a test the model left without one. That can't
+  happen: the response check already refuses a test that reads data and has no entry. So
+  g09 and g11's new tests read no data at all, and the floor doesn't reach them (26 paths).
+  Removed.
+- Reach: the seed sections dropped from existing entries, about 12 paths (g10, g12). Expected
+  gain: C3 recall on g10 and g12; a pass likely on g12 only. Watch C4 (a copied section
+  carries the base's values) and C7.
+- To measure: `T2T_GENERATE__SEED_FLOOR=true`, label `seed-floor`, against baseline-2.
 
 Read: search is not the bottleneck for C3. Two thirds of their misses happen with the
 helper or block already in the context. Next is step 4 below (what the generator does with
