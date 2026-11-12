@@ -17,7 +17,8 @@ the newest state is in this block, and the history below it is in the order it h
   The missed-helper count didn't drop either (54 against 51).
   `generate.step_plan` (D1's smallest form) measured **no gain** either (C2 17%, g01
   gained, g05 lost). Both stay off.
-- **Next:** C3 (D1 paused); C3 (11 of 17 misses had every block in the context).
+- **Next:** C3, D1 paused. Most C3 misses are whole sections the model left out with the
+  base or a sibling holding them (see "C3: what the misses are"); a code floor is the candidate.
 - **Open:** g06 fails to generate 2 times in 3 (the code doesn't parse from line 1);
   `.scratch/c2_misses.py` can't read the template's code in 13 runs; C8 tests names only (a
   stricter "shown in a call" variant is worth adding to the scorer); g12's glossary entry
@@ -496,6 +497,38 @@ are its menu either way). `test_step_plan_puts_the_member_for_each_step_into_the
   plan changes what is called, but not into the reference's helpers: more calls, not the
   right ones.
 - D1 is paused (the human's call); C3 is next.
+
+### C3: what the misses are (2026-11-12, free, on the `step-plan` report)
+
+`.scratch/c3_misses.py <golden.json> <report.json>` counts, per reference block (key path two
+levels deep, as C3 scores it) the new entries lack: whether the base entry has it, whether
+the model kept its section (`copy_sections`), whether a "removed unread" note names it,
+whether another entry of the template's class has it, whether its whole section is absent,
+and whether the new code mentions the key. `.scratch/c3_noentry.py` says, for runs with no
+new entry, how many entries and plans there are.
+
+16 runs miss C3 (13 pass, 1 failed): 88 missing paths.
+- **Whole section absent: 70 of 88.** Rarely a key inside a kept section.
+- **The base entry had it: 48. Another entry of the class had it: 56.** Neither: 32 (g10 20,
+  g14 9 of which 6 out of reach, g15 2 out of reach).
+- **No entry at all, 26 paths (g09 ×2, g11 ×2):** the model returned no entry plan (0
+  plans), though the template has data and a base entry was chosen. g11 is a new method in
+  an existing class. The new test then reads no data, which the rules allow, so nothing
+  stops it.
+- **Sections not kept, about 13 (g12, g13):** entries exist, but the model kept none or few
+  of the base's sections (g13: 2 entries, 2 paths in all).
+- **Section kept, a key in it missing: g02, g03, part of g10.** The stripper's notes never
+  name them (0), so either the model's `delete` changes took them or the notes aren't in
+  `generated.notes`. Not settled.
+- The new code mentions the missing key in 7 of 88.
+
+Reading: C3 is mostly the model choosing to carry less data than the reference (no entry,
+or sections dropped), with the blocks right there in the base or a sibling. Not retrieval.
+Candidate change, one switch: when the template's class keeps data and the model returns no
+entry for the new test, or drops a seed section every entry of the class has, code puts the
+base's section back (the framework consumes seed sections, so they aren't "unread"). To check
+first, free: which sections the 13 dropped ones are (seed or expectation), and whether the
+`delete` changes explain g02/g03.
 
 Read: search is not the bottleneck for C3. Two thirds of their misses happen with the
 helper or block already in the context. Next is step 4 below (what the generator does with
