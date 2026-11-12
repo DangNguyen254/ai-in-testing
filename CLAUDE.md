@@ -249,11 +249,16 @@ changes D1–D6), and `.scratch/session-notes.md` (git-ignored notes kept across
    kept runs with a masked script and no model call. The placement replay records the model's
    replies once and then compares settings for free.
 3. **One change at a time, behind a config switch, off by default.** `config.yaml` must match
-   the code's defaults (`tests/test_config.py`). A switch goes on only after a run shows a
-   gain on its criterion without a loss on another. A switch that measures no gain is removed
-   or stays off; say which, and why, in the status doc.
-4. **Respect the noise.** One run is 3 points on a 15 × 2 set, and retrieval varies between
-   runs: one or two runs' difference is not a result. Compare tickets that pass in both runs.
+   the code's defaults (`tests/test_config.py`). A switch that fails the keep rule below is
+   removed or stays off; say which, and why, in the status doc.
+4. **The keep rule (added 2026-11-12), judged per ticket, not by pass rate alone.** A pass
+   needs recall 1.0, so a change that lifts a ticket from 0.40 to 0.60 counts as zero there.
+   Compare the criterion's recall ticket by ticket against the yardstick, both runs. Keep a
+   switch when (a) the tickets it targets improve in both runs, (b) no ticket gets worse in
+   both runs, and (c) no other criterion falls by more than one or two runs. A pass-rate gain
+   beyond noise is not required. One run is 3 points on a 15 × 2 set and retrieval varies
+   between runs, so a pass-rate difference of one or two runs alone is not a result, either
+   way. `.scratch/reachable.py <report> --means-only` gives the recall means.
 5. **Distrust your own measure.** Check what a criterion or a script really tests before
    building on it (C8 only tests that a name occurs in the context). When a reading was
    wrong, say so plainly and correct the status doc.

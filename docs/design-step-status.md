@@ -27,7 +27,7 @@ the newest state is in this block, and the history below it is in the order it h
   without).
 - **On:** `knowledge.use_in_templates`, the joined-marker fix, the updated and reviewed
   glossary. **Off:** `knowledge.search_named_classes`, `generate.reuse.glossary_class_wins`,
-  `generate.context_member_cards`, `generate.step_plan`, `generate.seed_floor`. **Removed:** `kind_as_preference`,
+  `generate.context_member_cards`, `generate.step_plan`. **On since 2026-11-12:** `generate.seed_floor`. **Removed:** `kind_as_preference`,
   `class_from_retrieval`, `dataless_hit_class`.
 - Local commits are not pushed (origin is at `68e4545`); push only when the human says so.
 
@@ -567,7 +567,33 @@ applied by the framework, so the stripper never removes them.
   0.60, g10 r2 0.17 -> 0.33) but no ticket passed because of it. C4 80% (g06 ×2, g10 r2, g15
   r2), C7 93% (the two failed runs): within noise. To resume after A1.
 - Resumed (both runs generated, $0.81 in all): C1 60%, C2 20%, C3 43%, C4 87%, C5 93%, C7
-  100%, C8 63%. C3 is 13/30 against 12/30: one run, noise. The verdict stands: off.
+  100%, C8 63%. C3 is 13/30 against 12/30: one run, noise.
+- **Re-judged by the keep rule (CLAUDE.md, method point 4): on by default since 2026-11-12.**
+  C3 recall per ticket against baseline-2: better in g11, g12, g14 (not worse in either run),
+  worse in none; mean recall 0.77, the highest of the five full runs (others 0.66-0.71).
+
+### Earlier verdicts re-judged by the keep rule (2026-11-12)
+
+Per ticket, a ticket counts as better (worse) when neither run is worse (better) and the sum
+moved. The seed floor acts after the model's reply, so it can't change C2: its C2 column is
+pure run-to-run noise, and it is large: **4 tickets better and 4 worse with nothing changed.**
+
+| Switch | Judged on | Better | Worse | Verdict |
+|---|---|---|---|---|
+| `seed_floor` (C3) | full run | g11, g12, g14 | none | on |
+| `context_member_cards` (C2) | full run | g12, g13 | g01, g04, g07 | off: inside the noise above; the missed-helper count didn't drop (54 vs 51) |
+| `step_plan` (C2) | full run | g12, g13 | g04, g05, g07, g08 | off: same |
+| `kind_as_preference` (C1) | replay, recorded replies | none | 3 tickets | removed: a firm loss |
+| summed retrieval scores (`class_from_retrieval`) (C1) | replay | none | 2 tickets | removed: a firm loss |
+| `dataless_hit_class` (C1) | replay | g04 | g11 | removed: a firm loss, in both forms |
+| `search_named_classes` (C1) | replay | none | none (g12's reference ranked lower) | off: no effect |
+| `glossary_class_wins` (C1) | replay | g07 | g12 | off, **but open**: g12's loss may be a wrong glossary entry. If a person finds the entry wrong (or that class a second valid home), it is a gain with no loss and goes on. |
+
+The placement replays reuse recorded model replies, so there is no run-to-run noise in them:
+their losses are real, and the old verdicts stand. Member cards and the step plan were judged
+on full runs, where the per-ticket noise on C2 is as large as their effect; they are not shown
+harmful, but not shown useful either, and the missed-helper counts (a more direct measure)
+didn't move. They stay off; a fair re-test would take two more full runs each.
 
 ## A new plan (2026-11-12): fix the yardstick before more changes
 
