@@ -17,7 +17,7 @@ the newest state is in this block, and the history below it is in the order it h
   The missed-helper count didn't drop either (54 against 51).
   `generate.step_plan` (D1's smallest form) measured **no gain** either (C2 17%, g01
   gained, g05 lost). Both stay off.
-- **Next:** read that run; then C3 (11 of 17 misses had every block in the context).
+- **Next:** decide whether D1 goes further (code writes the planned calls) or C3 comes first; C3 (11 of 17 misses had every block in the context).
 - **Open:** g06 fails to generate 2 times in 3 (the code doesn't parse from line 1);
   `.scratch/c2_misses.py` can't read the template's code in 13 runs; C8 tests names only (a
   stricter "shown in a call" variant is worth adding to the scorer); g12's glossary entry
