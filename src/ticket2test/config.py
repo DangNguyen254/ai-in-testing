@@ -405,6 +405,9 @@ class GenerateSettings(_Section):
     # (labels, checked by code), put into the context as a plan. Off until a run measures it.
     step_plan: bool = False
     step_plan_prompt: str = "step_plan_v1"
+    # Code puts back every seed section of the base entry a new entry lacks (the framework
+    # applies them, so they are never unread). Off until a run measures it.
+    seed_floor: bool = False
     # Team conventions for tests (Markdown). Always placed in the context when set.
     conventions_doc: Path | None = None
     # Always on the reviewer checklist: things only a real run can confirm.

@@ -1089,6 +1089,27 @@ def test_step_plan_puts_the_member_for_each_step_into_the_context(
     assert len(off.requests) == 1 and "### Step plan" not in off.requests[0].messages[1].content
 
 
+def test_seed_floor_keeps_the_base_seed_sections_the_model_left_out(
+    index: IndexData, retrieval: RetrievalResult, tmp_path: Path
+) -> None:
+    """Found on the golden set: 38 of 88 missing data blocks were seed sections the model left
+    out whole, with the base entry holding them. The framework applies seed sections itself,
+    so code puts them back; off unless switched on."""
+    base = _settings(tmp_path)
+    on = base.model_copy(update={"generate": base.generate.model_copy(update={"seed_floor": True})})
+    no_policy = [_plan(i, sections=["settings", "delete_name", "targets"]) for i in IDS]
+
+    off = _generate(index, retrieval, tmp_path, FakeLLMClient([_reply(plans=no_policy)]))
+    assert all("policy" not in e for e in off.data_entries)
+
+    kept = _generate(
+        index, retrieval, tmp_path, FakeLLMClient([_reply(plans=no_policy)]), settings=on
+    )
+    assert [e["test_id"] for e in kept.data_entries] == list(IDS)  # a dataless test: none
+    assert all(e["policy"] == _base(index)["policy"] for e in kept.data_entries)
+    assert "kept the base's seed sections ['policy']" in kept.notes
+
+
 def test_a_copy_change_takes_a_block_from_another_entry_of_the_class() -> None:
     """Found in the real trial: the base entry lacked the agent's rule block, and the model
     would have had to write ~60 lines by hand. A "copy" change takes it from a sibling."""

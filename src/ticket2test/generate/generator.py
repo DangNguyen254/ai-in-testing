@@ -27,7 +27,7 @@ from ticket2test.generate.context import (
     template_piece,
 )
 from ticket2test.generate.conventions import Conventions, convention_sections, with_conventions
-from ticket2test.generate.entries import build_entry, function_of
+from ticket2test.generate.entries import build_entry, function_of, relabel
 from ticket2test.generate.inspect import data_use
 from ticket2test.generate.members import member_cards, member_cards_piece
 from ticket2test.generate.plan import step_plan_piece
@@ -279,6 +279,11 @@ def assemble(
         )
         entry, copied = with_conventions(entry, base, setup.conventions)
         conventional.update(copied)
+        if gen.seed_floor:
+            entry, floored = seed_floor(entry, base, base_id, plan.test_id, settings)
+            fixes += (
+                [f"kept the base's seed sections {floored} in {plan.test_id}"] if floored else []
+            )
         entry, removed = strip_unread(entry, code, setup)
         fixes += removed
         cleaned, redacted = _scrub_json(entry)
@@ -622,6 +627,24 @@ def rekey_plans(
         p.model_copy(update={"test_id": missing[0]}) if p.test_id == extra[0] else p for p in plans
     ]
     return fixed, [f"entry {extra[0]!r} re-keyed to {missing[0]!r}"]
+
+
+def seed_floor(
+    entry: dict[str, Any], base: dict[str, Any], base_id: str, test_id: str, settings: Settings
+) -> tuple[dict[str, Any], list[str]]:
+    """The entry with every seed section of the base it lacks (``generate.seed_floor``). The
+    framework applies seed sections itself, so they are never unread; the model dropping one
+    left the new test without the state its neighbours set up. Returns the sections added."""
+    added = [s for s in settings.data.seed_sections if s in base and s not in entry]
+    result = dict(entry)
+    for section in added:
+        result[section] = relabel(
+            base[section],
+            function_of(base_id),
+            function_of(test_id),
+            settings.index.test_function_prefix,
+        )
+    return result, added
 
 
 def strip_unread(
