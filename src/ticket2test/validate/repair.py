@@ -77,7 +77,7 @@ def generate_with_repair(
     """``check``: how each attempt is judged, when not as a new module. A new method in an
     existing class is judged inside that class (the patched file), so the class's own helpers
     resolve; ``None`` from it falls back to judging the attempt as a module."""
-    setup = prepare_generation(draft, retrieval, index, settings, conventions)
+    setup = prepare_generation(draft, retrieval, index, settings, conventions, client)
 
     def judged(attempt: GeneratedTest) -> tuple[GeneratedTest, ValidationReport]:
         found = check(attempt) if check is not None else None
@@ -91,7 +91,7 @@ def generate_with_repair(
         max_retries=max_retries,
         context=setup.validation_context,
     )
-    calls = result.attempts
+    calls = result.attempts + setup.plan_calls
     generated = assemble(setup, result.value, calls, provider, model, masker_of(client))
     as_checked, report = judged(generated)
     pieces = _pieces(as_checked, index, settings, {})

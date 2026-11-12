@@ -33,24 +33,41 @@ def member_cards_piece(
 ) -> Piece | None:
     """``page_objects``: qualnames of the pages the context already reaches (the template's
     and the examples'); the pages the other tests of the template's class reach are added."""
-    limit = settings.generate.member_cards_max
+    cards = _cards(template, page_objects, index, settings)
+    lines = member_cards(draft, template, page_objects, index, settings)
+    if not lines:
+        return None
+    return Piece(
+        "Members this test can call (one line each: use the one that does a step instead of "
+        "writing the step out, also when the template doesn't call it)",
+        "\n".join(lines)
+        + (f"\n({len(cards) - len(lines)} more not listed)" if len(cards) > len(lines) else ""),
+    )
+
+
+def member_cards(
+    draft: TestCaseDraft,
+    template: Chunk,
+    page_objects: list[str],
+    index: IndexData,
+    settings: Settings,
+) -> list[str]:
+    """The card lines, the draft's words first, at most ``generate.member_cards_max``."""
     wanted = set(
         tokenize(
             " ".join([draft.intent, *draft.preconditions, *draft.steps, draft.expected_outcome])
         )
     )
-    cards = [*_helper_cards(template, index, settings), *_page_cards(template, page_objects, index)]
-    if not cards:
-        return None
+    cards = _cards(template, page_objects, index, settings)
     # the draft's words first (most shared words first), the rest in the suite's own order
     ranked = sorted(enumerate(cards), key=lambda item: (-len(wanted & item[1][1]), item[0]))
-    lines = [line for _, (line, _) in ranked[:limit]]
-    return Piece(
-        "Members this test can call (one line each: use the one that does a step instead of "
-        "writing the step out, also when the template doesn't call it)",
-        "\n".join(lines)
-        + (f"\n({len(cards) - limit} more not listed)" if len(cards) > limit else ""),
-    )
+    return [line for _, (line, _) in ranked[: settings.generate.member_cards_max]]
+
+
+def _cards(
+    template: Chunk, page_objects: list[str], index: IndexData, settings: Settings
+) -> list[tuple[str, set[str]]]:
+    return [*_helper_cards(template, index, settings), *_page_cards(template, page_objects, index)]
 
 
 def _helper_cards(

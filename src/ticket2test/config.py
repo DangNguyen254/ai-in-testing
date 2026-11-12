@@ -401,6 +401,10 @@ class GenerateSettings(_Section):
     # the pages its class reaches), ranked by the draft's words. Off until a run measures it.
     context_member_cards: bool = False
     member_cards_max: int = Field(default=60, ge=1)
+    # One LLM call before generation: each draft step mapped to members from those cards
+    # (labels, checked by code), put into the context as a plan. Off until a run measures it.
+    step_plan: bool = False
+    step_plan_prompt: str = "step_plan_v1"
     # Team conventions for tests (Markdown). Always placed in the context when set.
     conventions_doc: Path | None = None
     # Always on the reviewer checklist: things only a real run can confirm.

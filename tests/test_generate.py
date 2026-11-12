@@ -1035,6 +1035,60 @@ def test_member_cards_list_what_the_test_can_call_beyond_the_template(
     assert titles.index("Members this test can call") < titles.index("Similar test")
 
 
+def test_step_plan_puts_the_member_for_each_step_into_the_context(
+    index: IndexData, retrieval: RetrievalResult, tmp_path: Path
+) -> None:
+    """Found on the golden set: listing the members (the cards) didn't make the generator
+    call them (54 helpers missed against 51). So one call first maps each draft step to a
+    member, by label; code drops labels that weren't shown; the plan goes into the context."""
+    from ticket2test.generate.generator import _page_objects_for, _template
+    from ticket2test.generate.members import member_cards
+
+    base = _settings(tmp_path)
+    settings = base.model_copy(
+        update={"generate": base.generate.model_copy(update={"step_plan": True})}
+    )
+    draft = _draft(steps=["Open the rules list", "Add a rule with a condition", "Save"])
+    chunks = {c.id: c for c in index.chunks}
+    template, _ = _template(retrieval, chunks)
+    hits = [chunks[h.chunk_id] for h in retrieval.hits if h.chunk_id in chunks]
+    examples = [c for c in hits if c.kind == "test" and c.id != template.id][
+        : settings.generate.max_example_tests
+    ]
+    pages = [q for q, _ in _page_objects_for(template, examples, hits, index)]
+    cards = member_cards(draft, template, pages, index, settings)
+    add = next(n for n, card in enumerate(cards, 1) if "list.add_rule()" in card)
+    step = len(draft.preconditions) + 2  # "Add a rule with a condition"
+    plan = json.dumps(
+        {
+            "steps": [
+                {"step": f"S{step}", "members": [f"M{add}", "M999"]},
+                {"step": "S99", "members": ["M1"]},
+            ]
+        }
+    )
+
+    fake = FakeLLMClient([plan, _reply()])
+    generated = _generate(index, retrieval, tmp_path, fake, settings=settings, draft=draft)
+    asked, user = fake.requests[0].messages[1].content, fake.requests[1].messages[1].content
+    assert f"S{step}. Add a rule with a condition" in asked and f"M{add}: `self.nav" in asked
+    assert "### Step plan" in user
+    planned = user.split("### Step plan")[1].split("###")[0]
+    assert "- Add a rule with a condition\n  - `self.nav.rules.list.add_rule()`" in planned
+    assert planned.count("\n- ") == 1  # the unknown step and member were dropped
+    assert user.index("### Step plan") < user.index("### Similar test")
+    assert generated.attempts == 2
+
+    # a plan that can't be read costs its calls and nothing else; off, no call is made
+    bad = FakeLLMClient(["no json"] * (settings.llm.max_retries_on_bad_json + 1) + [_reply()])
+    again = _generate(index, retrieval, tmp_path, bad, settings=settings, draft=draft)
+    assert "### Step plan" not in bad.requests[-1].messages[1].content
+    assert again.attempts == settings.llm.max_retries_on_bad_json + 2
+    off = FakeLLMClient([_reply()])
+    _generate(index, retrieval, tmp_path, off, draft=draft)
+    assert len(off.requests) == 1 and "### Step plan" not in off.requests[0].messages[1].content
+
+
 def test_a_copy_change_takes_a_block_from_another_entry_of_the_class() -> None:
     """Found in the real trial: the base entry lacked the agent's rule block, and the model
     would have had to write ~60 lines by hand. A "copy" change takes it from a sibling."""
