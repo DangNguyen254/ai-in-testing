@@ -12,10 +12,12 @@ the newest state is in this block, and the history below it is in the order it h
   left is D6 (the QE names the nearest test).
 - **Now: C2 (helpers called).** No miss is an inlined helper. Most are steps the template
   lacks, and half were never shown in use in the context. `generate.context_member_cards`
-  (off) is built for this and **is being measured**: label `member-cards`, to compare with
-  baseline-2 (C2 up, C7 and C4 not down).
-- **Next:** read that run; then C3 (11 of 17 misses had every block in the context); then
-  D1 (a step plan) if helpers are still skipped.
+  was built for this and **measured no gain** (label `member-cards`: C2 20% against 17%, g12
+  gained and g07 lost; everything else within noise). It stays off.
+- **Next:** run `.scratch/c2_misses.py` on the `member-cards` report (free) to see whether
+  fewer helpers are missed per run; then D1 (a step plan: each draft step mapped to a
+  member before the code is written); then C3 (11 of 17 misses had every block in the
+  context).
 - **Open:** g06 fails to generate 2 times in 3 (the code doesn't parse from line 1);
   `.scratch/c2_misses.py` can't read the template's code in 13 runs; C8 tests names only (a
   stricter "shown in a call" variant is worth adding to the scorer); g12's glossary entry
@@ -419,6 +421,33 @@ and examples, so the budget keeps it. No prompt change, no LLM call.
 To measure: `T2T_GENERATE__CONTEXT_MEMBER_CARDS=true` on a golden run, against baseline-2
 (C2 first; C7 and C4 must not fall). It can't reach the 10 out-of-reach misses or a member of
 a page no test of the class touches.
+
+**Measured (2026-11-11, label `member-cards`, 15 × 2, 71 calls, $0.61): no gain. The switch
+stays off.**
+
+| Criterion | baseline-2 pass@1 | member-cards pass@1 | member-cards pass^k |
+|---|---|---|---|
+| C1 placement | 53% | 53% | 47% |
+| C2 helpers | 17% | 20% | 20% |
+| C3 data blocks | 40% | 43% | 40% |
+| C4 no made-up values | 83% | 90% | 80% |
+| C5 case count | 87% | 87% | 87% |
+| C7 validators | 97% | 97% | 93% |
+| C8 context recall | 63% | 63% | 60% |
+
+- Every difference is one or two runs. All 30 runs generated (g06 r1 too, this time).
+- C2: 6/30 (g02 ×2, g05 ×2, g12 ×2) against 5/30. g12 gained both runs; g07 r2 passed in
+  baseline-2 and both g07 runs are at 0.00 now. One ticket for another: not a gain.
+- C8's helper recall didn't rise on the tickets that lacked a helper's name (g08 0.75, g09
+  0.50, g10 0.80, g14 0.80). The cards' text is in the context C8 reads, so on those tickets
+  the cards did not list the missing helper: it is outside the template class's lineage and
+  the pages its tests reach, or past the cap of 60.
+- On the other tickets the name was already in the context and the helper is still not
+  called. So listing what can be called is not enough by itself.
+- Not yet known: whether fewer helpers are missed per run (51 in baseline-2). The script
+  counts it for free on this run's report.
+- The switch is kept, off, until that count is read; if the count hasn't dropped either, it
+  is removed unless D1 uses the cards as its menu.
 
 Read: search is not the bottleneck for C3. Two thirds of their misses happen with the
 helper or block already in the context. Next is step 4 below (what the generator does with
