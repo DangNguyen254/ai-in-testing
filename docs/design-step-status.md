@@ -571,9 +571,10 @@ applied by the framework, so the stripper never removes them.
 
 Ten changes since baseline-1 (seven placement rules, the glossary, member cards, the step
 plan) moved nothing beyond noise. Three things in how we measure and choose:
-1. C2 and C3 ask for the one reference test exactly, and part of it is new to the suite
+1. C2 and C3 ask for the one reference test exactly, and part of it looked new to the suite
    (31 of 54 missed helpers are called by no other test of its class; 32 of 88 missed blocks
-   are in no entry of the class). That part no generator can reach.
+   are in no entry of the class). A1 below shows that reading was wrong: most of it is used
+   elsewhere in the suite.
 2. C6 (is the draft useful to a QE) has never been filled, so every choice was made on proxies.
 3. The upper bound (plan step 5: a stronger generator) was never run, so we don't know whether
    the ceiling is the model or the pipeline.
@@ -595,6 +596,18 @@ the pass rates, so nothing moved under the 1.0 bar either.
 | baseline-2 | 5/30 | 0.47 | 12/30 | 0.71 |
 | member-cards | 6/30 | 0.49 | 13/30 | 0.70 |
 | step-plan | 5/30 | 0.48 | 13/30 | 0.67 |
+
+**A1 (`.scratch/reachable.py <report.json>`, on baseline-2): the ceiling is high, and my
+reading in point 1 above was wrong.** "Reachable" here is broad: another test anywhere in the
+suite the run saw calls the helper, or an entry anywhere has the key path.
+- C2: 36 of the 51 missed helpers are reachable. Pass against the reachable part: 9/29
+  (exact: 5/30).
+- C3: 71 of the 79 missed blocks are reachable. Pass against the reachable part: 12/29, the
+  same as exact.
+- So "rare in the reference's class" did not mean "new to the suite": most of what the
+  generator misses is used somewhere else in the suite. Only a small part is out of reach.
+  The gap is real, not an artifact of the exact match. (Upper bound: being somewhere in
+  thousands of tests is not the same as being findable.)
 
 **A3:** all three parse failures (g06 ×2, g15 r2) are "syntax error near line 1" from the
 tree-sitter check. Not modern syntax tree-sitter lacks (nested f-string quotes, `match`,
