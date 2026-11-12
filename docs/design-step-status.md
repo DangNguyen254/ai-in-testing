@@ -17,7 +17,7 @@ the newest state is in this block, and the history below it is in the order it h
   The missed-helper count didn't drop either (54 against 51).
   `generate.step_plan` (D1's smallest form) measured **no gain** either (C2 17%, g01
   gained, g05 lost). Both stay off.
-- **Next:** decide whether D1 goes further (code writes the planned calls) or C3 comes first; C3 (11 of 17 misses had every block in the context).
+- **Next:** C3 (D1 paused); C3 (11 of 17 misses had every block in the context).
 - **Open:** g06 fails to generate 2 times in 3 (the code doesn't parse from line 1);
   `.scratch/c2_misses.py` can't read the template's code in 13 runs; C8 tests names only (a
   stricter "shown in a call" variant is worth adding to the scorer); g12's glossary entry
@@ -489,7 +489,13 @@ are its menu either way). `test_step_plan_puts_the_member_for_each_step_into_the
 - C8's rise is not a gain: the plan's text is in the context C8 reads, so it adds names.
 - g15 r2 failed (the code didn't parse, 3 attempts), as g06 did before.
 - Reading: neither listing the members nor having a model pick one per step makes the
-  generator call them. The missed-helper count was not taken (usage was short).
+  generator call them.
+- Missed helpers (script): 54 over 24 runs (baseline-2 51, member-cards 54). The new tests
+  make more `self` calls (123 against 91 in member-cards) and follow the template less (25
+  against 29), and use another member of the right page more often (26 against 20). So the
+  plan changes what is called, but not into the reference's helpers: more calls, not the
+  right ones.
+- D1 is paused (the human's call); C3 is next.
 
 Read: search is not the bottleneck for C3. Two thirds of their misses happen with the
 helper or block already in the context. Next is step 4 below (what the generator does with
