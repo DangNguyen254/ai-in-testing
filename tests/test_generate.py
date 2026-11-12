@@ -1094,12 +1094,17 @@ def test_seed_floor_keeps_the_base_seed_sections_the_model_left_out(
 ) -> None:
     """Found on the golden set: 38 of 88 missing data blocks were seed sections the model left
     out whole, with the base entry holding them. The framework applies seed sections itself,
-    so code puts them back; off unless switched on."""
+    so code puts them back (on by default)."""
     base = _settings(tmp_path)
     on = base.model_copy(update={"generate": base.generate.model_copy(update={"seed_floor": True})})
+    unset = base.model_copy(
+        update={"generate": base.generate.model_copy(update={"seed_floor": False})}
+    )
     no_policy = [_plan(i, sections=["settings", "delete_name", "targets"]) for i in IDS]
 
-    off = _generate(index, retrieval, tmp_path, FakeLLMClient([_reply(plans=no_policy)]))
+    off = _generate(
+        index, retrieval, tmp_path, FakeLLMClient([_reply(plans=no_policy)]), settings=unset
+    )
     assert all("policy" not in e for e in off.data_entries)
 
     kept = _generate(

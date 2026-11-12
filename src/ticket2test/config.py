@@ -406,8 +406,8 @@ class GenerateSettings(_Section):
     step_plan: bool = False
     step_plan_prompt: str = "step_plan_v1"
     # Code puts back every seed section of the base entry a new entry lacks (the framework
-    # applies them, so they are never unread). Off until a run measures it.
-    seed_floor: bool = False
+    # applies them, so they are never unread). On since the seed-floor run (2026-11-12).
+    seed_floor: bool = True
     # Team conventions for tests (Markdown). Always placed in the context when set.
     conventions_doc: Path | None = None
     # Always on the reviewer checklist: things only a real run can confirm.
