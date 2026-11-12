@@ -14,8 +14,8 @@ the newest state is in this block, and the history below it is in the order it h
   lacks, and half were never shown in use in the context. `generate.context_member_cards`
   was built for this and **measured no gain** (label `member-cards`: C2 20% against 17%, g12
   gained and g07 lost; everything else within noise). It stays off.
-- **Next:** run `.scratch/c2_misses.py` on the `member-cards` report (free) to see whether
-  fewer helpers are missed per run; then D1 (a step plan: each draft step mapped to a
+  The missed-helper count didn't drop either (54 against 51).
+- **Next:** D1 (a step plan: each draft step mapped to a
   member before the code is written); then C3 (11 of 17 misses had every block in the
   context).
 - **Open:** g06 fails to generate 2 times in 3 (the code doesn't parse from line 1);
@@ -446,8 +446,13 @@ stays off.**
   called. So listing what can be called is not enough by itself.
 - Not yet known: whether fewer helpers are missed per run (51 in baseline-2). The script
   counts it for free on this run's report.
-- The switch is kept, off, until that count is read; if the count hasn't dropped either, it
-  is removed unless D1 uses the cards as its menu.
+- The count, read with the script: **54 helpers missed over 24 runs, against 51 over 24 in
+  baseline-2** (which also had one failed run). No drop. Name in the context 46 of 54, shown
+  in a call 26, inlined 0, out of reach 10, the template calls it 5, rare 31. The same
+  picture as before the cards.
+- So the generator doesn't pick a member because it is listed. The switch stays off; the
+  code is kept only as the menu for D1 (each draft step mapped to a member before the code
+  is written) and is removed if D1 doesn't use it.
 
 Read: search is not the bottleneck for C3. Two thirds of their misses happen with the
 helper or block already in the context. Next is step 4 below (what the generator does with
