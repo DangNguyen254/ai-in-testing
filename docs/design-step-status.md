@@ -562,6 +562,10 @@ applied by the framework, so the stripper never removes them.
   gain: C3 recall on g10 and g12; a pass likely on g12 only. Watch C4 (a copied section
   carries the base's values) and C7.
 - To measure: `T2T_GENERATE__SEED_FLOOR=true`, label `seed-floor`, against baseline-2.
+- **Measured (label `seed-floor`, 28 of 30 generated, 2 CLI timeouts near the usage limit,
+  $0.73): no gain. Off.** C3 40% (baseline-2 40%); recall rose where it reaches (g12 0.40 ->
+  0.60, g10 r2 0.17 -> 0.33) but no ticket passed because of it. C4 80% (g06 ×2, g10 r2, g15
+  r2), C7 93% (the two failed runs): within noise. Not resumed (usage).
 
 ## A new plan (2026-11-12): fix the yardstick before more changes
 
