@@ -530,6 +530,24 @@ base's section back (the framework consumes seed sections, so they aren't "unrea
 first, free: which sections the 13 dropped ones are (seed or expectation), and whether the
 `delete` changes explain g02/g03.
 
+**The kinds (`.scratch/c3_kinds.py <report.json>`, no index, counts only), of the 88:**
+
+| | whole section missing | a key inside a kept section |
+|---|---|---|
+| seed (`settings`, `policy`, `tenants`, ...) | 38 (g09, g10, g11, g12) | 7 (g02, g03, g12) |
+| expectation (`targets`, `interactions`) | 14 (g09, g13) | 11 (g10, g14, g15) |
+| other (keys the test body reads) | 18 (g09-g14) | 0 |
+
+- The model's plan left the section out of `copy_sections` for 73 of 88.
+- g02 and g03 are settled: the model's own `delete` changes removed those keys (5 of 5).
+  The stripper removed nothing.
+- So a seed-section floor reaches at most 38 paths, and passes a ticket only where nothing
+  else is missing: likely g12 alone (g09 also lacks an expectation and custom keys, g11 a
+  custom key, g10 has blocks no entry holds). C3 recall would rise more than its pass rate.
+- An expectation section can't be put back by code unless the test calls its helper, and the
+  custom keys only matter if the code reads them. Both are the model's choice of what the test
+  does, the same as C2.
+
 Read: search is not the bottleneck for C3. Two thirds of their misses happen with the
 helper or block already in the context. Next is step 4 below (what the generator does with
 what it has), not more retrieval or placement rules.
