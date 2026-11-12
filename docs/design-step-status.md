@@ -563,6 +563,45 @@ applied by the framework, so the stripper never removes them.
   carries the base's values) and C7.
 - To measure: `T2T_GENERATE__SEED_FLOOR=true`, label `seed-floor`, against baseline-2.
 
+## A new plan (2026-11-12): fix the yardstick before more changes
+
+Ten changes since baseline-1 (seven placement rules, the glossary, member cards, the step
+plan) moved nothing beyond noise. Three things in how we measure and choose:
+1. C2 and C3 ask for the one reference test exactly, and part of it is new to the suite
+   (31 of 54 missed helpers are called by no other test of its class; 32 of 88 missed blocks
+   are in no entry of the class). That part no generator can reach.
+2. C6 (is the draft useful to a QE) has never been filled, so every choice was made on proxies.
+3. The upper bound (plan step 5: a stronger generator) was never run, so we don't know whether
+   the ceiling is the model or the pipeline.
+
+Plan: **A** fix the yardstick (free): A1 score C2/C3 against what was reachable, A2 recall
+means next to pass rates, A3 the parse failures. **B** two diagnostic runs: B1 Sonnet API
+generates (everything else unchanged), B2 the reference class's nearest test given as the
+template (D6 as an oracle; needs a switch). **C** the human judges 15 outputs (keep / small
+edit / rewrite). **D** then decide: D6, D5 if B1 shows the model matters, D3/D4 (gaps and
+warnings to the reviewer); D1 in full parked; member cards and the step plan removed unless
+reused; no more placement rules.
+
+**A2 (`.scratch/reachable.py <report.json> --means-only`):** the recall means are as flat as
+the pass rates, so nothing moved under the 1.0 bar either.
+
+| Report | C2 pass | C2 mean recall | C3 pass | C3 mean recall |
+|---|---|---|---|---|
+| baseline-1 | 6/30 | 0.45 | 10/30 | 0.66 |
+| baseline-2 | 5/30 | 0.47 | 12/30 | 0.71 |
+| member-cards | 6/30 | 0.49 | 13/30 | 0.70 |
+| step-plan | 5/30 | 0.48 | 13/30 | 0.67 |
+
+**A3:** all three parse failures (g06 ×2, g15 r2) are "syntax error near line 1" from the
+tree-sitter check. Not modern syntax tree-sitter lacks (nested f-string quotes, `match`,
+`type`, `except*` all parse). The model's raw reply isn't kept, so the cause (a fence, escaped
+newlines, prose before the code) needs one `--debug-log` run of g06 and a masked look at the
+code's first line. Open.
+
+**B1 needs no yaml change:** `-e 'T2T_LLM__CLAUDE_CODE_CLI__STEP_MODELS={"generate":"claude-sonnet-5-5"}'`
+moves only the generate step (and repair, which reuses its request) to Sonnet; every other
+step stays on Haiku (`.scratch/models_per_step.py` prints the model per step).
+
 Read: search is not the bottleneck for C3. Two thirds of their misses happen with the
 helper or block already in the context. Next is step 4 below (what the generator does with
 what it has), not more retrieval or placement rules.
