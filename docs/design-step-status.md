@@ -15,9 +15,9 @@ the newest state is in this block, and the history below it is in the order it h
   was built for this and **measured no gain** (label `member-cards`: C2 20% against 17%, g12
   gained and g07 lost; everything else within noise). It stays off.
   The missed-helper count didn't drop either (54 against 51).
-- **Next:** D1 (a step plan: each draft step mapped to a
-  member before the code is written); then C3 (11 of 17 misses had every block in the
-  context).
+  `generate.step_plan` (off) is built on the cards and **waits for its run** (label
+  `step-plan`).
+- **Next:** read that run; then C3 (11 of 17 misses had every block in the context).
 - **Open:** g06 fails to generate 2 times in 3 (the code doesn't parse from line 1);
   `.scratch/c2_misses.py` can't read the template's code in 13 runs; C8 tests names only (a
   stricter "shown in a call" variant is worth adding to the scorer); g12's glossary entry
@@ -25,7 +25,7 @@ the newest state is in this block, and the history below it is in the order it h
   without).
 - **On:** `knowledge.use_in_templates`, the joined-marker fix, the updated and reviewed
   glossary. **Off:** `knowledge.search_named_classes`, `generate.reuse.glossary_class_wins`,
-  `generate.context_member_cards`. **Removed:** `kind_as_preference`,
+  `generate.context_member_cards`, `generate.step_plan`. **Removed:** `kind_as_preference`,
   `class_from_retrieval`, `dataless_hit_class`.
 - Local commits are not pushed (origin is at `68e4545`); push only when the human says so.
 
@@ -453,6 +453,24 @@ stays off.**
 - So the generator doesn't pick a member because it is listed. The switch stays off; the
   code is kept only as the menu for D1 (each draft step mapped to a member before the code
   is written) and is removed if D1 doesn't use it.
+
+**Built, off by default: `generate.step_plan`** (`generate/plan.py`, prompt `step_plan_v1`;
+D1 in its smallest form). One LLM call before generation, on the generate step's model: the
+draft's lines (preconditions, steps, expected outcome; labels S1...) and the member cards
+(labels M1..., the same ranked and capped list) go to the model, and it answers with labels
+only, at most 3 members a line, none when no member clearly does the line. Code drops any
+label that wasn't shown. The result is a context piece, "Step plan", with the chosen cards
+under each step, placed where the cards go (before the base classes and examples). The
+generator still writes the code; the generate prompt is unchanged. A plan that can't be read
+means no plan, and its calls are counted. It works without `context_member_cards` (the cards
+are its menu either way). `test_step_plan_puts_the_member_for_each_step_into_the_context`.
+- Not in this version: code writing the calls from the plan, and a check that the generated
+  test calls what was planned. Both wait for a run that shows the plan helps.
+- It can't choose a member the cards don't list (g08, g09, g10, g14 above) and can't fix the
+  10 out-of-reach misses.
+- To measure: `T2T_GENERATE__STEP_PLAN=true` on a golden run, label `step-plan`, against
+  baseline-2: C2 and the missed-helper count (51) first; C7 and C4 must not fall. About 30
+  more Haiku API calls, so about $0.75.
 
 Read: search is not the bottleneck for C3. Two thirds of their misses happen with the
 helper or block already in the context. Next is step 4 below (what the generator does with
