@@ -20,6 +20,10 @@ the newest state is in this block, and the history below it is in the order it h
 - **Next:** C3, D1 paused. Most C3 misses are whole sections the model left out with the
   base or a sibling holding them (see "C3: what the misses are"). `generate.seed_floor`
   (off) is built and waits for its run; its reach is small (g10, g12).
+- **2026-11-13: Sonnet API generating (label `sonnet-generate`, $8.05) is no better than
+  Haiku API** on any ticket (C2 mean recall 0.40 against 0.47, C3 0.74 against 0.77). The
+  generating model is not the bottleneck; a stronger model for generation (D5) is dropped.
+  **Next: B2**, the reference class's nearest test given as the template (needs a switch).
 - **Open:** g06 fails to generate 2 times in 3 (the code doesn't parse from line 1);
   `.scratch/c2_misses.py` can't read the template's code in 13 runs; C8 tests names only (a
   stricter "shown in a call" variant is worth adding to the scorer); g12's glossary entry
@@ -646,6 +650,27 @@ code's first line. Open.
 **B1 needs no yaml change:** `-e 'T2T_LLM__CLAUDE_CODE_CLI__STEP_MODELS={"generate":"claude-sonnet-5-5"}'`
 moves only the generate step (and repair, which reuses its request) to Sonnet; every other
 step stays on Haiku (`.scratch/models_per_step.py` prints the model per step).
+
+**B1 measured (2026-11-13, label `sonnet-generate`, 15 × 2, 69 calls, $8.05): a stronger
+model writing the code does not help.** Same settings as the `seed-floor` run (Haiku API
+generating, $0.81); only the generate model differs (the report's config shows it). The run
+was cut at 7 of 30 by a machine shutdown and finished with `--resume`; all 30 generated.
+
+| | C1 | C2 | C3 | C4 | C5 | C7 | C8 | C2 mean recall | C3 mean recall |
+|---|---|---|---|---|---|---|---|---|---|
+| `seed-floor` (Haiku API) | 60% | 20% | 43% | 87% | 93% | 100% | 63% | 0.47 | 0.77 |
+| `sonnet-generate` | 57% | 13% | 40% | 83% | 93% | 100% | 70% | 0.40 | 0.74 |
+
+Per ticket, by the keep rule: on C2 no ticket is better in both runs and one is worse in
+both (g06, 0.25 to 0.00); on C3 none is better in both and one is worse in both (g14, with
+its placement also lost in one run). Nine tickets have the same C2 recall in both runs under
+either model, and the tickets at 0.00 (g07, g09, g10, g15) stay at 0.00. So the misses are
+not the generating model's weakness: with the same context, a stronger model leaves out the
+same helpers and blocks. What the model is given (the template and the examples) decides
+it. **D5 (a stronger model for generation) is dropped**; it costs ten times as much for
+nothing. B2 (the reference class's nearest test given as the template) is the next
+diagnostic. Both g06 runs generated here, so the parse failure (A3) didn't show under
+Sonnet. Compared with `.scratch/cmp_logs.py <log A> <log B>` (from the two run logs).
 
 Read: search is not the bottleneck for C3. Two thirds of their misses happen with the
 helper or block already in the context. Next is step 4 below (what the generator does with
