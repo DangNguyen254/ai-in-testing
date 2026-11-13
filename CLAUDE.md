@@ -212,8 +212,15 @@ changes D1–D6), and `.scratch/session-notes.md` (git-ignored notes kept across
 - Claude designs and writes code in this repo and tests it on the stand-in. `config.yaml` is
   the stand-in's config.
 - The human runs the tool on the real suite, inside a container, with a private config, and
-  pastes the results back. Claude never runs anything there and never reads the real suite or
-  the private folder, on the host or in the container.
+  pastes the results back. Claude never reads the real suite or the private folder, on the
+  host or in the container.
+- **What Claude may run in the container (allowed by the human, 2026-11-12):** `ticket2test
+  golden ...` runs and the masked `.scratch/` scripts, through `podman exec`, in the
+  background, one at a time, reading only what they print. Never open a file of the real
+  suite or the private folder, never repeat a printed name, and mask the suite's folder name
+  in any saved log. Each paid run still needs the human's yes first.
+- **Never run the Sonnet API (or any model above the Haiku API) in the container without the
+  human's permission, each time** (2026-11-13; one such run cost ten times a Haiku run).
 - "Haiku" / "Sonnet" alone means a Claude Code session on another account that can read the
   real suite. "Haiku API" / "Sonnet API" means the model the tool calls. Work that needs to
   understand the real suite (a glossary, a review, an investigation) is written as a prompt in

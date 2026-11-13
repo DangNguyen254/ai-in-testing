@@ -1,39 +1,43 @@
 # Design step: status
 
-## Start here (2026-11-11)
+## Start here (2026-11-13)
 
 How the work is done is in `CLAUDE.md` ("How the work is done now"). This file is the record:
 the newest state is in this block, and the history below it is in the order it happened.
 
-- **Yardstick: baseline-2** (15 × 2, label `baseline-2`): C1 53%, C2 17%, C3 40%, C4 83%,
-  C5 87%, C7 97%, C8 63%. The same as baseline-1 within noise.
+- **Yardstick: the `seed-floor` run** (15 × 2, Haiku API, today's defaults): C1 60%, C2 20%,
+  C3 43%, C4 87%, C5 93%, C7 100%, C8 63%; mean recall C2 0.47, C3 0.77. Baseline-2 (before
+  the seed floor): 53 / 17 / 40 / 83 / 87 / 97 / 63, mean recall 0.47 and 0.71. Changes are
+  judged per ticket by the keep rule (`CLAUDE.md`, method point 4), not by pass rate alone.
 - **Placement (C1) is parked** at 9 of 15 on the recorded replay. Seven rules were tried and
   each traded one ticket for another. Misses: g01, g04, g05, g06, g07, g15. The cheap answer
   left is D6 (the QE names the nearest test).
-- **Now: C2 (helpers called).** No miss is an inlined helper. Most are steps the template
-  lacks, and half were never shown in use in the context. `generate.context_member_cards`
-  was built for this and **measured no gain** (label `member-cards`: C2 20% against 17%, g12
-  gained and g07 lost; everything else within noise). It stays off.
-  The missed-helper count didn't drop either (54 against 51).
-  `generate.step_plan` (D1's smallest form) measured **no gain** either (C2 17%, g01
-  gained, g05 lost). Both stay off.
-- **Next:** C3, D1 paused. Most C3 misses are whole sections the model left out with the
-  base or a sibling holding them (see "C3: what the misses are"). `generate.seed_floor`
-  (off) is built and waits for its run; its reach is small (g10, g12).
-- **2026-11-13: Sonnet API generating (label `sonnet-generate`, $8.05) is no better than
-  Haiku API** on any ticket (C2 mean recall 0.40 against 0.47, C3 0.74 against 0.77). The
-  generating model is not the bottleneck; a stronger model for generation (D5) is dropped.
-  **Next: B2**, the reference class's nearest test given as the template (needs a switch).
-- **Open:** g06 fails to generate 2 times in 3 (the code doesn't parse from line 1);
-  `.scratch/c2_misses.py` can't read the template's code in 13 runs; C8 tests names only (a
-  stricter "shown in a call" variant is worth adding to the scorer); g12's glossary entry
-  wants a person's look; a blind try on new tickets (3 to 5 with a framework, 1 or 2
-  without).
+- **Helpers called (C2): nothing tried has moved it.** No miss is an inlined helper; most are
+  steps the template lacks. `generate.context_member_cards` and `generate.step_plan` are
+  unproven (off). 36 of 51 missed helpers and 71 of 79 missed blocks are used elsewhere in the
+  suite, so the ceiling is high and the reference tests are not out of reach.
+- **Data blocks (C3): the seed floor is kept** (`generate.seed_floor`, on): g11, g12, g14
+  better, none worse.
+- **The generating model is not the bottleneck.** Sonnet API generating (label
+  `sonnet-generate`, $8.05 against $0.81) is better on no ticket: C2 mean recall 0.40, C3
+  0.74. A stronger model for generation is dropped. Sonnet API is not run again without the
+  human's permission.
+- **Running now: the right-template diagnostic** (label `right-template`,
+  `eval.oracle_template` on for this run only, Haiku API): the reference class's nearest test
+  given as the template. It shows what the right template alone gains, which is the most D6
+  could gain. Compare with `seed-floor`.
+- **After it:** the human's verdict on 15 outputs (keep / small edit / rewrite), then decide:
+  D6, gaps and proposals (D3/D4), or stop adding. No more placement rules.
+- **Open:** g06 and g15 sometimes fail to generate (the code doesn't parse from line 1;
+  needs one `--debug-log` run and a masked look; neither failed under Sonnet); C8 tests names
+  only; `glossary_class_wins` waits for a person's look at g12's glossary entry; a blind try
+  on new tickets (3 to 5 with a framework, 1 or 2 without).
 - **On:** `knowledge.use_in_templates`, the joined-marker fix, the updated and reviewed
-  glossary. **Off:** `knowledge.search_named_classes`, `generate.reuse.glossary_class_wins`,
-  `generate.context_member_cards`, `generate.step_plan`. **On since 2026-11-12:** `generate.seed_floor`. **Removed:** `kind_as_preference`,
-  `class_from_retrieval`, `dataless_hit_class`.
-- Local commits are not pushed (origin is at `68e4545`); push only when the human says so.
+  glossary, `generate.seed_floor`. **Off:** `knowledge.search_named_classes`,
+  `generate.reuse.glossary_class_wins`, `generate.context_member_cards`, `generate.step_plan`,
+  `eval.oracle_template` (a diagnostic, never on by default). **Removed:**
+  `kind_as_preference`, `class_from_retrieval`, `dataless_hit_class`.
+- Pushed on 2026-11-13 with the human's OK; later commits are local until the next OK.
 
 ## Where the work stopped on the old machine (2026-11-05)
 
@@ -615,7 +619,7 @@ Plan: **A** fix the yardstick (free): A1 score C2/C3 against what was reachable,
 means next to pass rates, A3 the parse failures. **B** two diagnostic runs: B1 Sonnet API
 generates (everything else unchanged), B2 the reference class's nearest test given as the
 template (D6 as an oracle; needs a switch). **C** the human judges 15 outputs (keep / small
-edit / rewrite). **D** then decide: D6, D5 if B1 shows the model matters, D3/D4 (gaps and
+edit / rewrite). **D** then decide: D6, a stronger generation model if B1 shows the model matters, D3/D4 (gaps and
 warnings to the reviewer); D1 in full parked; member cards and the step plan removed unless
 reused; no more placement rules.
 
@@ -667,8 +671,10 @@ its placement also lost in one run). Nine tickets have the same C2 recall in bot
 either model, and the tickets at 0.00 (g07, g09, g10, g15) stay at 0.00. So the misses are
 not the generating model's weakness: with the same context, a stronger model leaves out the
 same helpers and blocks. What the model is given (the template and the examples) decides
-it. **D5 (a stronger model for generation) is dropped**; it costs ten times as much for
-nothing. B2 (the reference class's nearest test given as the template) is the next
+it. **A stronger model for generation is dropped**; it costs ten times as much for
+nothing. (An earlier note here called this D5; in the plan D5 is sample-and-select, which this
+run doesn't test, though nine tickets scoring the same in every run under both models
+suggests picking among samples has little to choose from.) B2 (the reference class's nearest test given as the template) is the next
 diagnostic. Both g06 runs generated here, so the parse failure (A3) didn't show under
 Sonnet. Compared with `.scratch/cmp_logs.py <log A> <log B>` (from the two run logs).
 
