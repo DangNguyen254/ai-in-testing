@@ -672,6 +672,17 @@ nothing. B2 (the reference class's nearest test given as the template) is the ne
 diagnostic. Both g06 runs generated here, so the parse failure (A3) didn't show under
 Sonnet. Compared with `.scratch/cmp_logs.py <log A> <log B>` (from the two run logs).
 
+**B2 built (2026-11-13): `eval.oracle_template`, off.** A diagnostic for golden runs only.
+After search, the nearest remaining test of the reference's class goes first among the
+templates (a test with data before one without, then the most words shared with the draft,
+then the search score); with `template_class_wins` the class then follows it. A class with
+no test left pins nothing, and each run's progress line says `template pinned: yes` or
+`no test left in the class`. It doesn't force the area: where the area choice leaves the
+reference's file out, placement can still miss, and the placement column will show it. It
+measures what the right template alone gains on helpers called and data blocks present, which
+is also what "the QE names the nearest test" (D6) could gain at most. Turned on for one run
+with `-e T2T_EVAL__ORACLE_TEMPLATE=true`; compare against `seed-floor`. Not run yet.
+
 Read: search is not the bottleneck for C3. Two thirds of their misses happen with the
 helper or block already in the context. Next is step 4 below (what the generator does with
 what it has), not more retrieval or placement rules.
