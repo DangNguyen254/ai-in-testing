@@ -656,6 +656,16 @@ def _draft_words(draft: TestCaseDraft) -> set[str]:
     return {w for w in words if w not in _STOP}
 
 
+def draft_words(draft: TestCaseDraft) -> set[str]:
+    """The draft's words, as the class match compares them."""
+    return _draft_words(draft)
+
+
+def words_of_test(chunk: Chunk, settings: Settings) -> set[str]:
+    """A test's words (names, chain steps, custom data keys, docstring), without generic ones."""
+    return _flow_words(chunk, _generic_words(settings), settings)
+
+
 def _draft_values(draft: TestCaseDraft) -> set[str]:
     """Concrete values the draft names: variant inputs and quoted terms in its steps."""
     values = {i.value.lower() for v in draft.variants for i in v.inputs if i.value}

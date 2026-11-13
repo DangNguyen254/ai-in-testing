@@ -33,6 +33,7 @@ from ticket2test.eval.pairs import EvalCache, EvalPair, PairSet
 from ticket2test.eval.retrieval import manifest_test_to_chunk_id
 from ticket2test.generate.generator import first_party
 from ticket2test.generate.pipeline import generate_reusing
+from ticket2test.generate.reuse import draft_words, words_of_test
 from ticket2test.index.datafile import layout_of
 from ticket2test.index.indexer import IndexData, update_index
 from ticket2test.index.tokens import split_identifier
@@ -40,8 +41,9 @@ from ticket2test.llm.base import LLMClient, LLMError
 from ticket2test.llm.factory import model_name
 from ticket2test.llm.meter import Usage, usage_of
 from ticket2test.models.chunk import Chunk
-from ticket2test.models.draft import DraftResult
+from ticket2test.models.draft import DraftResult, TestCaseDraft
 from ticket2test.models.gaps import GapVerdict
+from ticket2test.models.retrieval import RetrievalResult, TemplateRef
 from ticket2test.models.ticket import Ticket
 from ticket2test.normalize import normalize
 from ticket2test.retrieve.pipeline import retrieve
@@ -315,6 +317,43 @@ def evaluate_generation(
     return report
 
 
+def pin_template(
+    retrieval: RetrievalResult,
+    index: IndexData,
+    pin_class: tuple[str, str],
+    draft: TestCaseDraft,
+    settings: Settings,
+) -> RetrievalResult | None:
+    """The retrieval with the nearest test of the class ``(file path, class name)`` first among
+    its templates; None when the index has no test of that class. Nearest: a test with data
+    before one without, then the most words shared with the draft, then the search score."""
+    file_path, class_name = pin_class
+    tests = [
+        c
+        for c in index.chunks
+        if c.kind == "test" and c.file_path == file_path and c.class_name == class_name
+    ]
+    if not tests:
+        return None
+    words = draft_words(draft)
+    scores = {h.chunk_id: h.score for h in retrieval.hits}
+
+    def key(chunk: Chunk) -> tuple[bool, int, float, str]:
+        keyed = any(i in chunk.data_entries for i in chunk.test_ids)
+        shared = len(words & words_of_test(chunk, settings))
+        return not keyed, -shared, -scores.get(chunk.id, 0.0), chunk.id
+
+    nearest = min(tests, key=key)
+    entry_key = next((i for i in nearest.test_ids if i in nearest.data_entries), None)
+    first = TemplateRef(
+        chunk_id=nearest.id,
+        entry_key=entry_key,
+        why="the reference class's nearest test (eval.oracle_template)",
+    )
+    rest = [t for t in retrieval.templates if t.chunk_id != nearest.id]
+    return retrieval.model_copy(update={"templates": [first, *rest]})
+
+
 def _one(
     pair: EvalPair,
     pair_set: PairSet,
@@ -332,6 +371,7 @@ def _one(
     keep_dir: Path | None,
     capture: dict[str, Any] | None = None,
     prepared: tuple[Path, IndexData, set[str]] | None = None,
+    pin_class: tuple[str, str] | None = None,
 ) -> GenerationPairResult:
     """``capture``: receives the generated test (``"generated"``) and the index it was
     generated against (``"index"``), for scorers. ``prepared``: the leave-one-out copy, its
@@ -375,6 +415,11 @@ def _one(
         result.test_kind = primary.test_kind
         retrieval = retrieve(ticket, used_index, settings, client, primary)
         result.llm_calls += retrieval.llm_calls
+        if pin_class is not None:  # eval.oracle_template: the reference class's nearest test
+            pinned = pin_template(retrieval, used_index, pin_class, primary, settings)
+            if capture is not None:
+                capture["pinned"] = "yes" if pinned is not None else "no test left in the class"
+            retrieval = pinned or retrieval
         if keep_dir is not None:  # kept whatever comes next: placement can be replayed from it
             (keep_dir / pair.id).mkdir(parents=True, exist_ok=True)
             (keep_dir / pair.id / "retrieval.json").write_text(

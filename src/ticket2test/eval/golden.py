@@ -189,6 +189,11 @@ def run_golden(
     for pair, facts, copy, linked in prepared:
         say(f"{pair.id}: indexing its copy")
         used_index = update_index(copy, loo_settings(settings))[0]
+        pin = (
+            (facts.file_path, facts.class_name)
+            if settings.eval.oracle_template and facts is not None and facts.class_name
+            else None
+        )
         for run in range(1, repeat + 1):
             if (pair.id, run) in have:
                 continue
@@ -202,12 +207,14 @@ def run_golden(
                 pair, pair_set, project_root, copy, used_index, settings, metered, cache,
                 conventions, True, collect, False, True, folder.parent, capture,
                 prepared=(copy, used_index, linked),
+                pin_class=pin,
             )  # fmt: skip
             done += 1
             say(
                 f"run {done}/{total} {pair.id} r{run}: {result.status}, "
                 f"{result.llm_calls} call(s), {time.monotonic() - run_started:.0f} s"
                 + (f" ({result.error[:120]})" if result.error else "")
+                + (f", template pinned: {capture['pinned']}" if "pinned" in capture else "")
             )
             kept = keep_dir / pair.id / pair.id
             if kept.exists():  # _one writes <keep>/<pair id>: move it to the run's folder
@@ -378,6 +385,7 @@ def config_snapshot(settings: Settings) -> dict[str, Any]:
         "repair.max_attempts": settings.repair.max_attempts,
         "repair.warning_checks": list(settings.repair.warning_checks),
         "proposals.enabled": settings.proposals.enabled,
+        "eval.oracle_template": settings.eval.oracle_template,
     }
 
 

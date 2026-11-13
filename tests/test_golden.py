@@ -205,6 +205,44 @@ def test_a_golden_run_repeats_each_ticket_and_scores_every_run(tmp_path: Path) -
     assert report.config["generate.context_helpers"] is True
 
 
+def test_the_oracle_template_pins_the_reference_class_nearest_test(
+    tmp_path: Path, index: IndexData, retrieval: RetrievalResult
+) -> None:
+    """``eval.oracle_template`` (a diagnostic): the reference class's nearest remaining test goes
+    first among the templates, whatever search ranked; a class with no test left pins nothing."""
+    from ticket2test.eval.generation import pin_template
+    from ticket2test.eval.golden import config_snapshot, run_golden
+    from ticket2test.llm.fake import FakeLLMClient
+    from ticket2test.models.retrieval import TemplateRef
+
+    from .test_eval_harness import _DRAFT, ROOT, _draft_reply, _settings
+    from .test_generate import _draft
+
+    settings = _settings(tmp_path)
+    assert config_snapshot(settings)["eval.oracle_template"] is False
+    golden_set, _, one_run = _golden_smoke(tmp_path)
+    settings.eval.oracle_template = True
+    lines: list[str] = []
+    report = run_golden(
+        golden_set, ROOT, settings, FakeLLMClient([_draft_reply(_DRAFT), *one_run]), 1, "pin",
+        tmp_path / "runs", progress=lines.append,
+    )  # fmt: skip
+    assert any(line.endswith("template pinned: yes") for line in lines), lines
+    assert report.config["eval.oracle_template"] is True
+
+    draft = _draft()
+    other = next(c for c in index.chunks if c.kind == "test" and c.class_name != "TestRules")
+    search = TemplateRef(chunk_id=other.id, entry_key=None, why="search")
+    found = retrieval.model_copy(update={"templates": [search]})
+    pinned = pin_template(found, index, ("tests/rules/test_rules.py", "TestRules"), draft, settings)
+    assert pinned is not None and pinned.templates[1].chunk_id == other.id
+    first = next(c for c in index.chunks if c.id == pinned.templates[0].chunk_id)
+    assert first.class_name == "TestRules" and pinned.templates[0].entry_key in first.data_entries
+    assert (
+        pin_template(found, index, ("tests/rules/test_rules.py", "Gone"), draft, settings) is None
+    )
+
+
 def test_a_page_action_reached_another_way_counts_as_called(index: IndexData) -> None:
     """Found in the first real baseline: a third of the "missing" calls were in the new test,
     reached through another local or chain spelling. Calls compare by what they resolve to:
