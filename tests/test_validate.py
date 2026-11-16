@@ -1118,3 +1118,31 @@ def test_a_check_helper_given_a_data_local_counts_only_the_keys_it_reads() -> No
     assert find_gaps(claim, checks, entries, {}, data=data, handed=handed)
     verdict = [("expected outcome", "The verdict is logged")]
     assert not find_gaps(verdict, checks, entries, {}, data=data, handed=handed)
+
+
+def test_a_class_is_walked_once_however_many_tests_it_has(
+    setup: tuple[Settings, IndexData, list[str]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Found on a real suite: validating a file whose class has hundreds of tests took most of
+    an hour, because the class's own members were collected again for every test in it."""
+    import ast
+
+    from ticket2test.validate import validator
+
+    path = "tests/rules/test_rules.py"
+    code = (Path(__file__).parent.parent / "standin" / path).read_text(encoding="utf-8")
+    tree = ast.parse(code)
+    classes = [n for n in tree.body if isinstance(n, ast.ClassDef)]
+    tests = [f for c in classes for f in c.body if getattr(f, "name", "").startswith("test_")]
+    assert len(tests) > len(classes) >= 1
+    walked: list[str] = []
+    real = validator.class_local_members
+
+    def counting(cls: ast.ClassDef) -> set[str]:
+        walked.append(cls.name)
+        return real(cls)
+
+    monkeypatch.setattr(validator, "class_local_members", counting)
+    _validate(setup, code=code, entries=[], file_name=path, test_ids=[])
+    assert sorted(walked) == sorted(c.name for c in classes)
+

@@ -128,12 +128,12 @@ def load_files(directory: Path, settings: Settings) -> dict[str, FileRecord] | N
     if not path.is_file() or not _same_build(path, settings):
         return None
     raw = path.read_bytes()
-    start = raw.find(b'"files":')
-    end = raw.find(b',"chunks":', start)  # no data key in a file record is named so
+    start = raw.find(_FILES_MARK)
+    end = raw.find(_CHUNKS_MARK, start)
     if start < 0 or end < 0:
         return None
     try:
-        return _FILES.validate_json(raw[start + len(b'"files":') : end])
+        return _FILES.validate_json(raw[start + len(_FILES_MARK) : end])
     except ValueError:
         log.warning("Ignoring unreadable index at %s", path)
         return None
@@ -161,6 +161,12 @@ def _tokens(chunks: list[Chunk], boost: int) -> dict[str, list[str]]:
 
 
 _FILES = TypeAdapter(dict[str, FileRecord])
+# Where the saved sections start. Each mark begins with a line break: the sections are
+# written without whitespace and a JSON string never holds a raw line break, so a mark can't
+# occur inside the data. (A plain `,"chunks":` did: a suite's own data can have that key, and
+# the file section was then cut short and never reused.)
+_FILES_MARK = b',\n"files":'
+_CHUNKS_MARK = b',\n"chunks":'
 _CHUNKS = TypeAdapter(list[Chunk])
 _CATALOG = TypeAdapter(SymbolCatalog)
 
@@ -177,8 +183,8 @@ def save_index(data: IndexData, directory: Path, attempts: int = 5) -> Path:
     rest = data.model_dump_json(include={"built_at", "name_boost"})
     with tmp.open("wb") as out:
         out.write(head[:-1].encode() + b"," + rest[1:-1].encode())
-        out.write(b',"files":' + _FILES.dump_json(data.files))
-        out.write(b',"chunks":' + _CHUNKS.dump_json(data.chunks))
+        out.write(_FILES_MARK + _FILES.dump_json(data.files))
+        out.write(_CHUNKS_MARK + _CHUNKS.dump_json(data.chunks))
         out.write(b',"catalog":' + _CATALOG.dump_json(data.catalog) + b"}")
     for attempt in range(1, attempts + 1):
         try:

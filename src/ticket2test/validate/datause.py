@@ -59,6 +59,9 @@ class Resolver:
         self._hooked: dict[tuple[str, tuple[str, ...]], EntryReads] = {}
         self._functions: dict[str, FunctionInfo] | None = None  # qualname -> module function
         self._handed: dict[tuple[str, frozenset[str], int], EntryReads | None] = {}
+        # per class node, asked once per test of the class: computed once
+        self._bases: dict[int, list[ClassEntry]] = {}
+        self._autouse: dict[int, list[str]] = {}
 
     # --- classes and their bases -------------------------------------------------------
 
@@ -69,12 +72,15 @@ class Resolver:
         """The class's bases that exist in the repo, each with its own bases (MRO order)."""
         if self.catalog is None:
             return []
+        if id(cls) in self._bases:
+            return list(self._bases[id(cls)])
         found: list[ClassEntry] = []
         for base in cls.bases:
             entry = self.catalog.resolve_type(dotted(base), self.module)
             if entry is not None:
                 found += [e for e in self.catalog.mro(entry.qualname) if e not in found]
-        return found
+        self._bases[id(cls)] = found
+        return list(found)
 
     def inherited_tests(self, cls: ast.ClassDef, test_prefix: str) -> list[InheritedTest]:
         own = {n.name for n in cls.body if isinstance(n, ast.FunctionDef)}
@@ -285,6 +291,8 @@ class Resolver:
         """Methods of the class or its repo bases that are autouse pytest fixtures: they run
         around every test, like setup/teardown. Also the class's methods that a fixture named
         in ``@pytest.mark.usefixtures(...)`` calls through ``request.node.instance``."""
+        if id(cls) in self._autouse:
+            return list(self._autouse[id(cls)])
         found = self._instance_calls(cls) + [
             n.name
             for n in cls.body
@@ -296,7 +304,8 @@ class Resolver:
             for method in base_cls.methods if base_cls else []:
                 if any(_is_autouse(d) for d in method.decorators) and method.name not in found:
                     found.append(method.name)
-        return found
+        self._autouse[id(cls)] = found
+        return list(found)
 
     def _instance_calls(self, cls: ast.ClassDef) -> list[str]:
         names = [

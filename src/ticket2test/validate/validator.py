@@ -1850,8 +1850,11 @@ def _prepare(s: Subject) -> None:
             else frozenset()
         )
         waits = WaitChecks(patterns, pages)
+    locals_of: dict[int, set[str]] = {}  # per class: a walk of the whole class, done once
     for cls, fn in s.tests:
-        local = class_local_members(cls) if cls else set()
+        if cls is not None and id(cls) not in locals_of:
+            locals_of[id(cls)] = class_local_members(cls)
+        local = locals_of[id(cls)] if cls else set()
         bases = reuse.repo_bases(cls) if cls else []
         start = bases[0] if bases else s.base  # the class's own base, else the suite's
         resolver = ChainResolver(s.catalog, start, local, path_helpers, bases[1:])

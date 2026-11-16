@@ -552,3 +552,26 @@ def test_tests_only_count_inside_test_paths(tmp_path: Path) -> None:
     kinds = {(c.file_path, c.kind) for c in index.chunks}
     assert ("suite/area/test_a.py", "test") in kinds
     assert ("tools/test_helper.py", "function") in kinds  # indexed, not a test
+
+
+def test_the_cache_is_reused_when_the_suite_uses_a_section_name(tmp_path: Path) -> None:
+    """Found on a real suite: the saved index was never reused, so every build parsed every
+    file again. The file section was found by the text of the next section's key, and that
+    key also occurs inside the file section when the suite's code uses a name like it."""
+    from ticket2test.index.indexer import load_files
+
+    repo, settings = _copy_standin(tmp_path), _settings(tmp_path)
+    (repo / "framework" / "batches.py").write_text(
+        "def split(items, size):\n"
+        "    alpha = list(items)\n"
+        "    chunks = [alpha[i : i + size] for i in range(0, len(alpha), size)]\n"
+        "    files = len(chunks)\n"
+        "    return chunks, files\n",
+        encoding="utf-8",
+    )
+    first, stats, path = update_index(repo, settings)
+    raw = path.read_bytes()
+    assert raw.count(b',"chunks":') >= 1 and raw.count(b',"files":') >= 1  # in the data too
+    assert load_files(path.parent, settings) == first.files
+    _, again, _ = update_index(repo, settings)
+    assert again.parsed == 0 and again.reused == stats.files
