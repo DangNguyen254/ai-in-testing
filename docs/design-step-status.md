@@ -922,6 +922,17 @@ validation, k10 r1 a CLI timeout); failed runs count as misses in the pass rates
   tests are worth about 0.09 of helper recall and 0.12 of data-block recall. The real
   no-template measure is the `area` level (not run).
 
+**`cold-class`, what is missed (2026-11-16, free: the four scripts, `.scratch/cc-*.log`).**
+- Helpers: 57 missed in 22 runs, and **23 of them are the reference class's own helpers**
+  (`far`): the new test sits in a sibling class and cannot call them. That is the distortion
+  expected from this level, and it accounts for most of the fall from 0.47 to 0.38: against
+  what was reachable, 10 of 26 runs pass (warm: 9 of 29). So with the class's tests gone the
+  tool calls the framework's members about as well as before.
+- Data blocks: 79 missed in 15 runs; a whole seed section 27, custom keys 20, a whole
+  expectation 15. Five runs have no entry at all where the reference has one (two in the
+  warm right-template run), with a template that has one in all five: the no-data test is
+  chosen more often without the class's entries.
+
 **How changes are guarded from here (the human's point, 2026-11-16: don't tune against the
 result).** The golden set, warm or cold, is for measuring and diagnosing. No change is
 derived from single tickets' misses (the class-habit floor proposed after `extent.py` was
