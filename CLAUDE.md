@@ -7,6 +7,8 @@ This repo is a **generic, company-agnostic** build developed entirely on **publi
 
 **Scope:** both **browser UI tests** (page objects driving a browser, then verifying backend state) and **API tests** are in scope. UI tests dominate the target style, so frontend/UI test generation is a first-class goal, not an add-on.
 
+**The goal (stated by the human, 2026-11-16):** tests that fit the suite's, the team's and the codebase's style, **also when there is no similar test or area to copy from** (a completely new test). A design that only works by adapting a neighbouring test does not meet it: similar tests are a help for style, not the skeleton. Judge every design against the no-template case as well as the case with neighbours.
+
 ## Pipeline
 ```
 Ticket source → normalize → draft test cases (structured) → [human review]
@@ -274,6 +276,21 @@ changes D1–D6), and `.scratch/session-notes.md` (git-ignored notes kept across
 7. **Record as you go.** After every run or decision, update `docs/design-step-status.md`
    (numbers, the reading, what is on, off or removed) and commit it. Code and docs go in
    separate commits, with messages that say what changed in plain words.
+8. **Don't tune against the result (the human, 2026-11-16).** The golden set is for measuring
+   and diagnosing: where the loss is, and what a stage can do when given the right answer
+   (`eval.oracle_template`, `eval.oracle_steps`). A change is never derived from single
+   tickets' misses and then scored on the same tickets; that is how the seven placement rules
+   went. A change must be a general mechanism justified by a stage-level diagnostic.
+9. **Write the prediction before the run.** Which criterion should move, on which yardstick,
+   by about how much, in the status doc and committed before the result is read.
+10. **Three kinds of tickets, three uses.** The golden set (15, several areas, warm; and cold
+    with `.scratch/cold_set.py`: `class` hides the reference's class's other tests, `area`
+    every test file of its folder) is for diagnosis. The **held-out set** (the human's tickets
+    that still have a test in the codebase, mostly one area) confirms a change we already
+    decided to keep: looked at once, a yes or no, never opened for diagnosis. The **blind try**
+    (tickets with no test yet, with neighbours and with none) is the last test, judged by the
+    code checks and a fixed verdict (`docs/blind-try-rubric.md`). A change is kept only after
+    the held-out set agrees.
 
 ### Talking to the human
 - Short and straight to the point: the finding first, then what it means, then the next step

@@ -1,54 +1,62 @@
 # Design step: status
 
-## Start here (2026-11-13)
+## Start here (2026-11-16)
 
-How the work is done is in `CLAUDE.md` ("How the work is done now"). This file is the record:
-the newest state is in this block, and the history below it is in the order it happened.
+How the work is done is in `CLAUDE.md` ("How the work is done now", with the goal and method
+points 8 to 10 added today). This file is the record: the newest state is in this block, and
+the history below it is in the order it happened (today's entries are under "A new plan",
+after the right-template result).
 
-- **Yardstick: the `seed-floor` run** (15 × 2, Haiku API, today's defaults): C1 60%, C2 20%,
-  C3 43%, C4 87%, C5 93%, C7 100%, C8 63%; mean recall C2 0.47, C3 0.77. Baseline-2 (before
-  the seed floor): 53 / 17 / 40 / 83 / 87 / 97 / 63, mean recall 0.47 and 0.71. Changes are
-  judged per ticket by the keep rule (`CLAUDE.md`, method point 4), not by pass rate alone.
-- **Placement (C1) is parked** at 9 of 15 on the recorded replay. Seven rules were tried and
-  each traded one ticket for another. Misses: g01, g04, g05, g06, g07, g15. The cheap answer
-  left is D6 (the QE names the nearest test).
-- **Helpers called (C2): nothing tried has moved it.** No miss is an inlined helper; most are
-  steps the template lacks. `generate.context_member_cards` and `generate.step_plan` are
-  unproven (off). 36 of 51 missed helpers and 71 of 79 missed blocks are used elsewhere in the
-  suite, so the ceiling is high and the reference tests are not out of reach.
-- **Data blocks (C3): the seed floor is kept** (`generate.seed_floor`, on): g11, g12, g14
-  better, none worse.
-- **The generating model is not the bottleneck.** Sonnet API generating (label
-  `sonnet-generate`, $8.05 against $0.81) is better on no ticket: C2 mean recall 0.40, C3
-  0.74. A stronger model for generation is dropped. Sonnet API is not run again without the
-  human's permission.
-- **The right template (label `right-template`, a diagnostic, Haiku API):** with the
-  reference class's nearest test given as the template, placement goes from 60% to 83% (g04,
-  g05, g06, g15 gained), helpers mean recall 0.47 to 0.56, data blocks unchanged (0.75). So
-  D6 (the QE names the nearest test) is worth building for placement, and is not the answer
-  to the helper and data-block misses. g01 overflowed the context budget with the pinned
-  template: D6 must guard that.
-- **Next:** the human's verdict on 15 outputs (keep / small edit / rewrite), then decide:
-  D6, gaps and proposals (D3/D4), or stop adding. No more placement rules.
-- **Written, not yet sent (2026-11-16): the derivability audit**
-  (`docs/derivability-audit-prompt.md`, for Haiku, free). Per reference helper and data
-  block: stated in the ticket, in the draft, a habit of the class, findable in the suite, or
-  outside all of them; and the same for what the tool missed in every `seed-floor` run. It
-  separates "the ticket doesn't contain it" (change the input) from "the suite has it and the
-  fixed context can't reach it" (let the model look things up while generating).
-- **Seen in the right-template log (2026-11-16):** g01 failed both runs with a context budget
-  error (the required pieces need about 22k tokens against 16k), so the right template for
-  g01 doesn't fit. The always-on pieces were never ablated (plan step 3).
-- **Open:** g06 and g15 sometimes fail to generate (the code doesn't parse from line 1;
-  needs one `--debug-log` run and a masked look; neither failed under Sonnet); C8 tests names
-  only; `glossary_class_wins` waits for a person's look at g12's glossary entry; a blind try
-  on new tickets (3 to 5 with a framework, 1 or 2 without).
+- **The goal (the human, 2026-11-16):** tests in the suite's, the team's and the codebase's
+  style, also with no similar test or area to copy from. Today's generator adapts a template,
+  so the no-template case is the measure that matters.
+- **Yardsticks (15 x 2, Haiku API, today's defaults):**
+
+  | Run | What is hidden | C2 mean recall | C3 mean recall | Validators, of generated |
+  |---|---|---|---|---|
+  | `seed-floor` (warm) | the reference | 0.47 | 0.77 | 30/30 |
+  | `right-template` (diagnostic) | the reference; right template given | 0.56 | 0.75 | 27/27 |
+  | `cold-class` | and the class's other tests | 0.38 | 0.65 | 26/26 |
+  | `cold-area` | and every test file of the folder | running | | |
+
+- **Where the loss is, from today's free checks and Haiku's audit:**
+  - Placement is a template problem: the right template lifts C1 from 60% to 83%. The class is
+    clear from the ticket and draft on 5 of 15. D6 (the QE names the nearest test) fits, for
+    tickets that have a neighbour.
+  - The tickets are not the limit on helpers and data: about one item in ten of a reference
+    test comes from outside the ticket and the suite; the drafts keep what the ticket states.
+  - With the right template, half of what is still missed was in the output's own class, a
+    quarter elsewhere in the suite, a fifth nowhere else.
+  - On ticket-stated steps the tool never skips: 7 of 11 "missed" helpers are another route
+    Haiku judges equivalent (C2 overstates there), 4 are weaker. Whether another route passes
+    review is the team's call.
+  - The data side is a real loss, and mostly follows from the test doing less (no backend
+    check, no data read); under the right template it is concentrated in g10 (no template),
+    g13 and g11.
+  - Without the class's tests the output is still valid; the tool attaches to a sibling class.
+- **Running or next:** `cold-area` (running); then `right-steps` (`eval.oracle_template` and
+  `eval.oracle_steps` on, against `right-template`). Predictions for both are written below,
+  before their results.
+- **Then (Phase A, nothing here tunes the tool):** the human's verdict on 15 outputs
+  (`docs/verdict-sheet.md`); the agent upper bound on about five tickets
+  (`docs/agent-upper-bound-prompt.md`). **Phase B:** one design direction, with its predicted
+  effect written first. **Phase C:** build it behind a switch, golden warm and cold, the
+  held-out set once, then the blind try (`docs/blind-try-rubric.md`).
+- **Not to do:** more placement rules; rules fitted to single tickets (the class-habit floor
+  was dropped for that); more context hints (guides, glossary, member cards, step plan and a
+  stronger model all moved nothing).
+- **Open:** runs that fail to generate (the code doesn't parse; 2 to 4 of 30 a run; needs one
+  `--debug-log` run and a masked look); g01 overflows the context budget under a pinned
+  template; the always-on context pieces were never ablated (plan step 3); C8 tests names
+  only; `glossary_class_wins` waits for a person's look at g12's glossary entry.
 - **On:** `knowledge.use_in_templates`, the joined-marker fix, the updated and reviewed
-  glossary, `generate.seed_floor`. **Off:** `knowledge.search_named_classes`,
+  glossary, `generate.seed_floor` (found and judged on the golden set: its real test is the
+  held-out set). **Off:** `knowledge.search_named_classes`,
   `generate.reuse.glossary_class_wins`, `generate.context_member_cards`, `generate.step_plan`,
-  `eval.oracle_template` (a diagnostic, never on by default). **Removed:**
-  `kind_as_preference`, `class_from_retrieval`, `dataless_hit_class`.
-- Pushed on 2026-11-13 with the human's OK; later commits are local until the next OK.
+  `eval.oracle_template`, `eval.oracle_steps` (diagnostics, never on by default).
+  **Removed:** `kind_as_preference`, `class_from_retrieval`, `dataless_hit_class`.
+- The container's memory limit is 8 GiB since today; one golden run uses up to 4.9 GiB, so
+  runs go one at a time. Pushed on 2026-11-13; today's commits are local until the next OK.
 
 ## Where the work stopped on the old machine (2026-11-05)
 
