@@ -836,6 +836,30 @@ most of the "outside" items. Today's generator adapts a template; with no templa
 nothing to lean on. Proposed, not built: a second yardstick on the same 15 tickets with the
 reference's whole class (or folder) hidden, so every ticket is a "no template" case.
 
+**The no-template yardstick, designed (2026-11-16; built as a script, not run yet).**
+`.scratch/cold_set.py <golden.json> class|area <out.json>` writes a copy of the golden set
+with more hidden, through the existing `hide` field (no change to `src/`); it prints counts
+only. Checked on the stand-in with `.scratch/cold_set_smoke.py` (hide lists accepted, copies
+index, no model call).
+
+| Level | What is hidden besides the reference | What the tool still has | It measures |
+|---|---|---|---|
+| warm (today's golden set) | the pair's own `hide` | the class's other tests | copying a neighbour |
+| `class` (ids k01...) | every other test of the reference's class (its helpers and setup stay) | sibling classes of the folder, the framework | a new class in a known area (g09 and g10's case, for all 15) |
+| `area` (ids a01...) | that, and every test file of the reference's folder with its data files | other areas, the framework | a completely new area |
+
+- New pair ids, because the leave-one-out copies are cached per pair id and the scripts that
+  read a report open that copy: a cold run under the old ids would make the warm reports'
+  scripts read cold copies.
+- Scoring as it is: with the class emptied the scorer already expects a new file in the
+  reference's folder (C1). At `area` level C1 only says whether the folder is still chosen.
+  C2 will count the reference class's own helpers as missed (the new test is in another
+  class): read C2 with `reachable.py`, and `c2_misses.py`'s `far` count, next to it.
+- What to read first: C7 and C4 (is the output still valid and in the suite's style with no
+  neighbour), then C2 and C3 mean recall against warm (0.47 and 0.77). g09 and g10 predict a
+  large fall on C2. If it doesn't fall, the template does less than assumed.
+- Cost: about $0.80 a level (15 x 2, Haiku API). `class` first.
+
 Read: search is not the bottleneck for C3. Two thirds of their misses happen with the
 helper or block already in the context. Next is step 4 below (what the generator does with
 what it has), not more retrieval or placement rules.
