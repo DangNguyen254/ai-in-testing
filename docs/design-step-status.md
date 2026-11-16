@@ -58,6 +58,27 @@ after the right-template result).
 - The container's memory limit is 8 GiB since today; one golden run uses up to 4.9 GiB, so
   runs go one at a time. Pushed on 2026-11-13; today's commits are local until the next OK.
 
+## Why golden runs were slow, and three fixes (2026-11-16)
+
+The `cold-area` run was stopped by hand at 23 of 30 after five hours (its runs are kept; it
+is resumable). The process was not waiting on the model: it used a full CPU core, and single
+runs took 17, 41 and 53 minutes. Measured with `.scratch/stage_times.py` (the stages that
+make no model call, run again on a kept run and timed; no cost):
+
+| What | Before | After | Cause |
+|---|---|---|---|
+| Validating one patch into a class with about 840 tests | over 420 s (cut off; the run it came from took 53 min, with one validation per attempt and repair) | 69 s | the class's own members were collected by a walk of the whole class once per test in it; now once per class (`validate/validator.py`, `validate/datause.py`) |
+| Indexing a ticket's copy (15 a run, plus the suite) | 97 s every time | 27 s when unchanged | the saved index's file section was found by the text of the next section's key, which also occurs inside the data when the suite's code uses that name, so the section was cut short and never reused; the sections now start with a mark that can't occur in the data (`index/indexer.py`). Every log line "Ignoring unreadable index" was this. |
+| A ticket's two runs | one after the other | together, with `T2T_EVAL__GOLDEN_PARALLEL=2` (default 1) | they share the ticket's index and mostly wait on the model; each run has its own staging folder and the usage meter is safe to share (`eval/golden.py`, `llm/meter.py`) |
+
+Each has a test that fails on the old code. None changes what is generated or how it is
+scored, so the `cold-area` report holds runs from before and after them. Earlier reports
+are unaffected. One golden run of 30 took about two and a half hours before (116 minutes in
+the runs, about 30 preparing); the first full run on the new code will show the new time.
+Still open on speed: a patch is validated as the whole patched file and the whole unpatched
+file on every attempt (the unpatched half could be done once), and reading a class's
+references takes 20 s on the largest file.
+
 ## Where the work stopped on the old machine (2026-11-05)
 
 Branch `design-step`, last code commit `dbc2970`. Method (`docs/design-step-plan.md`): measure on
