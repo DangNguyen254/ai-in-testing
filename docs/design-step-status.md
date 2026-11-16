@@ -142,6 +142,42 @@ Read, and what it changes in `docs/design-direction.md`:
 - The entry point is not the main worry: where a class can be named at all, search over the
   framework finds it about two times in three with the draft's words alone.
 
+**Two more free checks the same evening (`.scratch/seed_and_unresolved.py`,
+`.scratch/seed-unresolved.log`).**
+
+*Where seed data could come from.* The references hold 20 seed sections. Does another entry
+of the suite hold the same thing?
+
+| Compared as | In the reference's folder | Outside it |
+|---|---|---|
+| the same value | 9 | 3 |
+| the same once text values are blanked | 16 | 4 |
+| the same keys two levels down | 17 | 5 |
+
+Every section's *name* exists outside the folder; its *shape* mostly doesn't. So the
+neighbours supply about 80% of the seed data and the rest of the suite about 20 to 25%. For a
+new area seed data can't be copied: it is specific to the feature, and has to be a marked gap
+or a flagged guess (asked of the team as Q3 in `docs/verdict-sheet.md`). The earlier "105 of
+131 missed blocks exist elsewhere" counted key paths, not whole sections, and was too kind.
+
+*Why 20 of the references' 56 calls don't resolve to a class.*
+
+| Kind | Calls |
+|---|---|
+| `self.<attribute>.<method>()`: the attribute resolves, but to a type that is not a class of the suite | 10 |
+| a chain whose first step the class line doesn't have (the root attribute is not known to the catalog) | 8 |
+| a first step of unknown type | 2 |
+
+None is a deep chain breaking midway. Half are objects that come from outside the suite's
+own classes; the other half are roots the catalog doesn't know on that class (all 7 calls of
+g01). That second half looks like calibration (declare the attribute and its type in the
+private config, as `index.chain_roots` does for the page root), not a limit of static
+reading; worth one question to the session that can see the suite.
+
+*The agent upper bound* is ready in two versions (`docs/agent-upper-bound-prompt.md`): with
+neighbours and with the folder's tests removed, scored by `.scratch/score_agent.py`, with its
+prediction written in the prompt file.
+
 ## Why golden runs were slow, and three fixes (2026-11-16)
 
 The `cold-area` run was stopped by hand at 23 of 30 after five hours (its runs are kept; it

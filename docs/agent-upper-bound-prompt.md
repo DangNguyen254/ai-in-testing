@@ -26,16 +26,23 @@ in the suite. Scored with the same criteria, it brackets any generation design f
   control the tool already gets right.
 - Placement is given (the file and class), so this measures the choice of steps and data, not
   where the test goes.
-- Scoring: `.scratch/score_agent.py` (to be written when the outputs exist) turns each output
-  file into the tool's own result shape and scores it with `eval/reference.py`, so C2, C3, C4
-  and C7 mean the same as in the golden reports.
+- Scoring: `.scratch/score_agent.py` turns each output file into the tool's own result shape
+  and scores it with `eval/reference.py`, so C2 and C3 mean the same as in the golden
+  reports (commands at the end). It doesn't run the validators: C4 and C7 are not scored.
+- **Two versions, same prompt.** *With neighbours*: the six `g` ids and
+  `GOLDEN = /root/work/t2t-private/golden.json`. *No template*: the same six tickets as
+  `a04 a05 a06 a10 a13 a15` and `GOLDEN = /root/work/t2t-private/golden-cold-area.json`,
+  where every test file of the reference's folder is removed from the copy. The second is the
+  one that matters for the goal: the tool scores 0.00 on helpers there (`cold-area`), because
+  it adapts another area's test. Run the no-template version first if only one is run.
 
 Paste it once per ticket, with the pair id in the first line.
 
 ---
 
 ```text
-PAIR = <g04 | g05 | g06 | g10 | g13 | g15>
+PAIR = <g04 | g05 | g06 | g10 | g13 | g15>      (no template: a04 | a05 | a06 | a10 | a13 | a15)
+GOLDEN = /root/work/t2t-private/golden.json     (no template: /root/work/t2t-private/golden-cold-area.json)
 
 You are writing one automated test for an existing pytest suite, from a ticket. A Quality
 Engineer will review it. Work the way a careful new team member would: read how this suite
@@ -46,16 +53,20 @@ Where things are:
   This is the ONLY copy of the suite you may open. Never open any other folder under
   /root/work that holds the suite, and never search outside SUITE: the other copy contains the
   answer.
-- /root/work/t2t-private/golden.json : find the pair whose "id" is PAIR. Take from it ONLY:
+- GOLDEN : find the pair whose "id" is PAIR. Take from it ONLY:
   "ticket" (the ticket is <tickets_dir>/<ticket>.md), "draft_file" (the reviewed test-case
   draft: intent, preconditions, steps, expected outcome), and from "tests" ONLY the file path
-  and the class name (the parts before the second "::"). Do not use the method name after it.
+  and the class name (the parts before the second "::"). Do not use the method name after it,
+  and do not read the pair's "hide" list.
 - Do not open anything under /root/work/t2t-private/output.
 
 The task:
 1. Read the ticket and the draft.
 2. The new test goes in the file and class you took from "tests". If that class has no test
    left in SUITE, write a new test file next to it, with a class built like its neighbours.
+   If the file itself is not in SUITE (the area has no tests yet), write that file new, with
+   that class name: build the class the way the suite builds test classes for this kind of
+   test, and find the feature's own pages and helpers in the framework, not another feature's.
 3. Explore SUITE until you know how to write it: the class and its base classes, its setup,
    the page objects and helpers its tests use, how tests of this kind check the backend, and
    what their data entries hold (the JSON file next to a test file; the entry whose id field
@@ -90,3 +101,27 @@ tool. In the chat, reply with exactly one line and nothing else:
 No names of classes, helpers, files, keys, values, tickets or features, and no description of
 the test.
 ```
+
+## Scoring the outputs
+
+After the sessions, free and with no model call (one golden run may be going beside it):
+
+```bash
+podman exec -e T2T_CONFIG=/root/work/t2t-private/company.yaml t2t uv run python .scratch/score_agent.py /root/work/t2t-private/golden-cold-area.json /root/work/t2t-private/output/agent-bound /root/work/t2t-private/output/golden/cold-area-20261116T063346/report.json
+```
+
+```bash
+podman exec -e T2T_CONFIG=/root/work/t2t-private/company.yaml t2t uv run python .scratch/score_agent.py /root/work/t2t-private/golden.json /root/work/t2t-private/output/agent-bound /root/work/t2t-private/output/golden/right-template-20261113T091511/report.json
+```
+
+Each line gives, per pair: helper and data-block recall against the reference, how many of
+the agent's calls resolve to a class, the gaps it named, its tool calls, and the tool's own
+mean recall for the same pair from the report given. No names.
+
+**Prediction, written before any output (2026-11-16):** with neighbours, the agent beats the
+tool's helper recall on at least four of the six (the tool: 0.56 mean under the right
+template). With no template, the agent lands on the reference's own pages (helper recall
+above 0 on at least four of six, where the tool has 0.00 on all), and its data-block recall
+is not better than the tool's 0.50, because seed data has no source there. If the agent is
+also at 0 with no template, a model with lookups does not find a new area's pages by itself,
+and the direction needs a map from features to the framework before a planner is built.

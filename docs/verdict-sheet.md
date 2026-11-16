@@ -37,6 +37,18 @@ Rules while reading:
 - Note in B anything the checklist the tool attached already warned about: a warned problem
   is a smaller one than a silent one.
 
+## Three questions for the team (answered once, not per ticket)
+
+They came out of the checks of 2026-11-16 (`docs/design-step-status.md`): the reference tests
+mostly call helpers of their own test class and its area base, an area with no tests has no
+such helpers, and most seed data has no twin outside its own folder.
+
+| | Question | Answer |
+|---|---|---|
+| Q1 | A feature has page objects but **no test class or area helpers yet**. Is a first test acceptable when it calls the page objects directly, step by step? | `yes`, `yes, as a start` (helpers get extracted later), `no` (the helpers come first) |
+| Q2 | If `no` or `as a start`: should the tool **propose the missing helpers** as a separate patch next to the test (it can already propose single missing members), or leave them to the person? | `propose`, `leave`, `propose only when asked` |
+| Q3 | For a new area the tool can't copy **seed data** (the settings and policy blocks a test starts from). Which is more useful: a test with the seed sections **left as marked gaps** naming what each must hold, or seed sections **filled with a best guess** flagged for review? | `gaps`, `guess, flagged`, `depends` (say on what) |
+
 ## What comes back to the repo
 
 Counts only, no names and no sentences from column B:
@@ -49,6 +61,7 @@ E  yes / partly / no                : _ / _ / _
 F  fine / prefer / wrong / n/a      : _ / _ / _ / _
 G  yes / mostly / no                : _ / _ / _
 per ticket: g01 A=_ C=_ E=_ F=_ ; g02 ... (ids and the letters only)
+Q1 _ ; Q2 _ ; Q3 _
 ```
 
 ## How it will be read
