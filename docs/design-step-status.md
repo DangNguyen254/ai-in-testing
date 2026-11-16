@@ -914,6 +914,31 @@ validation, k10 r1 a CLI timeout); failed runs count as misses in the pass rates
   tests are worth about 0.09 of helper recall and 0.12 of data-block recall. The real
   no-template measure is the `area` level (not run).
 
+**How changes are guarded from here (the human's point, 2026-11-16: don't tune against the
+result).** The golden set, warm or cold, is for measuring and diagnosing. No change is
+derived from single tickets' misses (the class-habit floor proposed after `extent.py` was
+dropped for that reason, and because it needs neighbours). Before a run that tests something,
+its prediction is written here. A change is kept only after the held-out set agrees (the
+human's tickets that still have a test, mostly one area; looked at once, yes or no), and the
+blind try (tickets with no test yet, with and without neighbours) is the last test. The seed
+floor was found and judged on the golden set, so it is on that footing too.
+
+**Predictions, written before the results (2026-11-16).**
+- `cold-area` (running; every test file of the reference's folder removed, 42 to 4,098 tests
+  a ticket), against `cold-class`: all generated runs still pass the validators; more runs
+  fail to generate (4 of 30 in `cold-class`; expect 4 to 7); helpers mean recall falls from
+  0.38 to about 0.25 to 0.35; data blocks from 0.65 to about 0.45 to 0.60; the four tickets
+  whose folder holds half the suite (g04, g11, g12, g13) fall most; more new modules than
+  methods. If helpers stay near 0.38, neighbours in the folder matter as little as the
+  class's own tests did.
+- `right-steps` (next; `eval.oracle_template` and `eval.oracle_steps` both on, against
+  `right-template`: helpers 0.56, data blocks 0.75): if the generator can use a given choice,
+  helpers mean recall rises to 0.85 or more and data blocks rise a little (the expectation
+  section follows the check on g13). Helpers under about 0.75 would mean it doesn't make the
+  calls even when told which: the one-shot writing is the limit, not the choice. No rise in
+  data blocks would mean the data side needs its own fix. g01 fails on the context budget
+  again (14 tickets in practice).
+
 Read: search is not the bottleneck for C3. Two thirds of their misses happen with the
 helper or block already in the context. Next is step 4 below (what the generator does with
 what it has), not more retrieval or placement rules.
