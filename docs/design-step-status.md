@@ -22,11 +22,13 @@ the newest state is in this block, and the history below it is in the order it h
   `sonnet-generate`, $8.05 against $0.81) is better on no ticket: C2 mean recall 0.40, C3
   0.74. A stronger model for generation is dropped. Sonnet API is not run again without the
   human's permission.
-- **Running now: the right-template diagnostic** (label `right-template`,
-  `eval.oracle_template` on for this run only, Haiku API): the reference class's nearest test
-  given as the template. It shows what the right template alone gains, which is the most D6
-  could gain. Compare with `seed-floor`.
-- **After it:** the human's verdict on 15 outputs (keep / small edit / rewrite), then decide:
+- **The right template (label `right-template`, a diagnostic, Haiku API):** with the
+  reference class's nearest test given as the template, placement goes from 60% to 83% (g04,
+  g05, g06, g15 gained), helpers mean recall 0.47 to 0.56, data blocks unchanged (0.75). So
+  D6 (the QE names the nearest test) is worth building for placement, and is not the answer
+  to the helper and data-block misses. g01 overflowed the context budget with the pinned
+  template: D6 must guard that.
+- **Next:** the human's verdict on 15 outputs (keep / small edit / rewrite), then decide:
   D6, gaps and proposals (D3/D4), or stop adding. No more placement rules.
 - **Written, not yet sent (2026-11-16): the derivability audit**
   (`docs/derivability-audit-prompt.md`, for Haiku, free). Per reference helper and data
@@ -697,6 +699,38 @@ reference's file out, placement can still miss, and the placement column will sh
 measures what the right template alone gains on helpers called and data blocks present, which
 is also what "the QE names the nearest test" (D6) could gain at most. Turned on for one run
 with `-e T2T_EVAL__ORACLE_TEMPLATE=true`; compare against `seed-floor`. Not run yet.
+
+**B2 measured (2026-11-16, label `right-template`, 15 × 2, Haiku API, 69 calls, $0.63): the
+right template fixes placement, lifts helpers a little, and does nothing for data blocks.**
+The run was cut at 21 of 30 by a machine shutdown and finished with `--resume`.
+
+| | C1 | C2 | C3 | C4 | C5 | C7 | C8 | C2 mean recall | C3 mean recall |
+|---|---|---|---|---|---|---|---|---|---|
+| `seed-floor` | 60% | 20% | 43% | 87% | 93% | 100% | 63% | 0.47 | 0.77 |
+| `right-template` | 83% | 27% | 47% | 83% | 83% | 90% | 63% | 0.56 | 0.75 |
+
+- 27 of 30 generated. **g01 failed both runs on the context budget** (the pinned template
+  makes the required context about 22,000 tokens against the 16,000 limit), and g11 r2
+  failed; none on a model call. Failed runs count as misses in the pass rates, which is why
+  C5 and C7 look lower. The template was pinned in 24 runs; g09 and g10 have no test left in
+  the reference's class, so they ran as usual.
+- **Placement:** g04, g05, g06, g15 now right in both runs (wrong in both before); g07 still
+  "not a candidate" (the draft's kind filters its class out); g11 lost one run to the
+  failure. 25 of the 27 generated runs are placed right.
+- **Helpers called, per ticket:** better in both runs g07 (0.00 to 1.00); better in part g12,
+  g15, g03; worse in both g04 (0.40 to 0.20, now in the right class); the rest the same.
+  g09, g10 stay at 0.00 (not pinned), g06 at 0.25 and g14 at 0.60 with the right template.
+- **Data blocks, per ticket:** g15 better in both (0.80 to 1.00), g14 worse in both (0.79 to
+  0.71); g13 0.29, g12 0.60, g11 0.00 unchanged with the right template.
+
+Read: naming the nearest test (D6) is worth about four tickets of placement, which no
+placement rule reached, and a small gain on helpers. It is not the answer to the helper and
+data-block misses: with the right class and its nearest test as the template, mean helper
+recall is 0.56 and data-block recall is unchanged. Those misses are things the nearest test
+doesn't have either (steps and sections the new test needs from elsewhere), which matches
+the earlier finding that most missed helpers are steps the template lacks. D6 is worth
+building for placement. Its cost to guard: a large named template can overflow the context
+budget (g01), so the pinned path needs the template trimmed or the budget raised for it.
 
 Read: search is not the bottleneck for C3. Two thirds of their misses happen with the
 helper or block already in the context. Next is step 4 below (what the generator does with
