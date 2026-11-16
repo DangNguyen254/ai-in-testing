@@ -17,7 +17,7 @@ after the right-template result).
   | `seed-floor` (warm) | the reference | 0.47 | 0.77 | 30/30 |
   | `right-template` (diagnostic) | the reference; right template given | 0.56 | 0.75 | 27/27 |
   | `cold-class` | and the class's other tests | 0.38 | 0.65 | 26/26 |
-  | `cold-area` | and every test file of the folder | running | | |
+  | `cold-area` | and every test file of the folder | 0.00 | 0.50 | 27/30 |
 
 - **Where the loss is, from today's free checks and Haiku's audit:**
   - Placement is a template problem: the right template lifts C1 from 60% to 83%. The class is
@@ -34,9 +34,10 @@ after the right-template result).
     check, no data read); under the right template it is concentrated in g10 (no template),
     g13 and g11.
   - Without the class's tests the output is still valid; the tool attaches to a sibling class.
-- **Running or next:** `cold-area` (running); then `right-steps` (`eval.oracle_template` and
-  `eval.oracle_steps` on, against `right-template`). Predictions for both are written below,
-  before their results.
+- **Done:** `cold-area`: every output went to another folder and helper recall is 0.00 on all
+  30 runs (the tool adapts another area's test). **Running:** `right-steps`
+  (`eval.oracle_template` and `eval.oracle_steps` on, against `right-template`), on the faster
+  runner. Its prediction was written before the run.
 - **Then (Phase A, nothing here tunes the tool):** the human's verdict on 15 outputs
   (`docs/verdict-sheet.md`); the agent upper bound on about five tickets
   (`docs/agent-upper-bound-prompt.md`). **Phase B:** one design direction, with its predicted
@@ -57,6 +58,44 @@ after the right-template result).
   **Removed:** `kind_as_preference`, `class_from_retrieval`, `dataless_hit_class`.
 - The container's memory limit is 8 GiB since today; one golden run uses up to 4.9 GiB, so
   runs go one at a time. Pushed on 2026-11-13; today's commits are local until the next OK.
+
+## `cold-area` measured (2026-11-16): with the folder's tests gone, the tool adapts a test of another area
+
+15 x 2, Haiku API, 100 calls, $1.16; every test file of the reference's folder removed (42
+to 4,098 tests a ticket). All 30 generated. Stopped at 23 runs for the speed work and
+resumed, so it holds runs from before and after the speed fixes (they don't change output).
+
+| | C2 mean recall | C3 mean recall | Validators, of generated | Made-up values |
+|---|---|---|---|---|
+| `seed-floor` (warm) | 0.47 | 0.77 | 30/30 | 87% |
+| `cold-class` | 0.38 | 0.65 | 26/26 | 80% |
+| `cold-area` | **0.00** | 0.50 | 27/30 | 73% |
+
+**Against the prediction written before the result:** validators "all pass": wrong, 27 of
+30. Failed generations "4 to 7": wrong, none. Helpers "0.25 to 0.35": wrong, 0.00 on all 30
+runs. Data blocks "0.45 to 0.60": right, 0.50. "The four big-folder tickets fall most":
+mostly (g11, g12, g13 at 0.00 on data blocks; g04 stays at 1.00). "More modules than
+methods": wrong, 22 methods and 8 modules.
+
+- **Placement (`cold_placement.py`):** all 30 outputs are in **another folder**, 22 as a
+  method in another area's class. The tool found the nearest remaining neighbour and adapted
+  it, though it belongs to another feature.
+- **The zero on helpers is real, not the scorer** (`c2_misses.py`): of 112 missed helpers, 34
+  are the reference class's own (gone with its file) and 78 are page members; the new test
+  touched the same page or class for only 10 of those 78, and a call of the member was shown
+  in the context for 2. The new tests are built on other pages.
+- **Only 24 of the 112 are used by any test left in the suite** (`reachable.py`). With the
+  folder's tests removed, most of what the reference calls exists only in the framework's
+  code, with no test showing its use. That is the no-template case exactly: the knowledge is
+  in the framework and today's tool doesn't read it by itself.
+- **Data blocks:** 131 missed in 20 runs; a whole seed section 44, expectations 38, custom
+  keys 24; six runs have no entry where the reference has one. 105 of the 131 exist in some
+  other entry of the suite.
+- Read: valid code in the suite's style, for the wrong part of the product. A tool that
+  needs a neighbour takes a wrong one when the right one is missing; it does not fall back
+  to the framework. This is the baseline for the goal, and it supports the direction in
+  `docs/design-direction.md` (compose from the framework) more strongly than anything
+  measured before.
 
 ## Why golden runs were slow, and three fixes (2026-11-16)
 
