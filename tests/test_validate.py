@@ -1145,4 +1145,3 @@ def test_a_class_is_walked_once_however_many_tests_it_has(
     monkeypatch.setattr(validator, "class_local_members", counting)
     _validate(setup, code=code, entries=[], file_name=path, test_ids=[])
     assert sorted(walked) == sorted(c.name for c in classes)
-
