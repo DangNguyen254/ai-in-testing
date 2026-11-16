@@ -243,6 +243,35 @@ def test_the_oracle_template_pins_the_reference_class_nearest_test(
     )
 
 
+def test_the_oracle_steps_give_the_generator_the_reference_calls(tmp_path: Path) -> None:
+    """``eval.oracle_steps`` (a diagnostic): the calls the reference test makes are in the
+    generator's prompt, and nowhere when the switch is off."""
+    from ticket2test.eval.generation import steps_context
+    from ticket2test.eval.golden import config_snapshot, run_golden
+    from ticket2test.llm.fake import FakeLLMClient
+
+    from .test_eval_harness import _DRAFT, ROOT, _draft_reply, _settings
+
+    marker = steps_context([])[:40]
+    assert config_snapshot(_settings(tmp_path))["eval.oracle_steps"] is False
+    for on in (False, True):
+        folder = tmp_path / f"on-{on}"
+        folder.mkdir()
+        golden_set, settings, one_run = _golden_smoke(folder)
+        settings.eval.oracle_steps = on
+        client = FakeLLMClient([_draft_reply(_DRAFT), *one_run])
+        lines: list[str] = []
+        report = run_golden(
+            golden_set, ROOT, settings, client, 1, "steps", folder / "runs", progress=lines.append
+        )
+        prompts = [m.content for r in client.requests for m in r.messages]
+        assert any(marker in p for p in prompts) is on
+        assert any("calls given:" in line for line in lines) is on
+        assert report.config["eval.oracle_steps"] is on
+        if on:
+            assert any("- `self." in p for p in prompts if marker in p)
+
+
 def test_a_page_action_reached_another_way_counts_as_called(index: IndexData) -> None:
     """Found in the first real baseline: a third of the "missing" calls were in the new test,
     reached through another local or chain spelling. Calls compare by what they resolve to:

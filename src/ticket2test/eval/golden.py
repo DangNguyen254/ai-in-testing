@@ -194,6 +194,7 @@ def run_golden(
             if settings.eval.oracle_template and facts is not None and facts.class_name
             else None
         )
+        steps = sorted(facts.calls) if settings.eval.oracle_steps and facts is not None else None
         for run in range(1, repeat + 1):
             if (pair.id, run) in have:
                 continue
@@ -208,6 +209,7 @@ def run_golden(
                 conventions, True, collect, False, True, folder.parent, capture,
                 prepared=(copy, used_index, linked),
                 pin_class=pin,
+                oracle_steps=steps,
             )  # fmt: skip
             done += 1
             say(
@@ -215,6 +217,7 @@ def run_golden(
                 f"{result.llm_calls} call(s), {time.monotonic() - run_started:.0f} s"
                 + (f" ({result.error[:120]})" if result.error else "")
                 + (f", template pinned: {capture['pinned']}" if "pinned" in capture else "")
+                + (f", calls given: {len(steps)}" if steps is not None else "")
             )
             kept = keep_dir / pair.id / pair.id
             if kept.exists():  # _one writes <keep>/<pair id>: move it to the run's folder
@@ -386,6 +389,7 @@ def config_snapshot(settings: Settings) -> dict[str, Any]:
         "repair.warning_checks": list(settings.repair.warning_checks),
         "proposals.enabled": settings.proposals.enabled,
         "eval.oracle_template": settings.eval.oracle_template,
+        "eval.oracle_steps": settings.eval.oracle_steps,
     }
 
 

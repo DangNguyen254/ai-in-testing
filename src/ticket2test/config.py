@@ -111,6 +111,10 @@ class EvalSettings(_Section):
     # test goes first among the templates (eval/generation.py ``pin_template``), to measure
     # what the right template alone gains.
     oracle_template: bool = False
+    # A second diagnostic for golden runs, never for real use: the calls the reference test
+    # makes are given to the generator as text (eval/generation.py ``steps_context``), to
+    # measure what generation does when the choice of members is already right.
+    oracle_steps: bool = False
 
 
 class DraftSettings(_Section):

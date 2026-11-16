@@ -53,6 +53,7 @@ eval:
   ticket_id_pattern: '\b[A-Z][A-Z0-9]+-\d+\b'   # Jira-style: KEY-123
   max_golden_repeat: 10           # `golden --repeat` is capped here
   oracle_template: false          # diagnostic: the reference class's nearest test as template
+  oracle_steps: false             # diagnostic: the reference's calls given to the generator
 
 tickets:
   github:

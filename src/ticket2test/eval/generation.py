@@ -354,6 +354,17 @@ def pin_template(
     return retrieval.model_copy(update={"templates": [first, *rest]})
 
 
+def steps_context(calls: list[str]) -> str:
+    """The reference's calls as text for the generator's context (``eval.oracle_steps``): the
+    members only, as the reference writes them, in no order and with no arguments."""
+    lines = "\n".join(f"- `{call}`" for call in calls)
+    return (
+        "Calls the new test makes (given for this ticket; a correct test for the draft makes "
+        "every one of them, also when the template doesn't; choose the order and the "
+        "arguments from the draft and the data):\n" + lines
+    )
+
+
 def _one(
     pair: EvalPair,
     pair_set: PairSet,
@@ -372,6 +383,7 @@ def _one(
     capture: dict[str, Any] | None = None,
     prepared: tuple[Path, IndexData, set[str]] | None = None,
     pin_class: tuple[str, str] | None = None,
+    oracle_steps: list[str] | None = None,
 ) -> GenerationPairResult:
     """``capture``: receives the generated test (``"generated"``) and the index it was
     generated against (``"index"``), for scorers. ``prepared``: the leave-one-out copy, its
@@ -425,6 +437,9 @@ def _one(
             (keep_dir / pair.id / "retrieval.json").write_text(
                 retrieval.model_dump_json(indent=2), encoding="utf-8"
             )
+        if oracle_steps:  # eval.oracle_steps: with the conventions, a piece that is always kept
+            given = steps_context(oracle_steps)
+            conventions = f"{conventions}\n\n{given}" if conventions else given
         outcome = generate_reusing(
             primary,
             retrieval,
