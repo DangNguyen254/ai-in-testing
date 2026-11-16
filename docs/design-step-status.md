@@ -811,6 +811,31 @@ model's judgement.) Still open, and it decides whether this is a real omission o
 yardstick: did the new test do that step another way (an equivalent member), do it wrongly,
 or not at all. Second follow-up at the end of the prompt file.
 
+**Follow-up 2 answered (2026-11-16, Haiku): for the helpers, mostly another route, never
+skipped.** What run 1's test did for the draft line of each of those 18 items:
+
+| | same effect, another member or block | weaker | absent |
+|---|---|---|---|
+| Helpers (11) | 7 | 4 | 0 |
+| Data blocks (7) | 1 | 4 | 2 |
+
+- Helpers: no stated step is skipped. In 7 of 11 the test does it through a member Haiku
+  judges equivalent, and C2 counts that as a miss. So on the steps a ticket states, C2
+  overstates the gap; the real loss there is the 4 "weaker" ones. Whether "same effect,
+  another member" is acceptable is the team's call (the goal is the suite's and the team's
+  way, so the preferred helper may matter): a person's verdict, not Haiku's.
+- Data blocks: 6 of 7 are weaker or absent. The data side is a real loss.
+- Only the ticket-stated items were asked (18 of the 52 missed every time). The class-habit,
+  findable and outside items are not covered.
+
+**The goal, stated by the human (2026-11-16):** tests in the suite's, the team's and the
+codebase's style, **also when there is no similar test or area to copy from** (a completely
+new test). Against that goal the weakest tickets are the measure: g09 and g10 (no test left
+in the reference's class) are at 0.00 on helpers in every run under both models and hold
+most of the "outside" items. Today's generator adapts a template; with no template it has
+nothing to lean on. Proposed, not built: a second yardstick on the same 15 tickets with the
+reference's whole class (or folder) hidden, so every ticket is a "no template" case.
+
 Read: search is not the bottleneck for C3. Two thirds of their misses happen with the
 helper or block already in the context. Next is step 4 below (what the generator does with
 what it has), not more retrieval or placement rules.
