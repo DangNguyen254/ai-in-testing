@@ -28,6 +28,15 @@ the newest state is in this block, and the history below it is in the order it h
   could gain. Compare with `seed-floor`.
 - **After it:** the human's verdict on 15 outputs (keep / small edit / rewrite), then decide:
   D6, gaps and proposals (D3/D4), or stop adding. No more placement rules.
+- **Written, not yet sent (2026-11-16): the derivability audit**
+  (`docs/derivability-audit-prompt.md`, for Haiku, free). Per reference helper and data
+  block: stated in the ticket, in the draft, a habit of the class, findable in the suite, or
+  outside all of them; and the same for what the tool missed in every `seed-floor` run. It
+  separates "the ticket doesn't contain it" (change the input) from "the suite has it and the
+  fixed context can't reach it" (let the model look things up while generating).
+- **Seen in the right-template log (2026-11-16):** g01 failed both runs with a context budget
+  error (the required pieces need about 22k tokens against 16k), so the right template for
+  g01 doesn't fit. The always-on pieces were never ablated (plan step 3).
 - **Open:** g06 and g15 sometimes fail to generate (the code doesn't parse from line 1;
   needs one `--debug-log` run and a masked look; neither failed under Sonnet); C8 tests names
   only; `glossary_class_wins` waits for a person's look at g12's glossary entry; a blind try
