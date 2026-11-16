@@ -883,6 +883,37 @@ entry, and did its template and the output's class.
 - The `cold-class` run (label `cold-class`, started 2026-11-16, Haiku API) was going during
   this; the script reads the warm copies, the run the cold ones.
 
+**`cold-class` measured (2026-11-16, 15 x 2, Haiku API, 69 calls, $0.77): the output stays
+valid, helpers fall a little, data blocks fall more, and the tool never writes a new class.**
+Every other test of the reference's class hidden (0 to 742 a ticket); same drafts and
+settings as `seed-floor`. 26 of 30 generated (k03 r2 and k06 r2 didn't parse, k02 r1 failed
+validation, k10 r1 a CLI timeout); failed runs count as misses in the pass rates.
+
+| | C1 | C2 | C3 | C4 | C5 | C7 | C8 | C2 mean recall | C3 mean recall |
+|---|---|---|---|---|---|---|---|---|---|
+| `seed-floor` (warm) | 60% | 20% | 43% | 87% | 93% | 100% | 63% | 0.47 | 0.77 |
+| `cold-class` | 10% | 13% | 37% | 80% | 73% | 87% | 40% | 0.38 | 0.65 |
+
+- **Valid and in style without the class's tests:** all 26 generated runs pass the
+  validators; made-up values only in k15.
+- **Placement (`.scratch/cold_placement.py`):** all 26 in the reference's folder; 23 are a
+  method in a sibling class (8 in the reference's file, 15 in another file of the folder), 3
+  a new module (k09, k10, as in the warm runs). None used the emptied class. C1 says 10%
+  because the scorer expects a new file; whether a method in a sibling class is acceptable is
+  the team's call, so C1 is not a fair measure at this level. And it means this level is not
+  "no template": the tool found another neighbour to lean on.
+- **Helpers, per ticket against `seed-floor`:** the same on 7 (g04 to g07, g09, g10, g15),
+  better on g01 and g12, worse in both runs on g13 and g14, worse in the one generated run on
+  g02 and g03, slightly worse on g08 and g11. The controls hold (g09, g10: nothing more was
+  hidden, same scores). For half the tickets the class's own tests added nothing to the
+  helpers called.
+- **Data blocks:** worse on g02, g03, g11, g12, g13, g14; the rest the same. The entry is
+  built by code from the base entry, so losing the class's entries costs more here than on
+  the helpers, which the model chooses.
+- Read: a sibling class is enough for a valid test in the suite's style; the class's own
+  tests are worth about 0.09 of helper recall and 0.12 of data-block recall. The real
+  no-template measure is the `area` level (not run).
+
 Read: search is not the bottleneck for C3. Two thirds of their misses happen with the
 helper or block already in the context. Next is step 4 below (what the generator does with
 what it has), not more retrieval or placement rules.
