@@ -803,6 +803,14 @@ tool lacked it in every generated `seed-floor` run.
   whether the frozen draft kept the item. Follow-up question for Haiku, at the end of the
   prompt file: of the missed items in the ticket bin, how many does the draft state.
 
+**Follow-up answered (2026-11-16, Haiku): the drafts kept them.** Of the 11 helpers missed
+every time that the ticket states, the draft states 9 and partly states 2; of the 7 blocks, 4
+and 3. None is absent from the draft. So the draft step is not where these are lost: the
+generator had the step in the draft and did not call the member that does it. (18 items, a
+model's judgement.) Still open, and it decides whether this is a real omission or the
+yardstick: did the new test do that step another way (an equivalent member), do it wrongly,
+or not at all. Second follow-up at the end of the prompt file.
+
 Read: search is not the bottleneck for C3. Two thirds of their misses happen with the
 helper or block already in the context. Next is step 4 below (what the generator does with
 what it has), not more retrieval or placement rules.

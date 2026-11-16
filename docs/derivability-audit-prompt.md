@@ -121,3 +121,31 @@ Add the answers to RUN/derivability.md. Report back with numbers only, in this s
 
 Same rules as before: pair ids and numbers only in the chat.
 ```
+
+## Follow-up 2 (2026-11-16): what did the tool do instead?
+
+The drafts state the missed items. What isn't known is whether the generated test skipped the
+step or did it another way, which C2 counts as a miss either way. Paste this in the same
+session:
+
+```text
+One more follow-up, on the same MISSED bin-1 items (11 helpers, 7 blocks). For each, open the
+generated test of run 1 of that pair in RUN (the "kept" folder's generated.json: the new test
+method and its new data entries) and say what the tool did for the draft line that states
+this item:
+  same      it does the step with a member or block that has the same effect as the
+            reference's (a different route to the same page action or the same state)
+  weaker    it does something for the step, but not enough for the test to work or to check
+            what the draft asks (the wrong member, a value in code where the suite reads data
+            and the check depends on it, a check on something else)
+  absent    the generated test has nothing for that draft line
+If run 1 failed to generate, use run 2.
+
+Add the answers to RUN/derivability.md. Report back with numbers only:
+
+  pair | helpers same/weaker/absent | blocks same/weaker/absent
+  ...
+  total | ... | ...
+
+Same rules: pair ids and numbers only in the chat.
+```
