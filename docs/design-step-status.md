@@ -757,6 +757,24 @@ budget (g01), so the pinned path needs the template trimmed or the budget raised
   entries with sections the test never reads. For the helpers no cause yet; whether the
   draft has a step for each dropped helper is in the derivability audit.
 
+**The suspicion above checked on the kinds (2026-11-16, `c3_kinds.py` on the
+`right-template` report, `.scratch/rt-c3-kinds.log`): mostly wrong.** Of the 69 missed
+blocks:
+
+| Kind | Count | Where | What it is |
+|---|---|---|---|
+| Expectation section absent | 22 | g10, g13 | the new test calls no backend check, so no section |
+| Seed section absent | 13 | g10 r1, g11 r1 | the new test has no entry at all (it reads no data) |
+| Custom key absent | 15 | g09, g10, g11, g13, g14 | a value the reference reads from data; the new test keeps it in code or doesn't use it |
+| A key inside a kept seed section | 16 | g02, g09, g10 r2, g12, g14 | 6 removed by the model's own delete changes |
+| A key inside a kept expectation | 3 | g02, g09 | |
+
+So 50 of 69 follow from what the new test does (no data read, no backend check, values in
+code), the same choice as the helpers, not from stripping. Only the 16 keys inside kept seed
+sections fit the "leave out what isn't read" rule, and 6 of them are the model's deletes. The
+suite-wide count of unread sections is not needed. A possible small switch, not built: no
+delete changes inside a copied seed section (the seed floor for sub-keys).
+
 **The derivability audit (2026-11-16, by Haiku with `docs/derivability-audit-prompt.md`,
 against `seed-floor`; a model's judgement, not yet spot-checked by a person).** Where a
 writer who had not seen the reference could have learned each thing it does; "missed" = the
