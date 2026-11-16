@@ -52,6 +52,7 @@ markers:                       # generic placeholders; set real values per envir
 eval:
   ticket_id_pattern: '\b[A-Z][A-Z0-9]+-\d+\b'   # Jira-style: KEY-123
   max_golden_repeat: 10           # `golden --repeat` is capped here
+  golden_parallel: 1              # runs of one ticket made at the same time (1 = in turn)
   oracle_template: false          # diagnostic: the reference class's nearest test as template
   oracle_steps: false             # diagnostic: the reference's calls given to the generator
 

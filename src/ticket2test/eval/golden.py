@@ -22,6 +22,7 @@ import gc
 import shutil
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -195,55 +196,76 @@ def run_golden(
             else None
         )
         steps = sorted(facts.calls) if settings.eval.oracle_steps and facts is not None else None
-        for run in range(1, repeat + 1):
-            if (pair.id, run) in have:
-                continue
-            folder = keep_dir / pair.id / f"r{run}"
-            leftover = keep_dir / pair.id / pair.id
-            if leftover.exists():  # a run that was cut short
-                shutil.rmtree(leftover)
+        pending = [run for run in range(1, repeat + 1) if (pair.id, run) not in have]
+
+        def make(
+            run: int,
+            pair: EvalPair = pair,
+            copy: Path = copy,
+            linked: set[str] = linked,
+            used_index: IndexData = used_index,
+            pin: tuple[str, str] | None = pin,
+            steps: list[str] | None = steps,
+        ) -> tuple[int, Any, dict[str, Any], float]:
+            """One run, kept in its own staging folder so runs made together don't collide."""
+            stage = keep_dir / pair.id / f".stage-r{run}"
+            if stage.exists():  # a run that was cut short
+                shutil.rmtree(stage)
             capture: dict[str, Any] = {}
             run_started = time.monotonic()
             result = _one(
                 pair, pair_set, project_root, copy, used_index, settings, metered, cache,
-                conventions, True, collect, False, True, folder.parent, capture,
+                conventions, True, collect, False, True, stage, capture,
                 prepared=(copy, used_index, linked),
                 pin_class=pin,
                 oracle_steps=steps,
             )  # fmt: skip
-            done += 1
-            say(
-                f"run {done}/{total} {pair.id} r{run}: {result.status}, "
-                f"{result.llm_calls} call(s), {time.monotonic() - run_started:.0f} s"
-                + (f" ({result.error[:120]})" if result.error else "")
-                + (f", template pinned: {capture['pinned']}" if "pinned" in capture else "")
-                + (f", calls given: {len(steps)}" if steps is not None else "")
-            )
-            kept = keep_dir / pair.id / pair.id
-            if kept.exists():  # _one writes <keep>/<pair id>: move it to the run's folder
-                folder.parent.mkdir(parents=True, exist_ok=True)
-                if folder.exists():
-                    shutil.rmtree(folder)
-                kept.rename(folder)
-            scores = score(
-                capture.get("generated"),
-                facts,
-                settings,
-                result.warnings,
-                result.final_ok,
-                result.collect_ok,
-                used_index,
-            )
-            report.runs.append(
-                GoldenRun(
-                    pair_id=pair.id,
-                    run=run,
-                    result=result,
-                    scores=scores.as_dict(),
-                    kept=str(folder) if folder.exists() else "",
+            return run, result, capture, time.monotonic() - run_started
+
+        workers = min(settings.eval.golden_parallel, len(pending))
+        pool = ThreadPoolExecutor(max_workers=workers) if workers > 1 else None
+        try:
+            outcomes = pool.map(make, pending) if pool is not None else map(make, pending)
+            for run, result, capture, seconds in outcomes:  # in run order, each as it ends
+                folder = keep_dir / pair.id / f"r{run}"
+                stage = keep_dir / pair.id / f".stage-r{run}"
+                done += 1
+                say(
+                    f"run {done}/{total} {pair.id} r{run}: {result.status}, "
+                    f"{result.llm_calls} call(s), {seconds:.0f} s"
+                    + (f" ({result.error[:120]})" if result.error else "")
+                    + (f", template pinned: {capture['pinned']}" if "pinned" in capture else "")
+                    + (f", calls given: {len(steps)}" if steps is not None else "")
                 )
-            )
-            save()
+                kept = stage / pair.id
+                if kept.exists():  # _one writes <stage>/<pair id>: move it to the run's folder
+                    folder.parent.mkdir(parents=True, exist_ok=True)
+                    if folder.exists():
+                        shutil.rmtree(folder)
+                    kept.rename(folder)
+                shutil.rmtree(stage, ignore_errors=True)
+                scores = score(
+                    capture.get("generated"),
+                    facts,
+                    settings,
+                    result.warnings,
+                    result.final_ok,
+                    result.collect_ok,
+                    used_index,
+                )
+                report.runs.append(
+                    GoldenRun(
+                        pair_id=pair.id,
+                        run=run,
+                        result=result,
+                        scores=scores.as_dict(),
+                        kept=str(folder) if folder.exists() else "",
+                    )
+                )
+                save()
+        finally:
+            if pool is not None:
+                pool.shutdown(wait=True)
         del used_index  # one copy's index at a time
         clear_index_caches()
         gc.collect()

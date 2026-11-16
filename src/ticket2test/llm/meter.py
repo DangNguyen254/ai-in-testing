@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+
 from pydantic import BaseModel, ConfigDict
 
 from ticket2test.llm.base import LLMClient, LLMRequest, LLMResponse
@@ -41,27 +43,31 @@ class UsageMeter(LLMClient):
     def __init__(self, inner: LLMClient) -> None:
         self.inner = inner
         self._usage = Usage()
+        self._lock = threading.Lock()  # runs made at the same time share one meter
 
     @property
     def usage(self) -> Usage:
         return self._usage
 
     def complete(self, request: LLMRequest) -> LLMResponse:
-        u = self._usage
         try:
             response = self.inner.complete(request)
         except Exception:
-            self._usage = u.model_copy(
-                update={"calls": u.calls + 1, "unpriced_calls": u.unpriced_calls + 1}
-            )
+            with self._lock:  # the total as it is now: another call may have ended meanwhile
+                u = self._usage
+                self._usage = u.model_copy(
+                    update={"calls": u.calls + 1, "unpriced_calls": u.unpriced_calls + 1}
+                )
             raise
-        self._usage = Usage(
-            calls=u.calls + 1,
-            input_tokens=u.input_tokens + (response.input_tokens or 0),
-            output_tokens=u.output_tokens + (response.output_tokens or 0),
-            cost_usd=round(u.cost_usd + (response.cost_usd or 0.0), 6),
-            unpriced_calls=u.unpriced_calls + (response.cost_usd is None),
-        )
+        with self._lock:
+            u = self._usage
+            self._usage = Usage(
+                calls=u.calls + 1,
+                input_tokens=u.input_tokens + (response.input_tokens or 0),
+                output_tokens=u.output_tokens + (response.output_tokens or 0),
+                cost_usd=round(u.cost_usd + (response.cost_usd or 0.0), 6),
+                unpriced_calls=u.unpriced_calls + (response.cost_usd is None),
+            )
         return response
 
 

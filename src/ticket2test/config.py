@@ -107,6 +107,9 @@ class EvalSettings(_Section):
     ticket_id_pattern: str = r"\b[A-Z][A-Z0-9]+-\d+\b"
     max_commits: int = Field(default=5000, ge=1)  # git history mining: newest commits read
     max_golden_repeat: int = Field(default=10, ge=1)  # `golden --repeat` is capped here
+    # How many of one ticket's runs a golden run makes at the same time. They share the
+    # ticket's index and mostly wait on the model, so 2 nearly halves the time; 1 = in turn.
+    golden_parallel: int = Field(default=1, ge=1, le=4)
     # A diagnostic for golden runs, never for real use: the reference class's nearest remaining
     # test goes first among the templates (eval/generation.py ``pin_template``), to measure
     # what the right template alone gains.

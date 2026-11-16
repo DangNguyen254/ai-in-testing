@@ -382,6 +382,54 @@ def _golden_smoke(tmp_path: Path) -> tuple[Any, Settings, list[str]]:
     return _STND104.model_copy(update={"pairs": [pair]}), _settings(tmp_path), one_run
 
 
+def test_a_tickets_runs_can_be_made_at_the_same_time(tmp_path: Path) -> None:
+    """``eval.golden_parallel``: a ticket's runs go to the model together, each kept in its own
+    folder, scored and counted like runs made in turn."""
+    import threading
+    import time
+
+    from ticket2test.eval.golden import run_golden
+    from ticket2test.llm.base import LLMClient, LLMRequest, LLMResponse
+
+    from .test_eval_harness import _DRAFT, ROOT, _draft_reply
+
+    golden_set, settings, (rewrite, generation) = _golden_smoke(tmp_path)
+    settings.eval.golden_parallel = 2
+
+    class ByKind(LLMClient):
+        """Answers by what is asked (runs made together ask in no fixed order)."""
+
+        def __init__(self) -> None:
+            self.lock = threading.Lock()
+            self.now = self.most = self.calls = 0
+
+        def complete(self, request: LLMRequest) -> LLMResponse:
+            with self.lock:
+                self.now += 1
+                self.calls += 1
+                self.most = max(self.most, self.now)
+            time.sleep(0.2)  # long enough for the other run's call to overlap
+            with self.lock:
+                self.now -= 1
+            fields = set((request.json_schema or {}).get("properties", {}))
+            text = generation if "code" in fields else _draft_reply(_DRAFT)
+            if "drafts" not in fields and "code" not in fields:
+                text = rewrite
+            return LLMResponse(text=text, model="fake-model", cost_usd=0.01)
+
+    client = ByKind()
+    report = run_golden(golden_set, ROOT, settings, client, 2, "together", tmp_path / "runs")
+    assert client.most == 2  # two calls were in flight at once
+    assert [(r.pair_id, r.run) for r in report.runs] == [("standin-104", 1), ("standin-104", 2)]
+    assert all(r.result.status == "generated" for r in report.runs)
+    kept = [Path(r.kept) for r in report.runs]
+    assert kept[0] != kept[1] and all((k / "generated.json").is_file() for k in kept)
+    assert all((k / "retrieval.json").is_file() for k in kept)
+    assert not list((tmp_path / "runs").rglob(".stage-*"))
+    assert report.usage is not None and report.usage.calls == client.calls  # none lost
+    assert report.runs[0].scores == report.runs[1].scores
+
+
 def test_a_stopped_golden_run_continues_from_its_report(tmp_path: Path) -> None:
     """A run cut short in its second run (a lost connection, Ctrl+C): the report on disk holds
     the first, and resuming makes only the second; the totals add up over both sessions. Each
