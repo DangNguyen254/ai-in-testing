@@ -97,6 +97,51 @@ methods": wrong, 22 methods and 8 modules.
   `docs/design-direction.md` (compose from the framework) more strongly than anything
   measured before.
 
+## Two free checks for the "compose from the framework" direction (2026-11-16)
+
+`.scratch/framework_probe.py <golden.json>` on the warm golden set (`.scratch/framework-probe.log`),
+no model call. Both were asked because `cold-area` showed the tool has no way from a draft to
+the framework except through a test.
+
+**1. What the reference tests call, and whether a search of the framework finds it.**
+- The 15 reference tests make 56 `self` calls in all (1 to 7 each; this is all C2 counts).
+  **The catalog resolves 36 of them to a class (64%)**; 20 stay unresolved (all 7 of g01, g07,
+  most of g06 and g08): the known limit of static typing on this suite.
+- Of the resolved ones most lead into the reference's **own class line** (helpers of the test
+  class and its area base). Only **9 framework classes outside that line** are called, over
+  7 tickets. So the references mostly work through helpers that live with the tests of the
+  area, not through page objects called directly.
+- Searching only page objects, classes and helper functions (362 + 3,561 + 36,246 chunks, no
+  tests) with the draft's words: of those 9 classes, 4 rank in the top 5, 6 in the top 30,
+  1 in the top 200, 2 not at all. A small sample; plain search finds about two in three.
+
+**2. How much of a reference entry the test's calls could tell.** 93 key paths (two levels,
+as C3 counts) over the 11 references that have an entry:
+
+| Kind | Paths | Could a plan of calls say it is needed? |
+|---|---|---|
+| Seed section | 56 (60%) | no: the framework applies whatever is there; nothing in the calls names it |
+| Expectation section | 29 (31%) | its presence, when a backend check is planned (the check is called through a helper in 22 of them); its content, no |
+| Custom key read by a called helper | 7 | yes |
+| Custom key the test reads itself | 1 | only if the plan says so |
+
+Read, and what it changes in `docs/design-direction.md`:
+- **Assumption 5 is mostly false as written.** "What the entry must hold follows from the
+  calls" covers at most 40% of the paths, and the content of none. Seed data is the largest
+  part and has to come from somewhere else: an entry elsewhere in the suite (105 of the 131
+  blocks missed in `cold-area` exist in another entry), the draft's preconditions mapped to
+  seed sections by the model, or a marked gap. The plan needs `seed` rows that name where
+  each section comes from; code can't derive them.
+- **A new area has no helper layer.** The references call their own class's helpers more
+  than pages. With no test class in the area those helpers don't exist, so a composed test
+  either calls the pages directly or the helpers are proposed too (agent 2's kind of output).
+  Whether a test written straight on the pages is acceptable is a question for the team.
+- **The plan's "every member exists" check has a hole of about a third** on this suite: a
+  call the catalog can't resolve can be neither confirmed nor refused. It needs the
+  validators' existing third verdict (unknown), shown to the reviewer, not an error.
+- The entry point is not the main worry: where a class can be named at all, search over the
+  framework finds it about two times in three with the draft's words alone.
+
 ## Why golden runs were slow, and three fixes (2026-11-16)
 
 The `cold-area` run was stopped by hand at 23 of 30 after five hours (its runs are kept; it

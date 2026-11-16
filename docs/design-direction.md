@@ -133,10 +133,22 @@ marked gaps there. It is weeks of work, built beside the current path and compar
 | 2 | A model that can look things up finds the right members | the agent upper bound (`docs/agent-upper-bound-prompt.md`) | build the planning step | the knowledge isn't findable in the suite: the input must carry the steps (the QE's own test case as input), with marked gaps |
 | 3 | "Right member" means the team's usual one, not any that works | the verdict sheet, column F | the planner needs usage counts per member as evidence | C2 overstates the helper gap: loosen it, and put the effort into checks and data |
 | 4 | Style holds without a neighbour | `cold-area`; `cold-class` says yes at class level | the scaffold step only needs a suite-wide default | style itself needs a source: suite-wide conventions derived by code, before anything else |
-| 5 | What an entry must hold can be derived from the calls the test makes | not tested yet; check on the stand-in first, then count on the real suite how much of a reference entry the reads of its test's calls explain | step 3 works without a neighbour | data needs a neighbour or a person: marked gaps for a new area, and say so in the hand-over |
+| 5 | What an entry must hold can be derived from the calls the test makes | **measured the same day, mostly false** (`.scratch/framework_probe.py`): 60% of a reference entry's paths are seed sections no call names, 31% an expectation section whose presence (not content) follows from a planned check, 9% custom keys | step 3 works without a neighbour | **this is the case:** the plan needs `seed` rows that say where each section comes from (an entry elsewhere in the suite, the draft's preconditions, or a marked gap); code derives only the expectation's presence and helper-read keys |
 
 The predictions for `cold-area` and `right-steps` were written in the status doc before their
 results. Read the results against those, not against a story made afterwards.
+
+**Added the same evening, from `cold-area` and two free checks (see the status doc):**
+- With a folder's tests removed, every output went to another folder and helper recall was
+  0.00: the tool adapts a wrong neighbour instead of falling back to the framework. Only 24
+  of the 112 helpers it missed are used by any test left: the knowledge is in the framework's
+  code alone. This is the baseline for the goal.
+- Placement has no "none of these fits" outcome. A new area needs one.
+- The reference tests mostly call helpers of their own class line, not pages directly, so a
+  new area has no helper layer to call: the composed test calls pages directly or the helpers
+  are proposed as well.
+- The catalog resolves about two thirds of the references' calls; the plan's existence check
+  needs an "unknown" verdict for the rest.
 
 ## 7. What to do next, in order
 
