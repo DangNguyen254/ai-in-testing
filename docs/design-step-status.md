@@ -732,6 +732,31 @@ the earlier finding that most missed helpers are steps the template lacks. D6 is
 building for placement. Its cost to guard: a large named template can overflow the context
 budget (g01), so the pinned path needs the template trimmed or the budget raised for it.
 
+**What is still missed with the right template (2026-11-16, free: `c2_misses.py`,
+`c3_misses.py`, `reachable.py` on the `right-template` report; masked logs in
+`.scratch/rt-*.log`).** 27 generated runs, placed right in all the runs the scripts list.
+
+| Where the missed item exists | Helpers (47, in 19 runs) | Data blocks (69, in 13 runs) |
+|---|---|---|
+| In the output's own class (the template calls it or another test does; the base entry or a sibling entry has it) | 20 (g02, g03, g04, g13, g15) | 41 |
+| Only elsewhere in the suite | 13 (g06, g08, g09, g10, g14) | 20 (mostly g10) |
+| Nowhere else in the suite | 14 | 8 (g14 6, g10 2) |
+
+- Helpers: 10 of the 20 are called by the template itself. g02 r2 dropped all three its
+  template calls and shares none of its calls with it. Inlined: 0.
+- Blocks: a whole section absent for 50 of 69; the base entry had 31. g11 r1 has no entry and
+  g13 has 2 paths, with the blocks in the base entry.
+- Read: about half of what is missed was in the class the tool wrote into and was left out
+  (generation); about a quarter is in the suite outside the class (the fixed context doesn't
+  reach it); about a fifth is used by nothing else in the suite (the author's choice or
+  added with the reference: no pipeline produces it, it should be a marked gap).
+- Suspected cause for the blocks, not yet checked: `generate_v6` tells the model to leave out
+  what the scenario doesn't read ("leave out everything else", "seed only what the scenario
+  reads", "delete sub-keys"), a rule decided on the stand-in. If the real suite's entries
+  commonly carry sections their test doesn't read, the rule is wrong for it. Free check: count
+  entries with sections the test never reads. For the helpers no cause yet; whether the
+  draft has a step for each dropped helper is in the derivability audit.
+
 Read: search is not the bottleneck for C3. Two thirds of their misses happen with the
 helper or block already in the context. Next is step 4 below (what the generator does with
 what it has), not more retrieval or placement rules.
