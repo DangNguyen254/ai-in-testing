@@ -34,6 +34,11 @@ Phases run strictly in order (CLAUDE.md rule). Renumbered on 2026-10-05: the syn
 
 ## Current state (handoff, 2026-10-06)
 
+> **This section is the state of 2026-10-06 and is kept as history.** Since 2026-11-02 the
+> work is the design step on the real suite. For the current state read, in this order:
+> `docs/design-step-status.md` ("Start here"), `docs/design-direction.md` (the decisions and
+> the reasoning), `docs/design-step-plan.md`, and `CLAUDE.md` ("How the work is done now").
+
 Read this first when resuming in a new session.
 
 **Where we are:** Phases 0–8 are ✅. The baseline eval report is `output/reports/phase8/eval-20261006T102640.md` (summary in the Phase 8 log). Phase 9 (Rust) is marked "later" in `CLAUDE.md`; **ask the human before starting it**.

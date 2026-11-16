@@ -4,6 +4,15 @@
 and `knowledge-plan.md`; updated the same day with a review of the structure-aware
 (code-graph) research direction (§4a). Names nothing from the real suite.*
 
+*Update 2026-11-16: this is the plan as written on 2026-11-02 and is kept as it was. What was
+done with it, and where the design goes from here, is in `docs/design-direction.md`; the
+numbers are in `docs/design-step-status.md`. In short: step 1 (the yardstick) and step 2
+(error analysis) were done; step 3 (ablating the trial additions) was skipped and is still
+open; of step 4, D1 and D2 were tried in a small form and gained nothing, D6 is justified for
+placement by a diagnostic run, D3, D4 and D5 were not built; step 5 (the upper-bound
+comparison) is prepared as `docs/agent-upper-bound-prompt.md`. The goal was also stated more
+sharply: tests in the suite's style with no similar test to copy from.*
+
 ## 1. Diagnosis in one paragraph
 
 The 31 problems are not 31 independent bugs. They come from four root causes, and only one of

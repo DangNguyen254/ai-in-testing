@@ -252,6 +252,11 @@ configuration keeps the runs the report has and makes the rest. Runs that failed
 call are made again. A changed configuration is refused, so one report never mixes two. Each
 run's folder also keeps its `retrieval.json`.
 
+Two diagnostic switches for golden runs (`eval.oracle_template`, `eval.oracle_steps`), the
+"cold" pair sets (the same tickets with the reference's class or folder hidden) and the free
+scripts that read a finished report are in `docs/golden-set.md`, section 6. One golden run
+at a time: it uses up to 4.9 GiB.
+
 ### `golden-rescore <REPORT_FILE> --set <PAIR_SET>`
 
 Scores a finished golden run again from its kept outputs, after a change to the scorer. No model

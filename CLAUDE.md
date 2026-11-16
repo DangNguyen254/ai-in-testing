@@ -207,8 +207,10 @@ Complete each phase fully, with passing tests, before starting the next. At the 
 ## How the work is done now (the design step; added 2026-11-11)
 
 Read these at the start of a session, in this order: `docs/design-step-status.md` (its "Start
-here" block says where the work is), `docs/design-step-plan.md` (the method and the planned
-changes D1–D6), and `.scratch/session-notes.md` (git-ignored notes kept across sessions).
+here" block says where the work is), `docs/design-direction.md` (the decisions made on
+2026-11-16, the reasoning, and what to do next under each outcome), `docs/design-step-plan.md`
+(the method and the planned changes D1–D6, as written on 2026-11-02), and
+`.scratch/session-notes.md` (git-ignored notes kept across sessions).
 
 ### Who does what
 - Claude designs and writes code in this repo and tests it on the stand-in. `config.yaml` is
