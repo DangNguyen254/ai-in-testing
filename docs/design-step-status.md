@@ -18,7 +18,7 @@ after the right-template result).
   | `right-template` (diagnostic) | the reference; right template given | 0.56 | 0.75 | 27/27 |
   | `cold-class` | and the class's other tests | 0.38 | 0.65 | 26/26 |
   | `cold-area` | and every test file of the folder | 0.00 | 0.50 | 27/30 |
-  | `right-steps` (diagnostic) | the reference; right template and the reference's calls given | 0.83 | 0.83 | 26/26 |
+  | `right-steps` (diagnostic) | the reference; right template and the reference's calls given | 0.85 | 0.83 | 28/28 |
 
 - **Where the loss is, from today's free checks and Haiku's audit:**
   - Placement is a template problem: the right template lifts C1 from 60% to 83%. The class is
@@ -37,7 +37,7 @@ after the right-template result).
   - Without the class's tests the output is still valid; the tool attaches to a sibling class.
 - **Done:** `cold-area`: every output went to another folder and helper recall is 0.00 on all
   30 runs (the tool adapts another area's test). `right-steps`: with the reference's calls
-  given, helper recall goes from 0.56 to 0.83, so the writer is not the limit; the choice of
+  given, helper recall goes from 0.56 to 0.85, so the writer is not the limit; the choice of
   members is. Both were read against predictions written before the runs.
 - **Then (Phase A, nothing here tunes the tool):** the human's verdict on 15 outputs
   (`docs/verdict-sheet.md`); the agent upper bound on about five tickets
@@ -100,21 +100,20 @@ methods": wrong, 22 methods and 8 modules.
 
 ## `right-steps` measured (2026-11-16): given the members, the generator writes the test
 
-15 x 2, Haiku API, 63 calls, $0.61. `eval.oracle_template` and `eval.oracle_steps` both on:
+15 x 2, Haiku API, 65 calls, $0.66. `eval.oracle_template` and `eval.oracle_steps` both on:
 the right template, and the calls the reference makes listed in the context (names only, no
 order, no arguments). Compared with `right-template`, so the one difference is that the
-choice of members is given. 26 of 30 generated: g01 fails on the context budget in both runs
-(as before), g02 r2 and g03 r2 on a CLI timeout (being run again with `--resume`; the
-numbers below are over the 26).
+choice of members is given. 28 of 30 generated: g01 fails on the context budget in both runs
+(as before); g02 r2 and g03 r2 timed out and were made again with `--resume`.
 
 | | C1 | C2 pass, of generated | C2 mean recall | C3 pass, of generated | C3 mean recall | Validators, of generated |
 |---|---|---|---|---|---|---|
 | `right-template` | 83% | 8/27 | 0.56 | 14/27 | 0.75 | 27/27 |
-| `right-steps` | 80% | **18/26** | **0.83** | 13/26 | **0.83** | 26/26 |
+| `right-steps` | 87% | **20/28** | **0.85** | 13/28 | **0.83** | 28/28 |
 
 **Against the prediction written before the run:** "helpers rise to 0.85 or more if the
 generator can use a given choice; under about 0.75 it doesn't make the calls even when told":
-0.83, just under the first mark and well over the second: right in substance. "Data blocks
+0.85: right. "Data blocks
 rise a little, the expectation section following the check on g13": right (0.75 to 0.83; g13
 from 0.29 to 0.86). "g01 fails on the budget again": right.
 
@@ -129,7 +128,7 @@ from 0.29 to 0.86). "g01 fails on the budget again": right.
   moved by knowing the calls, as the entry check said (60% of an entry is seed).
 - **Read: assumption 1 holds.** The writer is not the limit. Told which members a correct
   test calls, with nothing about order or arguments, the same model in the same one shot
-  writes them on 18 of 26 runs against 8 of 27. The choice of members is the limit, and the
+  writes them on 20 of 28 runs against 8 of 27. The choice of members is the limit, and the
   remaining misses are members that don't exist where the test is written. So the planning
   step is the part to build, not a new writer; and data needs its own source.
 - **Speed, first full run on the faster code, two runs of a ticket together:** 131 minutes
