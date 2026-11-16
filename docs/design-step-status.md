@@ -860,6 +860,29 @@ index, no model call).
   large fall on C2. If it doesn't fall, the template does less than assumed.
 - Cost: about $0.80 a level (15 x 2, Haiku API). `class` first.
 
+**Where "the new test does less" comes from (2026-11-16, free: `.scratch/extent.py` on the
+`right-template` report, `.scratch/rt-extent.log`).** For the 13 runs that miss C3: does the
+new test make a backend check (a direct call of an expectation helper), does it have an
+entry, and did its template and the output's class.
+
+| Ticket | What the new test lacks | Its template | The output's class |
+|---|---|---|---|
+| g13 (both runs) | the backend check (4 expectation paths a run) | checks | 42 of 84 tests check |
+| g11 r1 | any entry (4 seed paths, 1 custom) | has entries | 741 of 741 have one |
+| g10 (both runs) | the backend check (7 a run); r1 also any entry (9 seed) | doesn't check, has an entry | no other test (a new class) |
+| g09, g10 r2, g13, g14 | custom keys the reference reads | has custom keys only in g14 | |
+| g02, g12 | only keys inside kept sections | | |
+
+- Two plain drops by the model, each against its own template and class: g13's check and
+  g11's entry. A floor from the class's habit would catch both (the class always has an
+  entry; the template checks and half the class does).
+- g10 is the no-template case, and it alone is 32 of the 69 missed blocks: nothing near it
+  shows the check. C3's gap under the right template is mostly three tickets.
+- The custom keys are the reference's own (the template has none in 5 of 7 runs): not
+  something a neighbour shows.
+- The `cold-class` run (label `cold-class`, started 2026-11-16, Haiku API) was going during
+  this; the script reads the warm copies, the run the cold ones.
+
 Read: search is not the bottleneck for C3. Two thirds of their misses happen with the
 helper or block already in the context. Next is step 4 below (what the generator does with
 what it has), not more retrieval or placement rules.
