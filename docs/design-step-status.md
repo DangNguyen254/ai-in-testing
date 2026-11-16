@@ -757,6 +757,34 @@ budget (g01), so the pinned path needs the template trimmed or the budget raised
   entries with sections the test never reads. For the helpers no cause yet; whether the
   draft has a step for each dropped helper is in the derivability audit.
 
+**The derivability audit (2026-11-16, by Haiku with `docs/derivability-audit-prompt.md`,
+against `seed-floor`; a model's judgement, not yet spot-checked by a person).** Where a
+writer who had not seen the reference could have learned each thing it does; "missed" = the
+tool lacked it in every generated `seed-floor` run.
+
+| | ticket | draft only | class habit | findable in the suite | outside |
+|---|---|---|---|---|---|
+| Reference helpers (89) | 48 | 3 | 17 | 12 | 9 |
+| Reference data blocks (97) | 48 | 3 | 30 | 10 | 6 |
+| Missed helpers (24) | 11 | 1 | 4 | 3 | 5 |
+| Missed data blocks (28) | 7 | 3 | 9 | 3 | 6 |
+
+- The class is clear from the ticket and draft on 5 of 15 (g02, g09, g10, g12, g14). Haiku
+  hesitated between "findable" and "outside" on 6 items.
+- Only about one item in ten of a reference test comes from outside the ticket and the
+  suite (9 of 89 helpers, 6 of 97 blocks), and it sits in few tickets (g10 has 10 of the 15,
+  then g09, g14, g11). Those are missed almost always (11 of 15), as they must be.
+- The rest is missed at about the same rate whatever its source: ticket 23% of helpers and
+  15% of blocks, class habit 24% and 30%, findable 25% and 30%. Nearly half of the helpers
+  missed every time (11 of 24) are for something the ticket states.
+- Read: the tickets are not the main limit on helpers and data blocks; they are the limit on
+  placement (10 of 15 don't say which class, which fits the right-template result: D6). With
+  the scripts above, three counts now agree that most of the gap is the pipeline not using
+  what the ticket and the class give it.
+- A limit of the audit as written: the bins take the first that fits, so "ticket" doesn't say
+  whether the frozen draft kept the item. Follow-up question for Haiku, at the end of the
+  prompt file: of the missed items in the ticket bin, how many does the draft state.
+
 Read: search is not the bottleneck for C3. Two thirds of their misses happen with the
 helper or block already in the context. Next is step 4 below (what the generator does with
 what it has), not more retrieval or placement rules.

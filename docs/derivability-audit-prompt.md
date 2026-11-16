@@ -96,3 +96,28 @@ Rules: read only, except RUN/derivability.md. In the chat: pair ids and numbers 
 names of classes, helpers, files, keys, values, tickets or features from the suite, and no
 sentences describing what a test does.
 ```
+
+## Follow-up (2026-11-16): did the draft keep what the ticket states?
+
+The bins take the first that fits, so an item in the ticket bin may be missing from the
+draft, and the generator only sees the draft. Paste this in the same session, after the
+audit's reply:
+
+```text
+A follow-up on the audit you just wrote (RUN/derivability.md). Look only at the items you
+marked MISSED and put in bin 1 (TICKET): 11 helpers and 7 blocks. For each, read the pair's
+draft again (preconditions, steps, expected outcome, variants) and answer one question: does
+any line of the draft state the action, state or value this item is there for?
+  yes      a draft line states it
+  partly   a draft line touches it but leaves out what makes this item necessary
+           (for example the action without the state it needs first)
+  no       the draft doesn't have it
+
+Add the answers to RUN/derivability.md. Report back with numbers only, in this shape:
+
+  pair | missed bin-1 helpers yes/partly/no | missed bin-1 blocks yes/partly/no
+  ...
+  total | ... | ...
+
+Same rules as before: pair ids and numbers only in the chat.
+```
