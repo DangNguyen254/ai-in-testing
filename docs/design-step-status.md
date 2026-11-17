@@ -266,6 +266,33 @@ a skill. The tool's own steps must do the work. The planner stays in the code, o
 default, with both failed checks recorded above; what comes next is a rethink of the whole
 design, stage by stage, before anything else is built.
 
+**A free check for the rethink (2026-11-17, `.scratch/usage_ceiling.py`, no model): where
+else the reference tests' calls can be found by syntax alone.** The idea being weighed: code
+extracts, at index time, what each test calls in order (as written, no type resolution) and
+what the framework defines, so the choice of members is made from counted usage instead of
+by a model looking things up. Each of the 56 `self` calls of the 15 references, put in the
+first place that has it:
+
+| Where the same call is found | Calls | Share | Running total |
+|---|---|---|---|
+| Another test of the reference's class makes it, as written | 33 | 59% | 59% |
+| A test of another class in the same folder | 10 | 18% | 77% |
+| A test elsewhere in the suite | 1 | 2% | 79% |
+| No test, but a function or method of that name is defined outside the tests (the framework) | 9 | 16% | 95% |
+| Only a method of the reference's own class has the name | 3 | 5% | |
+| Nowhere | 0 | | |
+
+- A usage table of the class alone holds 59% of what the references call; with the folder
+  77%. The tool's helper recall is 0.47, and it has those tests in reach: g04 and g13 have
+  every reference call in their class's other tests (179 and 84 tests) and score 0.20 to 0.75.
+  The knowledge is there; it isn't presented as "this step is done by this member".
+- The framework's own definitions add 16 points that no test shows (the human's point: the
+  table must cover the framework folder, not only the tests). That row matches by name only,
+  among 24,542 names, so 95% is an upper bound; the first three rows are exact matches.
+- Per ticket the class row is all or nothing: 8 tickets have most of their calls in the
+  class, 6 have none there (their class has 0 to 2 other tests, or the call is the
+  framework's). For those the folder and the framework are the only source.
+
 **The three team questions (2026-11-17): the human's first answers, set aside until the
 mentor has been asked.** Nothing is built on them yet.
 - **Q1: no**, with this meaning: a test made of helper calls, one per step of the scenario
