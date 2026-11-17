@@ -429,6 +429,17 @@ loss that remains is in two places: the right class (placement, C1 60%) and the 
 steps. With the measure corrected, the yardstick is 0.62 and the right template 0.67, so
 placement is worth about 0.05 and the specific steps the rest of the way to 1.0.
 
+**How the references are parked (2026-11-17, `.scratch/skip_kinds.py`, free).** Of the
+suite's 7,587 tests: plain `skip` 37 (0.5%); conditional `skipif` 344 (4.5%), 234 of them
+naming a ticket id (3.1%); two custom skip decorators on 4,380 tests (57.7%: platform and
+environment gating, routine). **10 of the 15 references carry a `skipif` that names their own
+ticket**; the other 5 carry only the routine gating. No other test is skipped for a golden
+ticket. So the review's "parked" references are tests written for the ticket and gated on it,
+which is how 3% of the suite (its bug tests, as far as this shows) is written: atypical of the
+suite as a whole, but possibly the normal shape of a test for a bug ticket here. If so, a
+generated test for a bug should carry that decorator too; the tool doesn't know it. A
+question for the human, not a change.
+
 **Line by line against the step truth (2026-11-17, `.scratch/step_truth_score.py`, free).**
 Every row of the truth, kept or not by the kept outputs. Strict: the same call (or resolved
 to the same member, or judged equivalent). Loose: also a call of the same member name (the
