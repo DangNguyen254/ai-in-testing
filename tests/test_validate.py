@@ -1145,3 +1145,64 @@ def test_a_class_is_walked_once_however_many_tests_it_has(
     monkeypatch.setattr(validator, "class_local_members", counting)
     _validate(setup, code=code, entries=[], file_name=path, test_ids=[])
     assert sorted(walked) == sorted(c.name for c in classes)
+
+
+def test_attributes_a_class_decorator_injects_are_members(
+    setup: tuple[Settings, IndexData, list[str]],
+) -> None:
+    """Found on a real suite (validator audit, pattern N1): a class decorator that adds an
+    attribute to the class it decorates (``dict(vars(cls), mode=m)``) made every use of that
+    attribute an "unknown member" error."""
+    from ticket2test.index.catalog import build_catalog, injected_attributes
+    from ticket2test.index.extract import extract_file
+
+    decorator = """def in_modes(*modes):
+   def decorate(cls):
+      for mode in modes:
+         attrs = dict(vars(cls), run_mode=mode)
+         globals()[f"{cls.__name__}_{mode}"] = type(cls.__name__, (cls,), attrs)
+      setattr(cls, "mode_count", len(modes))
+      cls.first_mode = modes[0]
+      return cls
+   return decorate
+"""
+    assert injected_attributes(decorator) == {"run_mode", "mode_count", "first_mode"}
+    assert injected_attributes("def plain(x):\n   return x\n") == set()
+
+    users = """from framework.base_test import BaseTest
+from framework.modes import in_modes
+
+
+@in_modes("fast", "slow")
+class TestItemsMode(BaseTest):
+   def test_timeout(self):
+      return self.run_mode
+"""
+    catalog = build_catalog(
+        [
+            extract_file("framework/modes.py", decorator.encode()),
+            extract_file("tests/items/test_items_mode.py", users.encode()),
+        ]
+    )
+    assert catalog.decorator_attributes == {"in_modes": ["first_mode", "mode_count", "run_mode"]}
+    entry = catalog.classes["tests.items.test_items_mode.TestItemsMode"]
+    assert {"run_mode", "mode_count", "first_mode"} <= set(entry.members)
+
+    # A generated class carrying the decorator may read the attribute.
+    settings, index, fp = setup
+    patched = index.model_copy(
+        update={
+            "catalog": index.catalog.model_copy(
+                update={"decorator_attributes": {"browsers": ["run_mode"]}}
+            )
+        }
+    )
+    code = GOOD_CODE.replace(
+        "      rules.open()\n",
+        "      rules.open()\n      self.check.assertTrue(self.run_mode)\n",
+        1,
+    )
+    without = _validate(setup, code=code)
+    with_it = _validate((settings, patched, fp), code=code)
+    assert any("run_mode" in f.message for f in without.findings)
+    assert not any("run_mode" in f.message for f in with_it.findings)

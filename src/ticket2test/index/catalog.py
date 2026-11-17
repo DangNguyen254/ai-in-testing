@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import ast
 import re
+import textwrap
 from collections import deque
 from typing import Literal
 
@@ -106,6 +107,9 @@ class SymbolCatalog(BaseModel):
     module_names: dict[str, dict[str, str]] = Field(default_factory=dict)
     star_imports: dict[str, list[str]] = Field(default_factory=dict)
     module_exports: dict[str, list[str]] = Field(default_factory=dict)
+    # Class decorators that add attributes to the class they decorate (``dict(vars(cls),
+    # mode=m)``, ``setattr(cls, "mode", m)``, ``cls.mode = m``): decorator name -> attributes.
+    decorator_attributes: dict[str, list[str]] = Field(default_factory=dict)
 
     # --- lookups -------------------------------------------------------------------------
 
@@ -447,12 +451,82 @@ def build_catalog(
     catalog = SymbolCatalog(chain_roots=list(chain_roots or []))
     for info in files:
         _add_file(catalog, info)
+    _add_decorator_attributes(catalog, files)
     catalog.markers = {k: sorted(v) for k, v in sorted((markers or {}).items())}
     catalog.chains, catalog.chains_truncated = _enumerate_chains(
         catalog, max_chain_depth, max_chain_entries
     )
     catalog.page_objects = _page_objects(catalog)
     return catalog
+
+
+def injected_attributes(code: str) -> set[str]:
+    """Attributes a function adds to a class it is given: keywords of ``dict(vars(cls), ...)``,
+    ``setattr(cls, "name", ...)`` with a literal name, and ``cls.name = ...`` on a parameter of
+    the function or a function inside it (``self`` aside). Read from its code, not run."""
+    try:
+        tree = ast.parse(textwrap.dedent(code))
+    except SyntaxError:
+        return set()
+    params = {
+        a.arg
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+        for a in [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
+    } - {"self"}
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            if node.func.id == "dict" and any(
+                isinstance(a, ast.Call) and isinstance(a.func, ast.Name) and a.func.id == "vars"
+                for a in node.args
+            ):
+                found |= {k.arg for k in node.keywords if k.arg}
+            elif (
+                node.func.id == "setattr"
+                and len(node.args) >= 2
+                and isinstance(node.args[0], ast.Name)
+                and node.args[0].id in params
+                and isinstance(node.args[1], ast.Constant)
+                and isinstance(node.args[1].value, str)
+            ):
+                found.add(node.args[1].value)
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                if (
+                    isinstance(target, ast.Attribute)
+                    and isinstance(target.value, ast.Name)
+                    and target.value.id in params
+                ):
+                    found.add(target.attr)
+    return found
+
+
+def _decorator_name(text: str) -> str:
+    """``pkg.in_modes("a", "b")`` -> "in_modes"."""
+    return text.strip().lstrip("@").split("(")[0].rpartition(".")[2]
+
+
+def _add_decorator_attributes(catalog: SymbolCatalog, files: list[FileInfo]) -> None:
+    """Record what each class decorator injects, then add it to the classes it decorates."""
+    for info in files:
+        for fn in info.functions:
+            names = injected_attributes(fn.code)
+            if names:
+                known = set(catalog.decorator_attributes.get(fn.name, []))
+                catalog.decorator_attributes[fn.name] = sorted(known | names)
+    if not catalog.decorator_attributes:
+        return
+    for info in files:
+        for cls in info.classes:
+            entry = catalog.classes.get(f"{info.module}.{cls.name}")
+            if entry is None:
+                continue
+            for decorator in cls.decorators:
+                for name in catalog.decorator_attributes.get(_decorator_name(decorator), []):
+                    entry.members.setdefault(
+                        name, Member(name=name, kind="attribute", line=cls.start_line)
+                    )
 
 
 def import_map(statements: list[str], module: str) -> tuple[dict[str, str], list[str]]:

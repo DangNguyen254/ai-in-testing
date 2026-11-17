@@ -1853,7 +1853,14 @@ def _prepare(s: Subject) -> None:
     locals_of: dict[int, set[str]] = {}  # per class: a walk of the whole class, done once
     for cls, fn in s.tests:
         if cls is not None and id(cls) not in locals_of:
-            locals_of[id(cls)] = class_local_members(cls)
+            injected = {  # what the class's decorators add to it (catalog.decorator_attributes)
+                name
+                for d in cls.decorator_list
+                for name in s.catalog.decorator_attributes.get(
+                    dotted(d.func if isinstance(d, ast.Call) else d).rpartition(".")[2], []
+                )
+            }
+            locals_of[id(cls)] = class_local_members(cls) | injected
         local = locals_of[id(cls)] if cls else set()
         bases = reuse.repo_bases(cls) if cls else []
         start = bases[0] if bases else s.base  # the class's own base, else the suite's
