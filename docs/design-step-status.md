@@ -364,6 +364,51 @@ The rest tie (g03, g14, and g09, g10 at 0 for both); g01 has no `right-template`
   or the picking is measured wrong. No prompt change is tried on these tickets (method
   point 8). The picking code stays, unused.
 
+**The design review (2026-11-17, `docs/design-review-prompt.md`, a Sonnet session that read
+the tool, the real suite and the private folder; full report in
+`t2t-private/output/design-review.md`, names-free reply relayed).** The suite copy it read
+has no git history, so Q6 is judgement; Q5 was a subagent's reading, two claims re-checked.
+
+What it says, and what it does to our readings:
+
+1. **The yardstick is not typical.** 11 of the 15 reference tests were parked by a
+   ticket-linked skip (about 3% of the suite is). Every golden number so far is measured on
+   tests the team wrote and set aside, not on how it usually writes tests.
+2. **The helper criterion sees only part of a test.** C2 counts `self` calls. It ignores
+   property writes (page fields set by assignment: about two thirds of the biggest area's
+   tests), the same-page check, values and equivalent routes. The usage table has the same
+   blind spot. So C2, `right-steps`' 0.85, the planner checks and the picking's 0.42 all
+   measure the calls only.
+3. **Tests are not mostly helper calls.** Of 20 tests read: helper-led 4, page-led 8, mixed 8.
+   Setup does a large share of the work in 9, and the data entry steers loops or branches in
+   10. The picking prompt said the opposite ("a test is mostly a short sequence of calls, one
+   per step"), and the agreed direction assumed it (the human's Q1 answer included).
+4. **Placement: the file decides the feature, the folder the base class and data, the class
+   is a scaffold variant** (200 files, 471 classes, 65 multi-class files). C1 asks for file
+   and class; the class half may be stricter than the team's own unit.
+5. **Data: building from the nearest entry holds.** Of 32 blocks in 10 entries, 16 are exact
+   copies from the same file, 8 adapted from a same-file neighbour, 4 from another file, 4
+   new, none from a helper. Five of the 15 references have no entry.
+6. **Patterns in `CLAUDE.md`:** of 18 bullets, 6 hold and 12 hold partly; two parts are
+   wrong (import order is almost never alphabetical; "never both `targets` and
+   `interactions`" fails in about 3% of entries).
+7. **Beliefs behind the tool's misses** (Q5): a test is an edit of a template that must carry
+   an entry; only catalog names are allowed; every test must show a check; an "or" in the
+   draft becomes two tests; placement by word overlap with no notion of an existing twin.
+
+Its three checks (Q8): run the tool's validators on the real tests (`check-suite`); re-score
+the kept runs with a corrected helper and data score; count how many tickets already map to
+an existing test through a skip reason.
+
+**Reading.** Method point 5 ("distrust your own measure") applies to the yardstick itself.
+Points 1 and 2 mean the numbers that decided today's direction (the agent at 0.69, the
+picking at 0.42, the planner's misses) were taken on atypical tests with a score that sees
+only calls. They are not thrown away, but no design decision should rest on them until the
+measure is fixed. Next, all free or nearly: (a) `check-suite` on the real suite, masked;
+(b) C2 extended to property writes and re-scored on the kept runs with `golden-rescore`;
+(c) the skip-reason count; (d) with the human, a golden set whose references are typical
+tests, not parked ones.
+
 **The three team questions (2026-11-17): the human's first answers, set aside until the
 mentor has been asked.** Nothing is built on them yet.
 - **Q1: no**, with this meaning: a test made of helper calls, one per step of the scenario
