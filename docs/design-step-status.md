@@ -440,6 +440,26 @@ suite as a whole, but possibly the normal shape of a test for a bug ticket here.
 generated test for a bug should carry that decorator too; the tool doesn't know it. A
 question for the human, not a change.
 
+**What the ticketed skipif means (2026-11-17, the step-truth session; 30 tests with one and
+30 without, 7 folders, seeded random, golden tests excluded).** **No: it is how the team
+switches a test off while a ticket is open, not how it writes a test for a bug.** Of the 235
+tests with a ticketed skipif, 219 gates are always true and 18 depend on the environment;
+none on a version, build or flag. Of 30 sampled: 1 clearly a bug test, 2 possibly, 3 parked
+for a non-bug reason, 24 ordinary feature tests parked behind a bare ticket id. 194 of the
+235 share their ticket with other parked tests (75 distinct tickets: one blocking ticket
+parks many tests). Almost no gate says when it comes off. Only about 12 tests in the whole
+suite cite a ticket as the reason they exist. Its count for the golden set: 11 of 15.
+
+**What that does to the golden set.** For most golden pairs the reference is not "the test
+written for this ticket" but **a feature test the ticket's bug broke, switched off until it
+is fixed**. The comparison still measures something real (the reference exercises the
+behaviour the ticket describes, in the team's way), and every method was measured on the
+same pairs, so comparisons between methods hold. But the absolute numbers mean "how close to
+the existing test this ticket affects", not "how close to the test a person wrote for it",
+and for those tickets the team's own answer might be "this is covered by an existing test,
+re-enable it" (the review's "existing twin"). The mining rule (ticket in a skip reason ->
+that test) pairs tickets with tests they block, not tests made for them.
+
 **Line by line against the step truth (2026-11-17, `.scratch/step_truth_score.py`, free).**
 Every row of the truth, kept or not by the kept outputs. Strict: the same call (or resolved
 to the same member, or judged equivalent). Loose: also a call of the same member name (the
