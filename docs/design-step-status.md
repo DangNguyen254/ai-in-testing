@@ -293,6 +293,34 @@ first place that has it:
   class, 6 have none there (their class has 0 to 2 other tests, or the call is the
   framework's). For those the folder and the framework are the only source.
 
+**Usage table, steps 1 and 2 (2026-11-17).** Plan agreed with the human: (1) a usage table
+in the index, by syntax, no model; (2) a free check of it on the golden set; (3) the picking
+alone, one model call per ticket, scored against the reference's calls, prediction first;
+(4) the picks to the writer and the 15 x 2 run; (5) cold sets, held-out, blind try.
+
+Step 1 built: `index/usage.py` (each test's `self` calls in order as written; a class's or a
+folder's calls counted, with usual position, an example and, when the catalog can type it,
+the defining class; every function and method outside the test files, area helper modules
+included). Built on demand from the index, 15 s on the real suite (6,534 tests, 34,724
+definitions). Not used by the pipeline yet. Tests: `tests/test_usage.py`.
+
+Step 2 (`.scratch/usage_table_check.py`, the reference and the pair's hidden tests left out):
+
+| | Reference calls (of 56) |
+|---|---|
+| In the class's table | 41 (73%) |
+| In the class's or the folder's | 48 (86%) |
+| In the first 10 / 20 / 40 rows (class first, then folder) | 39 (70%) / 43 (77%) / 45 (80%) |
+
+- 40 rows take 5,500 to 9,900 characters (about 2,000 to 3,300 tokens): it fits a prompt.
+- **Correction:** the free check before this one said 59% for the class. It parsed some test
+  chunks with a parser that fails on them and counted those tests as calling nothing; the
+  table's parser handles them. 73% is the right figure.
+- Out of reach of the rows: g07 and g12 (one call each, in neither class nor folder) and the
+  two tickets whose class has no other test (g09, g10: 2 of 2 and 2 of 5 from the folder).
+
+Next is step 3, the first paid step; its prediction is written before it runs.
+
 **The three team questions (2026-11-17): the human's first answers, set aside until the
 mentor has been asked.** Nothing is built on them yet.
 - **Q1: no**, with this meaning: a test made of helper calls, one per step of the scenario
