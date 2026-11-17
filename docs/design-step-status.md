@@ -174,6 +174,34 @@ the right template pinned, so the planner is read apart from placement and like 
 (about a tenth of a run). The 15 x 2 run waits until the plans on these two are near the
 agent's.
 
+**The same two tickets with the right template pinned (2026-11-17, `planner-check-pinned`):
+the place and the memory are not the cause.**
+
+| | g06 | g13 |
+|---|---|---|
+| Planned in the reference's class | yes | yes |
+| Stopped | turn budget, 8 of 8, round 2 used | done, 8 of 8 turns |
+| Lookups; outputs cut; outputs dropped from view | 27; 1; 2 | 26; 5; 3 |
+| Rows | 1 call, 1 check (unknown), 3 seed, 4 gap | 4 call, 2 seed, 2 gap |
+| The reference's calls found | 0 of 4 | 2 of 6 |
+| C2 (`right-template`'s mean for the ticket) | 0.00 (0.25) | 0.67 (0.75) |
+
+- Guess "it forgets what it read": **no.** 2 and 3 outputs of 26 dropped.
+- Guess "the wrong class": **no.** With the right class g06 still finds none.
+- **The plan made g06 worse** (0.25 to 0.00): the writer followed it, gaps included, and
+  left out what the template alone would have given. A thin plan is not neutral.
+- What is left is what the planner can see. Its tools read the index: members by class,
+  chains, outlines. Three of g06's four reference calls are ones the catalog can't resolve,
+  which is exactly where the agent's lead was (above). They are visible in the code of the
+  class's tests and helpers, read as text, and not in a member list. The agent read 6 files
+  whole and found 4 of 4 with 11 lookups; the planner made 27 index lookups and found none.
+
+So the index-tool planner is not the agent that was measured. The measured thing read files.
+Next design decision (not built): the planner's lookups become reads of the repo copy as
+text (a file or a range of it, a text search, a folder listing; read-only, capped, inside the
+copy only, which the agent rules allow), with a view large enough to keep them, and a plan
+that adds to the template's calls instead of replacing them when it has gaps.
+
 **The three team questions (2026-11-17): the human's first answers, set aside until the
 mentor has been asked.** Nothing is built on them yet.
 - **Q1: no**, with this meaning: a test made of helper calls, one per step of the scenario
