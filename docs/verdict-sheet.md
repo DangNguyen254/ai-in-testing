@@ -9,6 +9,35 @@ doesn't drift with what is found.
 Private: the filled sheet stays in the run's folder in `t2t-private`. Only the counts at the
 end come back to this repo.
 
+## One file holds everything (added 2026-11-17)
+
+You don't need this page or any other file while judging. A script builds **one file** next
+to the run's report, in the private folder:
+
+```bash
+podman exec -e T2T_CONFIG=/root/work/t2t-private/company.yaml t2t uv run python .scratch/verdict_file.py /root/work/t2t-private/golden.json /root/work/t2t-private/output/golden/<run folder>/report.json
+```
+
+It writes `<run folder>/verdict.md` and prints counts only. The file has, top to bottom: the
+rules and the choices for every answer line; then for each ticket the ticket's text, the
+draft the tool worked from, where the tool put the test, the new test, its new data entries
+and what the tool said about it, the answer lines A to E and G, the reference test folded
+away (open it only after answering), and line F; and at the very end the three questions for
+the team. Fill the lines after their colons and save.
+
+Already built for the yardstick run: `t2t-private/output/golden/seed-floor-20261112T065503/verdict.md`
+(15 tickets, each with its ticket, draft, output and folded reference).
+
+When it is filled, this gives what comes back to the repo (counts and answer letters only,
+never the free-text line):
+
+```bash
+podman exec -e T2T_CONFIG=/root/work/t2t-private/company.yaml t2t uv run python .scratch/verdict_count.py /root/work/t2t-private/output/golden/<run folder>/verdict.md
+```
+
+The rest of this page is the reasoning behind the file: what is asked, and how the answers
+will be read. The file itself repeats the rules.
+
 ## What to read
 
 Run 1 of each of the 15 tickets of the `seed-floor` run (the yardstick: today's defaults, no
