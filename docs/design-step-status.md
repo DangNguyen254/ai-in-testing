@@ -321,6 +321,24 @@ Step 2 (`.scratch/usage_table_check.py`, the reference and the pair's hidden tes
 
 Next is step 3, the first paid step; its prediction is written before it runs.
 
+**Usage table, step 3: the prediction, written before the run (2026-11-17).** One Haiku API
+call per ticket (`generate/pick.py`, `prompts/pick_v1.md`): the draft's lines and the first
+40 rows of the table (the class's calls, then its folder's), the reference and hidden tests
+left out; the model picks rows per line by label. The class is the reference's (placement
+given), so the fair comparison is `right-template` (placement given there too: C2 0.56), not
+the yardstick's 0.47. Scored by `.scratch/pick_eval.py`, 15 x 2, no test written.
+
+| Measure | Predicted |
+|---|---|
+| Picks' recall of the reference's calls, resolved like C2, mean | 0.65 or more (ceiling about 0.80) |
+| Tickets where the picks beat `right-template`'s C2 (mean of two runs each) | 8 of 15 or more |
+| Tickets where they are worse in both runs | 3 or fewer |
+
+Reading: at 0.65 or more, picking from a counted table works where looking things up didn't,
+and step 4 (the picks to the writer, 15 x 2) follows. Under 0.56, one call doesn't pick well
+from a table either, and the choice goes to the QE (ticking rows, or naming the nearest
+test). In between: read which lines were missed before deciding. Cost: 30 short calls.
+
 **The three team questions (2026-11-17): the human's first answers, set aside until the
 mentor has been asked.** Nothing is built on them yet.
 - **Q1: no**, with this meaning: a test made of helper calls, one per step of the scenario
