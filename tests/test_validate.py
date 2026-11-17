@@ -1231,3 +1231,50 @@ def test_chaining_past_a_non_page_return_and_callbacks_are_allowed(setup: Any) -
     )
     bare = _replace("rules.search()", "rules.search")
     assert any("call it" in m for m in _messages(_validate(setup, code=bare), "page_objects"))
+
+
+def test_an_unconditional_failure_is_a_check(setup: Any) -> None:
+    """Found on a real suite (validator audit, pattern A1): ``assertTrue(False)`` after a loop
+    that gives up is the suite's way to fail; it was reported as "can't fail"."""
+
+    def cant_fail(code: str) -> list[str]:
+        return [
+            f.message for f in _validate(setup, code=code).findings if "can't fail" in f.message
+        ]
+
+    gives_up = _replace(
+        "rules.next_page()\n",
+        "rules.next_page()\n      if not rules.rule_names:\n"
+        "         self.check.assertTrue(False)\n         self.check.assertFalse(True)\n",
+    )
+    assert not cant_fail(gives_up)
+    constant = _replace(
+        "rules.next_page()\n", "rules.next_page()\n      self.check.assertTrue(True)\n"
+    )
+    assert cant_fail(constant)
+
+
+def test_a_wait_helper_outside_the_page_objects_counts_as_a_check(tmp_path: Path) -> None:
+    """Found on a real suite (validator audit, pattern A2): a driver wrapper keeps the wait's
+    condition inside (``wait_for_label`` waits on ``lambda d: label in d.page_source``), so a
+    test that calls it checks something. Only page objects were scanned for such methods."""
+    import ast
+    import shutil
+
+    from ticket2test.validate.datause import Resolver
+
+    repo = tmp_path / "standin"
+    shutil.copytree(STANDIN, repo, ignore=shutil.ignore_patterns("__pycache__"))
+    (repo / "framework" / "driver.py").write_text(
+        "class ExampleDriver:\n"
+        "   def wait_for_label(self, label):\n"
+        "      return self.wait(lambda d: label in d.page_source)\n\n"
+        "   def plain_click(self, label):\n"
+        "      return label\n",
+        encoding="utf-8",
+    )
+    settings = Settings.model_validate({"paths": {"cache_dir": str(tmp_path / "cache")}})
+    index, _, _ = update_index(repo, settings)
+    resolver = Resolver(ast.parse("x = 1"), "tests.x", index, settings.data.access, set())
+    found = resolver.checking_page_methods(tuple(settings.validation.wait_patterns))
+    assert "wait_for_label" in found and "plain_click" not in found

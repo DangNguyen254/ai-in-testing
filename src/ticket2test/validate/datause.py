@@ -251,14 +251,23 @@ class Resolver:
         return False
 
     def checking_page_methods(self, patterns: tuple[str, ...]) -> frozenset[str]:
-        """Names of page-object methods that wait on a condition or raise a failure, directly
-        or through ``self.<method>()`` calls (by name, across page classes)."""
+        """Names of methods that wait on a condition or raise a failure, directly or through
+        ``self.<method>()`` calls (by name, across classes): the page objects' and those of
+        every other class outside the tests (a driver wrapper keeps its condition inside:
+        ``wait_for_label`` waits on ``lambda d: label in d.page_source``)."""
         if self.catalog is None:
             return frozenset()
         direct: set[str] = set()
         calls: dict[str, set[str]] = {}
         probe = WaitChecks(patterns, frozenset())
-        for qualname in self.catalog.page_objects:
+        pages = list(self.catalog.page_objects)
+        page_set = set(pages)
+        others = [
+            q
+            for q, c in self.catalog.classes.items()
+            if not c.name.startswith("Test") and q not in page_set
+        ]
+        for qualname in [*pages, *others]:
             entry = self.catalog.classes.get(qualname)
             if entry is None:
                 continue

@@ -791,6 +791,13 @@ def _cannot_fail(call: ast.Call, fn: ast.FunctionDef, s: Subject) -> bool:
     """The assertion's operands come only from constants and the test's own data entry (or are
     the same expression), so its outcome never depends on the product."""
     method = dotted(call.func).rsplit(".", 1)[-1]
+    if (  # ``assertTrue(False)``: an unconditional failure (after a loop gives up), a real check
+        method in ("assertTrue", "assertFalse")
+        and call.args
+        and isinstance(call.args[0], ast.Constant)
+        and bool(call.args[0].value) == (method == "assertFalse")
+    ):
+        return False
     args = list(call.args[: 1 if method in _ONE_ARG else 2])
     if len(args) < (1 if method in _ONE_ARG else 2):
         return False
