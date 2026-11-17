@@ -33,6 +33,7 @@ from ticket2test.generate.patch import (
     validate_patch,
     variant_patch,
 )
+from ticket2test.generate.planner import make_plan, plan_context, unmade
 from ticket2test.generate.reuse import ReuseDecision, decide
 from ticket2test.guides.context import area_guide_text
 from ticket2test.index.indexer import IndexData
@@ -41,6 +42,7 @@ from ticket2test.llm.structured import StructuredOutputError
 from ticket2test.models.draft import TestCaseDraft
 from ticket2test.models.gaps import GapVerdict, MissingPiece
 from ticket2test.models.generated import GeneratedTest, ReuseKind
+from ticket2test.models.plan import Plan
 from ticket2test.models.proposal import Proposal
 from ticket2test.models.retrieval import RetrievalResult
 from ticket2test.proposals import propose_gaps, use_kind
@@ -65,6 +67,8 @@ class ReuseOutcome:
     proposals: list[Proposal] = field(default_factory=list)  # agent 2 patches (opt-in)
     uses_proposals: list[Proposal] = field(default_factory=list)  # the final test uses these
     first_generated: GeneratedTest | None = None  # the test before regenerating, if replaced
+    plan: Plan | None = None  # the planning step's plan (generate.planner), when it ran
+    plan_unmade: list[str] = field(default_factory=list)  # planned members the test lacks
 
 
 def _check_coverage(
@@ -167,6 +171,12 @@ def _generate_reusing(
             outcome.notes.append(f"variant not possible: {exc}; trying a new method")
             kind = "method"
 
+    if settings.generate.planner.enabled and kind in ("method", "module"):
+        outcome.plan = _plan(outcome, draft, decision, kind, retrieval, index, settings, client)
+        text = plan_context(outcome.plan, draft) if outcome.plan is not None else ""
+        if text:
+            conventions = f"{conventions}\n\n{text}" if conventions else text
+
     if kind == "method":
         method = _method_target(decision)
         if method is None:
@@ -242,6 +252,12 @@ def generate_reusing(
     outcome = _generate_reusing(
         draft, retrieval, index, settings, client, provider, model, repo_root, conventions, mode
     )
+    if outcome.plan is not None and outcome.generated is not None:
+        outcome.plan_unmade = unmade(outcome.plan, outcome.generated)
+        if outcome.plan_unmade:  # where the reviewer looks: the plan said so, the test doesn't
+            lines = [f"Planned, but not in the test: `{m}`" for m in outcome.plan_unmade]
+            checklist = [*outcome.generated.review_checklist, *lines]
+            outcome.generated = outcome.generated.model_copy(update={"review_checklist": checklist})
     pieces = from_generated(outcome.generated, index, settings) if outcome.generated else []
     seen = {(p.owner, p.name) for p in pieces}
     pieces += [p for p in outcome.attempt_pieces if (p.owner, p.name) not in seen]
@@ -443,6 +459,45 @@ def placement(decision: ReuseDecision) -> dict[str, Any]:
             else None
         ),
     }
+
+
+def _plan(
+    outcome: ReuseOutcome,
+    draft: TestCaseDraft,
+    decision: ReuseDecision,
+    kind: ReuseKind,
+    retrieval: RetrievalResult,
+    index: IndexData,
+    settings: Settings,
+    client: LLMClient,
+) -> Plan | None:
+    """The planning step, for the class the test goes into (a method) or is built like (a new
+    module). A plan that can't be made is a note, never a failed run: the test is then written
+    as without the planner."""
+    from ticket2test.generate.generator import GenerationError, _template
+
+    try:
+        template = _template(retrieval, {c.id: c for c in index.chunks})[0]
+    except GenerationError:
+        template = None
+    method = _method_target(decision) if kind == "method" else None
+    class_name = (
+        method[0]
+        if method is not None
+        else decision.target
+        if decision.kind == "module" and decision.target
+        else (template.class_name if template is not None else None)
+    )
+    if not class_name:
+        outcome.notes.append("planner: no class to plan in")
+        return None
+    try:
+        plan = make_plan(draft, template, class_name, index, settings, client)
+    except (LLMError, StructuredOutputError) as exc:
+        outcome.notes.append(f"planner failed: {type(exc).__name__}")
+        return None
+    outcome.notes.append(f"plan: {plan.summary()}")
+    return plan
 
 
 def _method_target(decision: ReuseDecision) -> tuple[str, str] | None:

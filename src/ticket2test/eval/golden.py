@@ -236,6 +236,7 @@ def run_golden(
                     + (f" ({result.error[:120]})" if result.error else "")
                     + (f", template pinned: {capture['pinned']}" if "pinned" in capture else "")
                     + (f", calls given: {len(steps)}" if steps is not None else "")
+                    + (f", plan: {result.plan}" if result.plan else "")
                 )
                 kept = stage / pair.id
                 if kept.exists():  # _one writes <stage>/<pair id>: move it to the run's folder
@@ -403,6 +404,7 @@ def config_snapshot(settings: Settings) -> dict[str, Any]:
         "generate.reuse.glossary_class_wins": g.reuse.glossary_class_wins,
         "generate.context_helpers": g.context_helpers,
         "generate.seed_floor": g.seed_floor,
+        "generate.planner.enabled": g.planner.enabled,
         "generate.context_entry_list": g.context_entry_list,
         "generate.base_entry_from_class": g.base_entry_from_class,
         "repair.max_attempts": settings.repair.max_attempts,

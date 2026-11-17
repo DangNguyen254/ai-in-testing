@@ -42,6 +42,7 @@ LLMStep = Literal[
     "guide",
     "propose",
     "coverage",
+    "plan",
 ]
 
 
@@ -402,6 +403,19 @@ class ReuseSettings(_Section):
     glossary_class_wins: bool = False
 
 
+class PlannerSettings(_Section):
+    """The planning step (generate/planner.py): a bounded agent that chooses, by read-only
+    lookups over the index, the member for each draft line, before the test is written. Its
+    tools and their output caps are the investigator's (``retrieval.investigator``)."""
+
+    enabled: bool = False
+    prompt: str = "planner_v1"
+    max_turns: int = Field(default=8, ge=1, le=20)  # LLM turns, over all rounds
+    fix_turns: int = Field(default=2, ge=1, le=6)  # a later round's share of them
+    max_rounds: int = Field(default=2, ge=1, le=4)  # the plan checked and sent back
+    max_actions_per_turn: int = Field(default=4, ge=1, le=6)
+
+
 class GenerateSettings(_Section):
     prompt_version: str = "generate_v6"
     # Switches for the design step's ablations (docs/design-step-plan.md); all on in baseline-0.
@@ -411,6 +425,7 @@ class GenerateSettings(_Section):
     # Code puts back every seed section of the base entry a new entry lacks (the framework
     # applies them, so they are never unread). On since the seed-floor run (2026-11-12).
     seed_floor: bool = True
+    planner: PlannerSettings = PlannerSettings()
     # Team conventions for tests (Markdown). Always placed in the context when set.
     conventions_doc: Path | None = None
     # Always on the reviewer checklist: things only a real run can confirm.

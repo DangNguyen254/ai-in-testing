@@ -71,6 +71,10 @@ class GenerationPairResult(BaseModel):
     gaps_found: list[str] = Field(default_factory=list)  # reported gaps matching the expected
     expectation_met: bool | None = None  # gap, insufficient-info and out-of-scope pairs only
     guide: str = ""  # the area guide in the context ("" when none)
+    # The planning step, counts only: how it stopped, turns, rounds, rows by kind ("" = off).
+    plan: str = ""
+    plan_near_cap: bool = False
+    plan_unmade: int = 0  # planned calls and checks the test doesn't make
     missing: list[str] = Field(default_factory=list)  # "<status> <owner>.<name>" per candidate
     proposals: list[str] = Field(default_factory=list)  # "<ok|rejected> <Owner>.<member>"
     fixed_in_code: str = ""  # fixes made in code instead of an LLM retry (from notes)
@@ -461,6 +465,9 @@ def _one(
     result.reuse_kind, result.decided = outcome.kind, outcome.decision.kind
     result.reuse_target, result.reuse_notes = outcome.decision.target, list(outcome.notes)
     result.guide = outcome.guide
+    if outcome.plan is not None:
+        result.plan, result.plan_near_cap = outcome.plan.summary(), outcome.plan.near_cap
+        result.plan_unmade = len(outcome.plan_unmade)
     result.gaps_found = _matching_gaps(pair, outcome.missing, used_index)
     result.missing = [
         f"{v.status} {v.piece.owner + '.' if v.piece.owner else ''}{v.piece.name}"
@@ -516,6 +523,10 @@ def _one(
         capture["generated"], capture["index"] = generated, used_index
     if keep_dir is not None:
         _keep(keep_dir / pair.id, generated, settings)
+        if outcome.plan is not None:  # the plan the writer was given, for review
+            (keep_dir / pair.id / "plan.json").write_text(
+                outcome.plan.model_dump_json(indent=2), encoding="utf-8"
+            )
         if outcome.proposals:  # agent 2's patches, for review
             (keep_dir / pair.id / "proposals.json").write_text(
                 json.dumps([p.model_dump(mode="json") for p in outcome.proposals], indent=2),

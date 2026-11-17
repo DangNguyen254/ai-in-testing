@@ -178,6 +178,13 @@ generate:
   context_entry_list: true
   base_entry_from_class: true
   seed_floor: true                # code keeps the base's seed sections in new entries
+  planner:                        # bounded agent 5: chooses the members by lookup, before writing
+    enabled: false
+    prompt: planner_v1
+    max_turns: 8                  # LLM turns, over all rounds
+    fix_turns: 2                  # a later round's share of them
+    max_rounds: 2                 # the plan checked by code and sent back
+    max_actions_per_turn: 4
   conventions_doc: null          # e.g. standin/CONVENTIONS.md; always included when set
   review_checklist_defaults:      # always on the reviewer checklist ("needs a real run")
     - Expected backend responses are not from a real capture; confirm them in a real run.
