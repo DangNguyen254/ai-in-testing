@@ -192,6 +192,10 @@ hard constraint, a new dependency, a push.
 
 ## 9. Open questions
 
+Answered 2026-11-17 (the status doc, "Phase B"): a new area's helper is written first and
+proposed by the tool, in the test's class, without changing an existing helper or any other
+test's behaviour; seed data with no source is a flagged guess.
+
 - Whether "another route with the same effect" passes review (the verdict sheet).
 - Why two to four runs of thirty fail to generate (the code doesn't parse); needs one
   `--debug-log` run and a masked look.

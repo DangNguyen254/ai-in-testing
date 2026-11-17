@@ -136,6 +136,25 @@ and `plan_unmade`; the golden log prints the first; the plan itself is kept as `
 next to the generated test. A planner that fails is a note and the test is written as
 without it. Tests: `tests/test_planner.py` (fake model, stand-in).
 
+**The three team questions, answered by the human (2026-11-17, provisional until the mentor
+has seen them).** They set what the planner does when an area has no helper layer or no data:
+- **Q1: no.** A first test that calls the page objects step by step is not acceptable: the
+  helper is written first, in the team's style.
+- **Q2: propose.** The tool writes the missing helper as a separate patch next to the test.
+  Where it goes: in the test's own class (or its area's test-side base), never in the
+  framework. **An existing helper is not changed.** If a new test needs a helper to behave
+  differently, the tool adds a new one beside it; a change to a helper another test already
+  calls is the last resort and must leave those tests' behaviour as it was. The picture: one
+  person committed the helper and test A, another writes test B in the same class; B must not
+  disturb A.
+- **Q3: guess, flagged.** With no entry to copy, seed sections are filled with a best guess
+  and flagged for review, not left as marked gaps.
+- What follows for the design: a `gap` row on a step that has page members but no helper
+  becomes the input of a helper proposal (agent 2, which today proposes single members and
+  may only add code); the two things to judge every output by are the team's and codebase's
+  style, and that adding the test changes nothing for the tests already there. Both belong
+  to the no-template slice, not the first one.
+
 **Cost.** Developed on the stand-in with the fake model, free. The first paid golden run is
 asked for when the stand-in checks pass; about two to three times a plain run.
 
