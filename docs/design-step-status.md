@@ -428,6 +428,33 @@ loss that remains is in two places: the right class (placement, C1 60%) and the 
 steps. With the measure corrected, the yardstick is 0.62 and the right template 0.67, so
 placement is worth about 0.05 and the specific steps the rest of the way to 1.0.
 
+**Line by line against the step truth (2026-11-17, `.scratch/step_truth_score.py`, free).**
+Every row of the truth, kept or not by the kept outputs. Strict: the same call (or resolved
+to the same member, or judged equivalent). Loose: also a call of the same member name (the
+truth often writes calls through a local, checks through the assertion object). Setup counts
+as kept when the output is in the reference's class or names the setup member (lenient).
+"Inside a helper" rows are not scored. Loose figures, strict in brackets:
+
+| Rows | Yardstick | Right template | Right calls given |
+|---|---|---|---|
+| **Asked by a draft line** | **65%** (56) | 67% (59) | 75% (64) |
+| ...setup / data | 96% / 75% | 100% / 83% | 100% / 87% |
+| ...calls / writes | 58% / 56% | 59% / 40% | 71% / 63% |
+| ...checks | **34%** (29) | 34% | 41% |
+| **Routine for the class, no line asks** | **81%** (80) | 86% | 87% |
+| ...setup / data / calls | 91% / 50% / 5 of 10 | 97% / 48% / 4 of 6 | 97% / 57% / 4 of 6 |
+| **Specific, no line asks** | **35%** | 34% | 54% |
+| ...calls / data | 1 of 24 / 7 of 32 | 0 of 23 / 6 of 30 | 8 of 24 / 13 of 32 |
+
+**Reading.** The tool keeps the class's routine (81%, its setup 91%); the right template adds
+little to it (86%). The loss is in the specific part: the checks a draft line asks for (34%),
+the calls a line asks for (58%), and what the reference does specifically for this test that
+no line names (1 of 24 calls, 7 of 32 data blocks). That decides step 2 of the plan: **2b,
+help the writer with the lines the template doesn't already do, keep the template's routine**,
+not 2a (placement). The checks stand out: given the reference's calls, they rise only to 41%,
+because the given calls leave out the assertion object's calls, and what a check asserts is a
+value, not a member.
+
 **Validator audit (2026-11-17, `docs/validator-audit-prompt.md`; private report
 `t2t-private/output/validator-audit.{json,md}`).** 10 errors sampled per check (91 in all),
 each opened in the suite:
