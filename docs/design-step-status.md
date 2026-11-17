@@ -395,7 +395,8 @@ the ticket, a neighbour or a registry); a review packet. Compared with ours:
 step-level truth.** Three things read together.
 
 1. **Property writes barely matter to the score** (`c2w_recall`, re-scored on the kept runs):
-   yardstick 0.47 -> 0.46, `right-template` 0.56 -> 0.54, `right-steps` 0.85 -> 0.80. The step
+   yardstick 0.47 -> 0.46, `right-template` 0.56 -> 0.54, `right-steps` 0.85 -> 0.80,
+   `cold-class` 0.38 -> 0.38, `cold-area` 0.00 -> 0.00. The step
    truth agrees: 8 of 334 rows for draft lines are writes. The review's "C2 is blind to writes"
    is true and small here.
 2. **Equivalent routes do matter** (`docs/equivalence-prompt.md`, 245 judged items, 164 by
