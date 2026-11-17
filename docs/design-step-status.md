@@ -391,6 +391,43 @@ the ticket, a neighbour or a registry); a review packet. Compared with ours:
   nearest sibling changing only what the test's own steps set, and count exact reproductions
   (70% or more: code-only; under 40%: ask the ticket author for a sample response).
 
+**The measure corrected (2026-11-17): equivalent routes judged, writes counted, and the
+step-level truth.** Three things read together.
+
+1. **Property writes barely matter to the score** (`c2w_recall`, re-scored on the kept runs):
+   yardstick 0.47 -> 0.46, `right-template` 0.56 -> 0.54, `right-steps` 0.85 -> 0.80. The step
+   truth agrees: 8 of 334 rows for draft lines are writes. The review's "C2 is blind to writes"
+   is true and small here.
+2. **Equivalent routes do matter** (`docs/equivalence-prompt.md`, 245 judged items, 164 by
+   reading a body; `.scratch/equivalence_rescore.py`):
+
+   | | Missed: equivalent / weaker / absent / unsure | Extra: needed / harmless / wrong | C2 -> with equivalents |
+   |---|---|---|---|
+   | yardstick (`seed-floor`) | 10 / 10 / 14 / 3 | 43 / 3 / 5 | **0.47 -> 0.62** (6 -> 9 runs at 1.0) |
+   | `right-template` | 9 / 9 / 13 / 1 | 31 / 4 / 1 | **0.56 -> 0.67** |
+   | picking (step 3) | 1 / 9 / 21 / 1 | 23 / 7 / 27 | about 0.42 -> 0.43 |
+
+   About a quarter of the tool's "misses" are another acceptable route; most of its extra calls
+   are needed. The picking's misses are real (1 equivalent of 32) and it adds 27 wrong calls:
+   step 3's failure stands, and is worse than it looked.
+3. **What a reference test is made of, line by line** (`docs/step-truth-prompt.md`, 119 draft
+   lines of the 15 tickets, rows per line): call 77, write 8, setup 45, data 59, check 41,
+   inside a helper 72, **none 32**. And **144 rows the reference does that no draft line asks
+   for: 103 routine for the class, 41 specific.**
+   - 32 of 119 draft lines (27%) are not done by the reference at all.
+   - Most of a line's work is in setup, the data entry or inside a helper, not in a call in
+     the test body (126 body rows of 334).
+   - The reference's unasked rows outnumber the rows for draft lines that are calls, writes
+     or checks (144 against 126), and 103 of them are the class's routine.
+
+**Reading.** A test here is the class's routine (setup, data, routine calls, most of which no
+ticket line asks for) plus a few specific steps the ticket drives. That is why adapting the
+right template beats every method that builds the test from the draft's lines: the template
+carries the routine; per-line choice cannot, because the routine is not in the lines. The
+loss that remains is in two places: the right class (placement, C1 60%) and the few specific
+steps. With the measure corrected, the yardstick is 0.62 and the right template 0.67, so
+placement is worth about 0.05 and the specific steps the rest of the way to 1.0.
+
 **Validator audit (2026-11-17, `docs/validator-audit-prompt.md`; private report
 `t2t-private/output/validator-audit.{json,md}`).** 10 errors sampled per check (91 in all),
 each opened in the suite:
