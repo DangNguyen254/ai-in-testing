@@ -143,9 +143,14 @@ mentor has been asked.** Nothing is built on them yet.
   wanted. What is not acceptable is a test that spells out line by line how a page is opened
   or how to browse. So for a new area the helper comes first, in the team's style.
 - **Q2: propose.** The tool writes the missing helper as a separate patch, in the test's own
-  class, never in the framework. On changing an existing helper, my summary ("never changed,
-  a new one is added beside it") was **not what the human meant**; the intent stated is that
-  adding test B must not harm or disturb test A or the helper it uses. The exact rule is open.
+  class, never in the framework. **When a helper close to what is needed already exists, the
+  tool proposes a change to it that keeps the existing tests working** (the human's example:
+  a new argument with a default, and a branch on it), not a near-copy beside it. Adding
+  test B must not break or disturb test A. This widens agent 2, which today may only add
+  code: the rule in `CLAUDE.md` ("may add new code, never change existing framework code")
+  already allows it for test-side helpers, since they are not framework code, but the
+  proposal check has to learn "an existing caller still gets the old behaviour" (every
+  existing call stays valid: new parameters have defaults, the default path is unchanged).
 - **Q3: guess, flagged**, and a guess must be a value that really exists in the suite, never
   an invented one.
 
