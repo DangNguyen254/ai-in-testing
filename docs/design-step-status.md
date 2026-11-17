@@ -523,6 +523,19 @@ page_locators.
   Correction to the audit: data_keys is tool gap 3 and real defect 4 (not 4 and 3).
 - **The 5 settings applied by the human; `check-suite` again:** clean files 60 -> 64 of 171,
   errors 1,459 -> 1,342 (data_keys 533 -> 447, data_shape 49 -> 20; the rest unchanged).
+- **Tool gaps fixed on the stand-in, one test each (N1 with the real suite's namespace shape,
+  P1, P2, A1, A2, I3, B1, B2, L1); `check-suite` after them:**
+
+  | | Calibration end (Oct) | 5 settings | 8 patterns | N1 namespace shape |
+  |---|---|---|---|---|
+  | Clean files (of 171) | 58 | 64 | 96 | **105 (61%)** |
+  | Errors | 1,409 | 1,342 | 918 | **858** |
+  | assertions / names | 418 / 110 | 422 / 82 | 31 / 82 | 31 / 22 |
+  | page_objects / base_class | 24 / 10 | 24 / 10 | 4 / 1 | 4 / 1 |
+
+  What is left is mostly data_keys (447 in 40 files) and ids (333 in 24), where the audit
+  found real defects and the remaining patterns (I1, I2, D1, D2; N2 is 2 lines). Not fixed:
+  they are small or rare by the audit's counts.
 - Next: the settings in the private config (done, above); the tool gaps described as general patterns with invented names, so they
   can be built into the stand-in and the validators fixed there (a follow-up prompt).
 
