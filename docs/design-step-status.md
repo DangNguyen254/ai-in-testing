@@ -17,7 +17,7 @@ after the right-template result).
   | `seed-floor` (warm) | the reference | 0.47 | 0.77 | 30/30 |
   | `right-template` (diagnostic) | the reference; right template given | 0.56 | 0.75 | 27/27 |
   | `cold-class` | and the class's other tests | 0.38 | 0.65 | 26/26 |
-  | `cold-area` | and every test file of the folder | 0.00 | 0.50 | 27/30 |
+  | `cold-area` | and every test file of the folder | 0.00 (see 2026-11-17: about half of the reference's calls can't be reached there) | 0.50 | 27/30 |
   | `right-steps` (diagnostic) | the reference; right template and the reference's calls given | 0.85 | 0.83 | 28/28 |
 
 - **Where the loss is, from today's free checks and Haiku's audit:**
@@ -39,6 +39,9 @@ after the right-template result).
   30 runs (the tool adapts another area's test). `right-steps`: with the reference's calls
   given, helper recall goes from 0.56 to 0.85, so the writer is not the limit; the choice of
   members is. Both were read against predictions written before the runs.
+- **Agent upper bound, no template (2026-11-17):** the agent makes 6 of the 12 reachable
+  reference calls on six tickets, the tool 1 of 24; three of six tickets above 0 (predicted
+  four). The first scoring (0.08) could not see a new class's calls; corrected below.
 - **Then (Phase A, nothing here tunes the tool):** the human's verdict on 15 outputs
   (`docs/verdict-sheet.md`); the agent upper bound on about five tickets
   (`docs/agent-upper-bound-prompt.md`). **Phase B:** one design direction, with its predicted
@@ -59,6 +62,54 @@ after the right-template result).
   **Removed:** `kind_as_preference`, `class_from_retrieval`, `dataless_hit_class`.
 - The container's memory limit is 8 GiB since today; one golden run uses up to 4.9 GiB, so
   runs go one at a time. Pushed on 2026-11-13; today's commits are local until the next OK.
+
+## The agent upper bound, no template (2026-11-17): half of what can be reached, where the tool makes almost none
+
+Six sessions on Haiku (a04 a05 a06 a10 a13 a15), one ticket each, 30 lookups allowed, the
+place given, every test file of the reference's folder removed
+(`docs/agent-upper-bound-prompt.md`). Scored first with `.scratch/score_agent.py`: helper
+recall 0.08, data recall 0.40.
+
+**That first reading was wrong, and so is part of `cold-area`'s.** C2 resolves the new test's
+calls through its class. A class written new is not in the index, so nothing resolves and the
+recall is 0 whatever the test calls. And most of what the reference calls is not in the copy
+at all: its own class's helpers went with the folder. `.scratch/agent_pages.py` (checked on
+the stand-in: a new class repeating the reference scores 8 of 8) resolves a new class through
+the base it is written with, replaces the reference's own helpers by what they call, and
+counts what is reachable in the copy:
+
+| Pair | Reference calls, opened up | Reachable in the copy | Agent makes | Tool makes (2 runs) | Classes shared, agent | Classes shared, tool |
+|---|---|---|---|---|---|---|
+| a04 | 5 | 4 | 1 | 0, 0 | 1 of 2 | 1, 1 |
+| a05 | 4 | 2 | 2 | 0, 0 | 2 of 2 | 0, 0 |
+| a06 | 4 | 1 | 0 (no call at all; 2 gaps named) | 0, 0 | 0 of 1 | 0, 0 |
+| a10 | 3 | 1 | 0 (no test function parsed; 2 gaps named) | 1, 0 | 0 of 1 | 1, 0 |
+| a13 | 6 | 4 | 3 | 0, 0 | 2 of 2 | 1, 0 |
+| a15 | 0 | 0 | nothing to measure (3 gaps named) | nothing to measure | | |
+| all | 22 | 12 | **6 of 12** | **1 of 24** | 5 of 8 | 4 of 16 |
+
+Data blocks (C3, unchanged measure): agent 0.40, the tool 0.64 on the same six.
+
+Against the prediction (written 2026-11-16): helper recall above 0 on at least four of six:
+**not met as written, three of six** (three of the five where anything is reachable). Data
+not better than the tool's: **met**.
+
+The reading:
+- With lookups, the same model lands on the feature's own classes on three tickets and makes
+  half of the reachable calls. The one-shot tool, adapting another area's test, makes 1 of 24.
+  That is the difference the direction counts on, on a small sample (12 calls, one session
+  each): a sign, not a result.
+- **The no-template yardstick measures little.** Only 12 of 22 calls are reachable, and a15
+  has none. `cold-area`'s "0.00 on all 30 runs" stays true of the tool (it writes in another
+  folder, where its calls do resolve), but half of that zero could not have been anything
+  else. With no template, code can count the reachable calls and the classes; whether the
+  test is a good one needs a person (columns E and G of the verdict sheet on these outputs).
+- Two of six outputs name gaps and write no usable test (a06, a10). By the direction's own
+  rule a gap is a valid output, but code can't tell an honest gap from giving up.
+- The data side is worse than the tool's, as predicted: there is no entry to copy.
+
+Next: the same prompt with neighbours (the six `g` ids), where every reference call is
+reachable and C2 means what it says; and a person's look at two of these six outputs.
 
 ## `cold-area` measured (2026-11-16): with the folder's tests gone, the tool adapts a test of another area
 
