@@ -462,8 +462,9 @@ def build_catalog(
 
 def injected_attributes(code: str) -> set[str]:
     """Attributes a function adds to a class it is given: keywords of ``dict(vars(cls), ...)``,
-    ``setattr(cls, "name", ...)`` with a literal name, and ``cls.name = ...`` on a parameter of
-    the function or a function inside it (``self`` aside). Read from its code, not run."""
+    keys of the namespace it hands to ``type(name, bases, ns)`` (``ns["name"] = ...``, or a dict
+    literal), ``setattr(cls, "name", ...)`` with a literal name, and ``cls.name = ...`` on a
+    parameter of the function or a function inside it (``self`` aside). Read from its code."""
     try:
         tree = ast.parse(textwrap.dedent(code))
     except SyntaxError:
@@ -475,7 +476,37 @@ def injected_attributes(code: str) -> set[str]:
         for a in [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
     } - {"self"}
     found: set[str] = set()
+    # The namespace handed to ``type(name, bases, ns)``: its literal keys and ``ns["k"] = ...``.
+    namespaces = {
+        node.args[2].id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "type"
+        and len(node.args) == 3
+        and isinstance(node.args[2], ast.Name)
+    }
     for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if (
+                    isinstance(target, ast.Subscript)
+                    and isinstance(target.value, ast.Name)
+                    and target.value.id in namespaces
+                    and isinstance(target.slice, ast.Constant)
+                    and isinstance(target.slice.value, str)
+                ):
+                    found.add(target.slice.value)
+                elif (
+                    isinstance(target, ast.Name)
+                    and target.id in namespaces
+                    and isinstance(node.value, ast.Dict)
+                ):
+                    found |= {
+                        k.value
+                        for k in node.value.keys
+                        if isinstance(k, ast.Constant) and isinstance(k.value, str)
+                    }
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
             if node.func.id == "dict" and any(
                 isinstance(a, ast.Call) and isinstance(a.func, ast.Name) and a.func.id == "vars"

@@ -1168,6 +1168,13 @@ def test_attributes_a_class_decorator_injects_are_members(
 """
     assert injected_attributes(decorator) == {"run_mode", "mode_count", "first_mode"}
     assert injected_attributes("def plain(x):\n   return x\n") == set()
+    by_namespace = (
+        "def variants(cls):\n   ns = dict(vars(cls))\n   ns['run_mode'] = 'fast'\n"
+        "   ns['skip'] = 1\n   return type(cls.__name__ + 'Fast', (cls,), ns)\n"
+    )
+    assert injected_attributes(by_namespace) == {"run_mode", "skip"}
+    literal = "def variants(cls):\n   ns = {'run_mode': 'slow'}\n   return type('X', (cls,), ns)\n"
+    assert injected_attributes(literal) == {"run_mode"}
 
     users = """from framework.base_test import BaseTest
 from framework.modes import in_modes
