@@ -123,6 +123,7 @@ class ChainUse:
     status: ChainStatus = "ok"
     message: str = ""
     missing_owner: str | None = None  # status "missing": the class that lacks the member
+    argument: bool = False  # the chain is a call's argument: ``on_done=panel.confirm``
 
     @property
     def text(self) -> str:
@@ -299,6 +300,7 @@ def function_chains(
         else:
             status, steps, message, last_type = resolver.resolve(root, raw, start)
         use = ChainUse(root, steps, node.lineno, store, status, message)
+        use.argument = _is_argument(node)
         if status == "missing":
             use.missing_owner, last_type = last_type, None
         if collect:
@@ -313,6 +315,14 @@ def function_chains(
     def _is_called(node: ast.Attribute) -> bool:
         parent = parents.get(id(node))
         return isinstance(parent, ast.Call) and parent.func is node
+
+    def _is_argument(node: ast.Attribute) -> bool:
+        """Given to a call as an argument (a callback), not called and not a statement."""
+        parent = parents.get(id(node))
+        if isinstance(parent, ast.keyword):
+            parent = parents.get(id(parent))
+            return isinstance(parent, ast.Call)
+        return isinstance(parent, ast.Call) and parent.func is not node
 
     for statement in fn.body:
         visit(statement)

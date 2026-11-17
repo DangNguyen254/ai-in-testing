@@ -583,7 +583,12 @@ def check_chains(s: Subject) -> Iterator[Finding]:
                         test=function,
                         line=use.line,
                     )
-                elif step.kind == "method" and not step.called and not (last and use.store):
+                elif (
+                    step.kind == "method"
+                    and not step.called
+                    and not (last and use.store)
+                    and not (last and use.argument)  # a callback: ``on_done=panel.confirm``
+                ):
                     yield _f(
                         "page_objects",
                         f"{step.name} is an action method: call it ({use.text})",
@@ -597,7 +602,17 @@ def check_chains(s: Subject) -> Iterator[Finding]:
                         test=function,
                         line=use.line,
                     )
-                if step.called and not last and step.owner in page_objects:
+                if (
+                    step.called
+                    and not last
+                    and step.owner in page_objects
+                    # what it returns is a page (a class of the catalog), or the next step is one
+                    # of the same page's members; else it is an element or text (``.split()``)
+                    and (
+                        use.steps[index + 1].kind is not None
+                        or s.catalog.member(step.owner, use.steps[index + 1].name) is not None
+                    )
+                ):
                     yield _f(
                         "page_objects",
                         f"no chaining: keep the page in a variable and call {step.name}() "

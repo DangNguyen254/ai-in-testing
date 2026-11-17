@@ -1206,3 +1206,28 @@ class TestItemsMode(BaseTest):
     with_it = _validate((settings, patched, fp), code=code)
     assert any("run_mode" in f.message for f in without.findings)
     assert not any("run_mode" in f.message for f in with_it.findings)
+
+
+def test_chaining_past_a_non_page_return_and_callbacks_are_allowed(setup: Any) -> None:
+    """Found on a real suite (validator audit, patterns P1 and P2): a page method that returns
+    an element or text may be chained on (``page.get_header().split(",")``), and a page method
+    given to a call as a callback (``on_done=panel.confirm``) is not an uncalled action. A
+    chain from page to page and a bare, uncalled action stay errors."""
+    past_text = _replace(
+        "rules.next_page()\n", 'rules.next_page()\n      label = rules.open_rule("x").strip()\n'
+    )
+    callback = _replace("rules.next_page()\n", "rules.next_page()\n      callable(rules.search)\n")
+    keyword = _replace(
+        "rules.next_page()\n", "rules.next_page()\n      dict(on_done=rules.search)\n"
+    )
+    for code in (past_text, callback, keyword):
+        assert not _messages(_validate(setup, code=code), "page_objects"), code
+    page_to_page = _replace(
+        "rules = self.nav.rules.list\n      rules.open()",
+        "rules = self.nav.rules.list\n      self.nav.rules.list.open().search()",
+    )
+    assert any(
+        "no chaining" in m for m in _messages(_validate(setup, code=page_to_page), "page_objects")
+    )
+    bare = _replace("rules.search()", "rules.search")
+    assert any("call it" in m for m in _messages(_validate(setup, code=bare), "page_objects"))
