@@ -43,6 +43,7 @@ LLMStep = Literal[
     "propose",
     "coverage",
     "plan",
+    "pick",
 ]
 
 
@@ -420,6 +421,13 @@ class PlannerSettings(_Section):
     max_transcript_chars: int = Field(default=120000, ge=2000)  # older output is dropped
 
 
+class PickSettings(_Section):
+    """Picking members from the usage table (generate/pick.py): one call, rows by label."""
+
+    prompt: str = "pick_v1"
+    max_rows: int = Field(default=40, ge=5, le=200)  # rows of the table shown
+
+
 class GenerateSettings(_Section):
     prompt_version: str = "generate_v6"
     # Switches for the design step's ablations (docs/design-step-plan.md); all on in baseline-0.
@@ -430,6 +438,7 @@ class GenerateSettings(_Section):
     # applies them, so they are never unread). On since the seed-floor run (2026-11-12).
     seed_floor: bool = True
     planner: PlannerSettings = PlannerSettings()
+    pick: PickSettings = PickSettings()
     # Team conventions for tests (Markdown). Always placed in the context when set.
     conventions_doc: Path | None = None
     # Always on the reviewer checklist: things only a real run can confirm.

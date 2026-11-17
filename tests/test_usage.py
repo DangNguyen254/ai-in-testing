@@ -90,3 +90,34 @@ def test_the_frameworks_definitions_cover_what_no_test_calls(
     assert any(d.file_path.startswith("tests/") and d.owner for d in table.definitions)
     called = {c.removesuffix("()").rpartition(".")[2] for s in table.sequences.values() for c in s}
     assert any(d.owner and d.name not in called for d in table.definitions)
+
+
+def test_picks_are_taken_by_label_and_unknown_labels_dropped(
+    built: tuple[IndexData, Settings],
+) -> None:
+    import json
+
+    from tests.test_generate import _draft
+    from ticket2test.generate.pick import pick_rows, table_rows
+    from ticket2test.llm import FakeLLMClient
+
+    index, settings = built
+    rows = table_rows(index, settings, FILE, "TestRules", exclude={DELETE})
+    labels = {u.call: f"U{n}" for n, u in enumerate(rows, 1)}
+    reply = {
+        "picks": [
+            {"line": "S2", "rows": [labels["nav.rules.list.delete_selected"], "U999"]},
+            {"line": "e", "rows": [labels["verify_targets"]]},
+            {"line": "S9", "rows": ["U1"]},
+        ]
+    }
+    fake = FakeLLMClient([json.dumps(reply)])
+    picked, dropped, calls = pick_rows(_draft(), rows, "TestRules", settings, fake)
+    assert picked == {"S2": ["nav.rules.list.delete_selected"], "E": ["verify_targets"]}
+    assert (dropped, calls) == (2, 1)  # U999 not shown, S9 not a draft line
+    asked = fake.requests[0].messages[1].content
+    assert "S2. Delete and confirm" in asked and "U1: `self." in asked
+    assert rows[0].call in {
+        u.call
+        for u in usage_table(index, settings).scope(index, file_path=FILE, class_name="TestRules")
+    }
