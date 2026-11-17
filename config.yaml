@@ -180,11 +180,15 @@ generate:
   seed_floor: true                # code keeps the base's seed sections in new entries
   planner:                        # bounded agent 5: chooses the members by lookup, before writing
     enabled: false
-    prompt: planner_v1
+    prompt: planner_v2
     max_turns: 8                  # LLM turns, over all rounds
     fix_turns: 2                  # a later round's share of them
     max_rounds: 2                 # the plan checked by code and sent back
     max_actions_per_turn: 4
+    read_lines: 400               # lines one read returns
+    grep_hits: 60                 # lines one grep returns
+    max_output_chars: 16000       # per lookup
+    max_transcript_chars: 120000  # older output is dropped from the model's view
   conventions_doc: null          # e.g. standin/CONVENTIONS.md; always included when set
   review_checklist_defaults:      # always on the reviewer checklist ("needs a real run")
     - Expected backend responses are not from a real capture; confirm them in a real run.

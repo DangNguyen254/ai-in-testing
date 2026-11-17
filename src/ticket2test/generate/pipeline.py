@@ -172,7 +172,9 @@ def _generate_reusing(
             kind = "method"
 
     if settings.generate.planner.enabled and kind in ("method", "module"):
-        outcome.plan = _plan(outcome, draft, decision, kind, retrieval, index, settings, client)
+        outcome.plan = _plan(
+            outcome, draft, decision, kind, retrieval, index, settings, client, repo_root
+        )
         text = plan_context(outcome.plan, draft) if outcome.plan is not None else ""
         if text:
             conventions = f"{conventions}\n\n{text}" if conventions else text
@@ -470,6 +472,7 @@ def _plan(
     index: IndexData,
     settings: Settings,
     client: LLMClient,
+    repo_root: Path,
 ) -> Plan | None:
     """The planning step, for the class the test goes into (a method) or is built like (a new
     module). A plan that can't be made is a note, never a failed run: the test is then written
@@ -491,8 +494,15 @@ def _plan(
     if not class_name:
         outcome.notes.append("planner: no class to plan in")
         return None
+    class_file = (
+        method[1]
+        if method is not None
+        else decision.target_file or (template.file_path if template is not None else "")
+    )
     try:
-        plan = make_plan(draft, template, class_name, index, settings, client)
+        plan = make_plan(
+            draft, template, class_name, class_file, index, settings, client, repo_root
+        )
     except (LLMError, StructuredOutputError) as exc:
         outcome.notes.append(f"planner failed: {type(exc).__name__}")
         return None

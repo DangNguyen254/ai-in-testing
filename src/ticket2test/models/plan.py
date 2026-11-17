@@ -7,14 +7,22 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ticket2test.models.retrieval import InvestigatorAction
-
 PlanKind = Literal["call", "check", "seed", "gap"]
 # ok: the member exists; unknown: the catalog can't type the chain (not an error); missing: the
 # class it leads to has no such member; no_member: a call or check row without a member;
-# not_planned: a draft line no row covers (added by code).
-RowVerdict = Literal["ok", "unknown", "missing", "no_member", "not_planned"]
+# not_planned: a draft line no row covers (added by code); unseen: the catalog can't type it
+# and no tool output showed its name.
+RowVerdict = Literal["ok", "unknown", "missing", "no_member", "not_planned", "unseen"]
 PlanStop = Literal["done", "turn_budget", "round_cap", "no_actions"]
+
+
+class PlanAction(BaseModel):
+    """One read-only lookup the planner asks for (generate/filetools.py)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    tool: Literal["read", "grep", "list"]
+    arg: str = Field(max_length=300)  # a path (with an optional :first-last), a pattern, a folder
 
 
 class PlanRow(BaseModel):
@@ -35,7 +43,7 @@ class PlannerStep(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     thought: str = Field(max_length=600)
-    actions: list[InvestigatorAction] = Field(max_length=6)
+    actions: list[PlanAction] = Field(max_length=6)
     rows: list[PlanRow] = Field(max_length=60)  # the whole plan so far (replaces the last one)
     done: bool
 

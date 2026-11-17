@@ -1,23 +1,28 @@
 """The planning step (bounded agent 5): before the test is written, the model looks members up
-in the indexed suite and returns a plan, one row per draft line. It writes no code.
+in the suite's code and returns a plan, one row per draft line. It writes no code.
 
-Two capped loops on one budget. **Turns**: the model asks for read-only lookups (the
-investigator's tools) or returns the plan. **Rounds**: code checks the plan and sends back the
-rows that fail (a member the class it leads to doesn't have, a call without a member, a draft
-line no row covers). The first round may use the whole turn budget, later rounds a small one.
+Two capped loops on one budget. **Turns**: the model asks for read-only lookups (the repo
+copy read as text: generate/filetools.py) or returns the plan. **Rounds**: code checks the
+plan and sends back the rows that fail (a member the class it leads to doesn't have, a call
+without a member, a draft line no row covers). The first round may use the whole turn
+budget, later rounds a small one.
 What still fails after the last round becomes a gap: a gap is a valid row, a guess is not.
 
 A member the catalog can't type (a chain through a class outside the repo, a dynamic
-attribute) is ``unknown``, never an error: the lookups read code the catalog can't resolve.
+attribute) is ``unknown``, not an error, when a tool output showed its name: the lookups read
+code the catalog can't resolve. One that no output showed is ``unseen`` and goes back.
 """
 
 from __future__ import annotations
 
 import ast
+import re
 from collections import Counter
+from pathlib import Path
 
 from ticket2test.config import Settings
 from ticket2test.generate.entries import function_of
+from ticket2test.generate.filetools import FileTools
 from ticket2test.index.indexer import IndexData
 from ticket2test.llm.base import LLMClient, LLMRequest, Message
 from ticket2test.llm.factory import model_name
@@ -28,11 +33,11 @@ from ticket2test.models.draft import TestCaseDraft
 from ticket2test.models.generated import GeneratedTest
 from ticket2test.models.plan import CheckedRow, Plan, PlannerStep, PlanRow, PlanStop, RowVerdict
 from ticket2test.prompts import load_prompt
-from ticket2test.retrieve.investigator import IndexTools, _Transcript
-from ticket2test.retrieve.pipeline import Retriever
+from ticket2test.retrieve.investigator import _Transcript
 from ticket2test.security import scrub_text
 
-_SENT_BACK: tuple[RowVerdict, ...] = ("missing", "no_member", "not_planned")
+_SENT_BACK: tuple[RowVerdict, ...] = ("missing", "no_member", "not_planned", "unseen")
+_WORD = re.compile(r"[A-Za-z_]\w*")
 
 
 def draft_lines(draft: TestCaseDraft) -> list[tuple[str, str]]:
@@ -67,10 +72,16 @@ def member_verdict(member: str, class_name: str, index: IndexData) -> RowVerdict
 
 
 def check_rows(
-    rows: list[PlanRow], lines: list[tuple[str, str]], class_name: str, index: IndexData
+    rows: list[PlanRow],
+    lines: list[tuple[str, str]],
+    class_name: str,
+    index: IndexData,
+    shown: set[str] | None = None,
 ) -> list[CheckedRow]:
     """Every row with its verdict, rows for lines the draft doesn't have dropped, and a
-    ``not_planned`` gap for every draft line without a row. In the draft's order."""
+    ``not_planned`` gap for every draft line without a row. In the draft's order.
+    ``shown``: the identifiers the tool outputs held; an ``unknown`` member whose name isn't
+    among them is ``unseen`` (None: not checked)."""
     labels = [label for label, _ in lines]
     checked: list[CheckedRow] = []
     for label in labels:
@@ -81,6 +92,9 @@ def check_rows(
                 if row.kind in ("call", "check")
                 else "ok"
             )
+            name = row.member.removesuffix("()").rpartition(".")[2]
+            if verdict == "unknown" and shown is not None and name not in shown:
+                verdict = "unseen"
             checked.append(
                 CheckedRow(
                     line=label, kind=row.kind, member=row.member, note=row.note, verdict=verdict
@@ -98,6 +112,7 @@ def _feedback(failing: list[CheckedRow]) -> str:
         "missing": "the class this leads to has no such member (open the class and look)",
         "no_member": "a call or check row needs a member",
         "not_planned": "no row covers this draft line",
+        "unseen": "no tool output shows a member of this name (read where it is defined)",
     }
     return "\n".join(
         f"- {r.line}" + (f" `{r.member}`" if r.member else "") + f": {why[r.verdict]}"
@@ -118,16 +133,20 @@ def make_plan(
     draft: TestCaseDraft,
     template: Chunk | None,
     class_name: str,
+    class_file: str,
     index: IndexData,
     settings: Settings,
     client: LLMClient,
+    repo_root: Path,
 ) -> Plan:
-    """``template``: the closest existing test, shown as a starting point (not a skeleton).
-    ``class_name``: the class the new test goes into, or the one its new class is built like."""
+    """``class_name``, ``class_file``: the class the new test goes into, or the one its new
+    class is built like, and its file. ``template``: the closest existing test, named as a
+    second place to read. ``repo_root``: the copy of the suite the tools read."""
     cfg = settings.generate.planner
     prompt = load_prompt(cfg.prompt, settings.paths.prompts_dir)
-    tools = IndexTools(Retriever(index, settings), settings.retrieval.investigator)
-    transcript = _Transcript(settings.retrieval.investigator.max_transcript_chars)
+    tools = FileTools(repo_root, settings)
+    transcript = _Transcript(cfg.max_transcript_chars)
+    shown: set[str] = set()
     lines = draft_lines(draft)
     seen: set[tuple[str, str]] = set()
     sent_back: Counter[str] = Counter()
@@ -136,7 +155,12 @@ def make_plan(
     feedback = "(none)"
     turns = rounds = llm_calls = tool_calls = outputs_cut = 0
     stopped: PlanStop = "turn_budget"
-    start = f"{template.id}\n```python\n{template.code}\n```" if template is not None else "(none)"
+    start = (
+        f"{template.file_path}, lines {template.start_line}-{template.end_line} "
+        f"({template.symbol_name})"
+        if template is not None
+        else "(none)"
+    )
     for rounds in range(1, cfg.max_rounds + 1):
         budget = cfg.max_turns - turns
         if rounds > 1:
@@ -151,6 +175,7 @@ def make_plan(
                 intent=scrub_text(draft.intent),
                 draft_lines=scrub_text("\n".join(f"{label}. {text}" for label, text in lines)),
                 class_name=class_name,
+                class_file=class_file or "(not known)",
                 starting_point=scrub_text(start),
                 transcript=transcript.render(),
                 rows=scrub_text(_render_rows(rows)),
@@ -194,8 +219,9 @@ def make_plan(
                 output = tools.run(action)
                 tool_calls += 1
                 outputs_cut += "... (cut at " in output[-60:]
+                shown |= set(_WORD.findall(output))
                 transcript.add(call, output)
-        checked = check_rows(rows, lines, class_name, index)
+        checked = check_rows(rows, lines, class_name, index, shown)
         failing = [r for r in checked if r.verdict in _SENT_BACK]
         stopped = inner
         if not failing:
@@ -207,7 +233,7 @@ def make_plan(
         feedback = _feedback(failing)
     final = [
         row
-        if row.verdict not in ("missing", "no_member")
+        if row.verdict not in ("missing", "no_member", "unseen")
         else CheckedRow(  # a member that isn't there is a gap, named, never a guess
             line=row.line,
             kind="gap",
@@ -240,9 +266,10 @@ def plan_context(plan: Plan, draft: TestCaseDraft) -> str:
         return ""
     text = dict(draft_lines(draft))
     out = [
-        "Plan for the new test (each member was looked up in the suite for this draft; a "
-        "correct test makes every call and check listed, in this order, also when the "
-        "template doesn't; choose the arguments from the draft and the data):"
+        "Plan for the new test (each member was looked up in the suite's code for this draft; "
+        "a correct test makes every call and check listed, in this order, also when the "
+        "template doesn't; choose the arguments from the draft and the data). The plan adds "
+        "to what the template shows, it doesn't replace it:"
     ]
     for row in plan.rows:
         head = f"- {row.line} ({text.get(row.line, '')[:120]}): "
@@ -253,10 +280,11 @@ def plan_context(plan: Plan, draft: TestCaseDraft) -> str:
         else:
             out.append(
                 head
-                + "nothing in the suite does this"
+                + "no member was found for this line"
                 + (f" (`{row.member}` doesn't exist)" if row.member else "")
-                + ": don't replace it with the closest call; leave the step out and name it "
-                "under noted_missing"
+                + ": write it the way the template and the class's other tests do it; if "
+                "nothing there does it, don't put the closest call in its place: leave it "
+                "out and name it under noted_missing"
             )
     return "\n".join(out)
 

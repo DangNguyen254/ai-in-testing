@@ -60,6 +60,7 @@ def _step(
     )
 
 
+FILE = "tests/rules/test_rules.py"
 GOOD = [
     _row("P1", "seed"),
     _row("S1", "call", "self.nav.rules.list.select_rule"),
@@ -101,18 +102,20 @@ def test_a_failing_row_is_sent_back_once_and_counted(index: IndexData, tmp_path:
     ]
     fake = FakeLLMClient(
         [
-            _step([], (("list_members", "TestRules"), ("chain", "nav.rules"))),
+            _step([], (("read", "tests/rules/test_rules.py"), ("grep", "def verify_targets"))),
             _step(wrong, done=True),
             _step(GOOD, done=True),
         ]
     )
-    plan = make_plan(_draft(), template, "TestRules", index, _on(tmp_path), fake)
+    plan = make_plan(_draft(), template, "TestRules", FILE, index, _on(tmp_path), fake, STANDIN)
     assert (plan.turns, plan.rounds, plan.stopped) == (3, 2, "done")
     assert plan.sent_back == {"not_planned": 1, "missing": 1} and plan.tool_calls == 2
     assert plan.near_cap  # the last allowed round was used
     assert [r.verdict for r in plan.rows] == ["ok"] * 6
     second, third = (r.messages[1].content for r in fake.requests[1:])
-    assert "list_members('TestRules')" in second and "verify_targets" in second  # tool output
+    assert "read('tests/rules/test_rules.py')" in second and "verify_targets" in second
+    assert "tests/rules/test_rules.py, lines 1-" in second  # the file itself, numbered
+    assert "Its file: tests/rules/test_rules.py" in second
     assert "- E `self.verify_everything`: the class this leads to has no such member" in third
     assert "- S3: no row covers this draft line" in third
     assert "Turn 3 of 8" in third
@@ -129,12 +132,12 @@ def test_what_still_fails_after_the_last_round_is_a_gap_not_a_guess(
     template = next(c for c in index.chunks if c.id == TEMPLATE_CHUNK)
     wrong = [r for r in GOOD if r["line"] != "E"] + [_row("E", "check", "self.verify_everything")]
     fake = FakeLLMClient([_step(wrong, done=True), _step(wrong, done=True)])
-    plan = make_plan(_draft(), template, "TestRules", index, _on(tmp_path), fake)
+    plan = make_plan(_draft(), template, "TestRules", FILE, index, _on(tmp_path), fake, STANDIN)
     assert (plan.turns, plan.rounds, plan.stopped) == (2, 2, "round_cap")
     last = plan.rows[-1]
     assert (last.line, last.kind, last.verdict) == ("E", "gap", "missing")
     text = plan_context(plan, _draft())
-    assert "nothing in the suite does this (`self.verify_everything` doesn't exist)" in text
+    assert "no member was found for this line (`self.verify_everything` doesn't exist)" in text
     assert "check `self.verify_everything`" not in text
 
 
@@ -144,7 +147,7 @@ def test_the_turn_budget_is_shared_and_never_exceeded(index: IndexData, tmp_path
     looking = [_step(GOOD[:2], (("grep", f"name_{n}"),)) for n in range(10)]
     fake = FakeLLMClient(looking)
     settings = _on(tmp_path, max_turns=3)
-    plan = make_plan(_draft(), template, "TestRules", index, settings, fake)
+    plan = make_plan(_draft(), template, "TestRules", FILE, index, settings, fake, STANDIN)
     assert len(fake.requests) == 3 and plan.turns == 3
     assert plan.stopped == "turn_budget" and plan.near_cap
     assert plan.outputs_dropped == 0 and plan.summary().endswith("3 lookup(s), 0 cut, 0 dropped")
@@ -157,7 +160,7 @@ def test_planned_members_the_test_lacks_are_listed(index: IndexData, tmp_path: P
     template = next(c for c in index.chunks if c.id == TEMPLATE_CHUNK)
     rows = [*GOOD, _row("S3", "call", "self.nav.top_bar.reset")]
     fake = FakeLLMClient([_step(rows, done=True)])
-    plan = make_plan(_draft(), template, "TestRules", index, _on(tmp_path), fake)
+    plan = make_plan(_draft(), template, "TestRules", FILE, index, _on(tmp_path), fake, STANDIN)
     assert "publish" in GOOD_CODE and "reset" not in GOOD_CODE
     generated = GeneratedTest.model_construct(
         code=GOOD_CODE, test_ids=["test_rules_delete_keeps_others[first]"], new_test_ids=[]
@@ -190,3 +193,43 @@ def test_the_plan_reaches_the_writer_only_when_switched_on(
         generate_reusing(draft, _ticketed(off, index, draft), index, off, fake, "f", "m", STANDIN)
     assert len(fake.requests) == 1
     assert all("Plan for the new test" not in m.content for m in fake.requests[-1].messages)
+
+
+def test_the_tools_read_the_copy_as_text_and_nothing_outside_it(tmp_path: Path) -> None:
+    from ticket2test.generate.filetools import FileTools
+    from ticket2test.models.plan import PlanAction
+
+    settings = _on(tmp_path, read_lines=20, grep_hits=5)
+    tools = FileTools(STANDIN, settings)
+
+    def run(tool: str, arg: str) -> str:
+        return tools.run(PlanAction(tool=tool, arg=arg))  # type: ignore[arg-type]
+
+    first = run("read", FILE)
+    assert first.startswith(f"{FILE}, lines 1-20 of ") and f"(more: read {FILE}:21-40)" in first
+    assert "\n1: " in first and "\n21: " not in first
+    part = run("read", f"{FILE}:21-25")
+    assert part.startswith(f"{FILE}, lines 21-25 of ") and part.count("\n") == 5
+    found = run("grep", "def verify_targets")
+    assert "framework/" in found and ": def verify_targets(self" in found
+    many = run("grep", "def ")
+    assert many.count("\n") == 5 and "more match(es), not shown:" in many.splitlines()[-1]
+    only = run("grep", "def test_ @ tests/rules")
+    assert all(ln.startswith("tests/rules/") for ln in only.splitlines()[:5])
+    assert run("grep", "no_such_thing_anywhere") == "no line matches 'no_such_thing_anywhere'"
+    listed = run("list", "tests/rules")
+    assert "tests/rules/test_rules.py (" in listed and "__pycache__" not in listed
+    assert "tests/" in run("list", ".")
+    for outside in ("../README.md", "/etc/passwd", "tests/../../config.yaml"):
+        assert run("read", outside).startswith("no such file in the suite")
+    assert run("list", "..").startswith("no such folder in the suite")
+    assert run("grep", "x @ ../src").startswith("no such folder in the suite")
+
+
+def test_a_member_the_catalog_cant_type_needs_to_have_been_shown(index: IndexData) -> None:
+    lines = draft_lines(_draft())
+    rows = [PlanRow(**_row("S1", "call", "self.params.get"))]
+    seen = check_rows(rows, lines, "TestRules", index, {"params", "get"})
+    assert seen[1].verdict == "unknown"
+    unseen = check_rows(rows, lines, "TestRules", index, {"params"})
+    assert unseen[1].verdict == "unseen"

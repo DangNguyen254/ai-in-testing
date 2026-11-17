@@ -405,15 +405,19 @@ class ReuseSettings(_Section):
 
 class PlannerSettings(_Section):
     """The planning step (generate/planner.py): a bounded agent that chooses, by read-only
-    lookups over the index, the member for each draft line, before the test is written. Its
-    tools and their output caps are the investigator's (``retrieval.investigator``)."""
+    lookups over the repo copy read as text (generate/filetools.py), the member for each draft
+    line, before the test is written."""
 
     enabled: bool = False
-    prompt: str = "planner_v1"
+    prompt: str = "planner_v2"
     max_turns: int = Field(default=8, ge=1, le=20)  # LLM turns, over all rounds
     fix_turns: int = Field(default=2, ge=1, le=6)  # a later round's share of them
     max_rounds: int = Field(default=2, ge=1, le=4)  # the plan checked and sent back
     max_actions_per_turn: int = Field(default=4, ge=1, le=6)
+    read_lines: int = Field(default=400, ge=20)  # lines one read returns
+    grep_hits: int = Field(default=60, ge=5)  # lines one grep returns
+    max_output_chars: int = Field(default=16000, ge=500)  # per lookup
+    max_transcript_chars: int = Field(default=120000, ge=2000)  # older output is dropped
 
 
 class GenerateSettings(_Section):
