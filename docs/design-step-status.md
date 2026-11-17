@@ -364,6 +364,33 @@ The rest tie (g03, g14, and g09, g10 at 0 for both); g01 has no `right-template`
   or the picking is measured wrong. No prompt change is tried on these tickets (method
   point 8). The picking code stays, unused.
 
+**Our validators on the real suite (2026-11-17, `check-suite` with the private config;
+`.scratch/suite_counts.py`, counts only).** 171 test files, 17,775 tests: 60 files clean,
+1,459 errors (assertions 424 in 55 files, data keys 533 in 40, ids 337 in 27, names 82 in 21,
+data shape 49 in 20, page objects 24 in 8, base class 10 in 7); style deviates in 168 files.
+This is where the calibration of 2026-10-27/28 ended, not a step back: it took the errors
+from 69,977 to 1,409 and the clean files from 0 to 58, and stopped there. Two thirds of the
+team's own files still fail at least one check the generated tests are repaired to pass.
+
+**The fresh design (2026-11-17, `docs/fresh-design-prompt.md`, a session that read only the
+real suite).** Its stages: index (code); read the ticket into a fixed schema, every field
+quoted from the ticket (small model, checked by code); a sufficiency gate by code on required
+slots; route the ticket to a test family by code, unsupported families stop (v1 covers about
+58% of methods); anchors, the nearest siblings by structure, with a fallback for features
+with no test (code); a plan, a small model choosing from a menu of existing page-object
+members and copying quoted values; render the Python and JSON by code from the siblings'
+templates; static gates (every chain resolves, ids, keys, markers, every literal traced to
+the ticket, a neighbour or a registry); a review packet. Compared with ours:
+- The same skeleton: index, draft, gate, anchors (our templates), validators, review. Its
+  plan step is our step 3, a small model picking from a menu, which measured 0.42.
+- Different: sufficiency decided by code on slots, not by the model; a test-family router
+  that declines what it doesn't cover; the code rendered by code from siblings, the model
+  only filling slots; literals traced as a gate (our C4 is a warning).
+- Its own least-sure part is the expected-response data of a new feature, with a free
+  experiment: hide about 50 entries that have 3 or more siblings, rebuild each from its
+  nearest sibling changing only what the test's own steps set, and count exact reproductions
+  (70% or more: code-only; under 40%: ask the ticket author for a sample response).
+
 **Step 3 rerun with the picks saved and the misses classified (2026-11-17, 0.03 USD; picks
 kept in `t2t-private/output/pick-eval`).** Same means (0.42, ceiling 0.75). Each reference call
 of each run (112), hit or missed, by where it sits in the table:
