@@ -433,7 +433,11 @@ def check_base_class(s: Subject) -> Iterator[Finding]:
         return
     for cls in test_classes(s.tree, s.settings.index.test_class_prefix):
         names = [dotted(b) for b in cls.bases]
-        if s.settings.validation.baseless_classes and names in ([], ["object"]):
+        if "type" in names:  # a metaclass named like a test class (audit, pattern B2)
+            continue
+        if s.settings.validation.baseless_classes and (
+            names in ([], ["object"]) or _plain_lineage(s.catalog, names, allowed)
+        ):
             continue
         inherits = any(
             n.rsplit(".", 1)[-1] in allowed
@@ -561,6 +565,23 @@ def check_hooks(s: Subject) -> Iterator[Finding]:
                 )
 
 
+def _plain_lineage(catalog: SymbolCatalog, names: list[str], allowed: list[str]) -> bool:
+    """Every base is a repo class whose whole lineage is plain classes ending in ``object``:
+    no allowed base and nothing from outside the repo (validator audit, pattern B1: a command
+    line runner built on a local plain class needs no browser base)."""
+    if not names:
+        return False
+    for name in names:
+        if name == "object":
+            continue
+        lineage = _mro_by_name(catalog, name)
+        if not lineage or any(e.name in allowed for e in lineage):
+            return False
+        if any(b != "object" and catalog.class_named(b) is None for e in lineage for b in e.bases):
+            return False
+    return True
+
+
 def _mro_by_name(catalog: SymbolCatalog, name: str) -> list[ClassEntry]:
     entry = catalog.class_named(name)
     return catalog.mro(entry.qualname) if entry else []
@@ -625,6 +646,38 @@ def check_chains(s: Subject) -> Iterator[Finding]:
 _CONSTANT = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 
+def _text_constants(index: IndexData, page_objects: set[str]) -> set[str]:
+    """ALL_CAPS class attributes of the page objects whose value is visible text
+    (``ERR_NAME_REQUIRED = "Name is required"``), not a locator: a string literal with a space
+    and no locator syntax. Read from the classes' code (the catalog keeps no values)."""
+    found: set[str] = set()
+    for qualname in page_objects:
+        entry = index.catalog.classes.get(qualname)
+        record = index.files.get(entry.file_path) if entry else None
+        info = record.info if record else None
+        cls = (
+            next((c for c in info.classes if c.name == entry.name), None)
+            if info and entry
+            else None
+        )
+        if cls is None:
+            continue
+        try:
+            tree = ast.parse(textwrap.dedent(cls.header_code))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Assign)
+                and isinstance(node.value, ast.Constant)
+                and isinstance(node.value.value, str)
+                and " " in node.value.value
+                and not any(c in node.value.value for c in "#[]/>=()")
+            ):
+                found |= {t.id for t in node.targets if isinstance(t, ast.Name)}
+    return found
+
+
 def check_page_locators(s: Subject) -> Iterator[Finding]:
     """Tests use page-object actions and properties, never the page objects' locator constants
     (``editor.click(editor.CLEAR_EXPIRY)``). A test that needs an action the page object lacks
@@ -639,6 +692,12 @@ def check_page_locators(s: Subject) -> Iterator[Finding]:
         for name, member in entry.members.items()
         if member.kind == "attribute" and _CONSTANT.match(name)
     }
+    if s.index is not None:  # constants holding visible text aren't locators (audit, L1)
+        index = s.index
+        constants -= _per_index(
+            index, ("text_constants", tuple(sorted(page_objects))),
+            lambda: _text_constants(index, page_objects),
+        )  # fmt: skip
     if not constants:
         return
     for _, fn in s.tests:
@@ -1005,7 +1064,9 @@ def check_ids_and_entries(s: Subject) -> Iterator[Finding]:
         if use and use.reads_data and test_id not in keys:
             yield _f("ids", "the test reads its data entry but has none", test=test_id)
     recorded = set(s.generated.test_ids)
-    if sorted(ids) != sorted(s.generated.test_ids):
+    # As sets: ids are method names, and the same name in several classes of one file is
+    # recorded once per class but produced once (validator audit, pattern I3).
+    if set(ids) != recorded:
         yield _f(
             "ids",
             "recorded test ids differ from the code's: recorded only "

@@ -1278,3 +1278,76 @@ def test_a_wait_helper_outside_the_page_objects_counts_as_a_check(tmp_path: Path
     resolver = Resolver(ast.parse("x = 1"), "tests.x", index, settings.data.access, set())
     found = resolver.checking_page_methods(tuple(settings.validation.wait_patterns))
     assert "wait_for_label" in found and "plain_click" not in found
+
+
+@pytest.fixture(scope="module")
+def extended(tmp_path_factory: pytest.TempPathFactory) -> tuple[Settings, IndexData, list[str]]:
+    """The stand-in plus a few patterns found on a real suite (validator audit): a page
+    constant holding visible text, and a plain base class for command-line tests."""
+    import shutil
+
+    tmp = tmp_path_factory.mktemp("extended")
+    repo = tmp / "standin"
+    shutil.copytree(STANDIN, repo, ignore=shutil.ignore_patterns("__pycache__"))
+    rules = repo / "framework" / "pages" / "rules.py"
+    text = rules.read_text(encoding="utf-8")
+    rules.write_text(
+        text.replace(
+            '   SEARCH_BOX = (By.ID, "search-box")\n',
+            '   SEARCH_BOX = (By.ID, "search-box")\n   ERR_NAME_REQUIRED = "Name is required"\n',
+            1,
+        ),
+        encoding="utf-8",
+    )
+    (repo / "framework" / "command.py").write_text(
+        "class CommandBase(object):\n   def run_command(self, text):\n      return text\n",
+        encoding="utf-8",
+    )
+    settings = Settings.model_validate({"paths": {"cache_dir": str(tmp / "cache")}})
+    index, _, _ = update_index(repo, settings)
+    return settings, index, first_party(index, settings)
+
+
+def test_a_page_constant_holding_text_is_not_a_locator(extended: Any) -> None:
+    """Validator audit, pattern L1: ``ERR_NAME_REQUIRED = "Name is required"`` is expected
+    text, not a locator; a locator constant stays forbidden."""
+    text = _replace(
+        "rules.next_page()\n",
+        "rules.next_page()\n      self.check.assertIn(rules.ERR_NAME_REQUIRED, rules.rule_names)\n",
+    )
+    locator = _replace(
+        "rules.next_page()\n", "rules.next_page()\n      rules.type(rules.SEARCH_BOX, 'x')\n"
+    )
+    assert not _messages(_validate(extended, code=text), "page_locators")
+    assert _messages(_validate(extended, code=locator), "page_locators")
+
+
+def test_plain_lineage_and_metaclass_need_no_suite_base(extended: Any) -> None:
+    """Validator audit, patterns B1 and B2: a test class built on a plain repo class (a
+    command-line runner) and a metaclass named like a test class pass the base-class check
+    when baseless classes are allowed; a class on an unknown base still fails."""
+    settings, index, fp = extended
+    on = settings.model_copy(
+        update={"validation": settings.validation.model_copy(update={"baseless_classes": True})}
+    )
+    code = (
+        "from framework.command import CommandBase\n\n\n"
+        "class TestVariantMeta(type):\n   pass\n\n\n"
+        "class TestCommandLine(CommandBase):\n"
+        "   def test_version(self):\n"
+        "      self.run_command('tool version')\n"
+    )
+    found = _messages(_validate((on, index, fp), code=code, entries=[]), "base_class")
+    assert found == []
+    other = code.replace("(CommandBase)", "(SomethingElse)")
+    assert _messages(_validate((on, index, fp), code=other, entries=[]), "base_class")
+
+
+def test_the_same_test_name_in_several_classes_matches_its_recorded_ids(setup: Any) -> None:
+    """Validator audit, pattern I3: a method name repeated in several classes of one file is
+    recorded once per class; the ids compare as sets."""
+    second = GOOD_CODE.replace("class TestRulesListFilter(BaseTest):", "class TestOther(BaseTest):")
+    code = GOOD_CODE + "\n\n" + second[second.index("@browsers") :]
+    name = "test_rules_list_filter_next_page"
+    report = _validate(setup, code=code, test_ids=[name, name])
+    assert not [m for m in _messages(report, "ids") if "differ" in m]
