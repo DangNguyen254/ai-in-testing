@@ -39,6 +39,9 @@ after the right-template result).
   30 runs (the tool adapts another area's test). `right-steps`: with the reference's calls
   given, helper recall goes from 0.56 to 0.85, so the writer is not the limit; the choice of
   members is. Both were read against predictions written before the runs.
+- **Agent upper bound, with neighbours (2026-11-17):** helper recall 0.69 on six tickets, the
+  tool 0.42 with the right template; better on four of six, as predicted. Data 0.77 against
+  0.73: lookups find the calls, not the data.
 - **Agent upper bound, no template (2026-11-17):** the agent makes 6 of the 12 reachable
   reference calls on six tickets, the tool 1 of 24; three of six tickets above 0 (predicted
   four). The first scoring (0.08) could not see a new class's calls; corrected below.
@@ -62,6 +65,41 @@ after the right-template result).
   **Removed:** `kind_as_preference`, `class_from_retrieval`, `dataless_hit_class`.
 - The container's memory limit is 8 GiB since today; one golden run uses up to 4.9 GiB, so
   runs go one at a time. Pushed on 2026-11-13; today's commits are local until the next OK.
+
+## The agent upper bound, with neighbours (2026-11-17): helper recall 0.69, the tool 0.42 with the right template
+
+The same prompt on the six `g` ids (one Haiku session each, 30 lookups allowed, the place
+given, only the reference hidden). Here every reference call is reachable and the class is in
+the copy, so C2 means what it says (`.scratch/score_agent.py`). The tool's numbers are its
+two runs of the same ticket under `right-template` (placement given there too).
+
+| Pair | Why chosen | Agent C2 | Tool C2 | Agent C3 | Tool C3 | Lookups | Gaps named |
+|---|---|---|---|---|---|---|---|
+| g04 | the class shows the helper | 0.40 | 0.20 | 1.00 | 1.00 | 13 | 1 |
+| g05 | control | 1.00 | 1.00 | 1.00 | 1.00 | 13 | 0 |
+| g06 | the helper is elsewhere in the suite | 1.00 | 0.25 | 1.00 | 1.00 | 11 | 0 |
+| g10 | no template | 0.40 | 0.00 | 0.17 | 0.11 | 15 | 3 |
+| g13 | the backend check dropped | 0.67 | 0.75 | 0.43 | 0.29 | 11 | 1 |
+| g15 | the tool takes another route | 0.67 | 0.33 | 1.00 | 1.00 | 14 | 2 |
+| mean | | **0.69** | **0.42** | 0.77 | 0.73 | 13 | |
+
+Against today's defaults (`seed-floor`) on the same six the tool has C2 0.40 and C3 0.71.
+
+Against the prediction (2026-11-16): the agent beats the tool's helper recall on at least four
+of six: **met, four of six** (g04, g06, g10, g15; g05 ties as the control; g13 is one call
+lower).
+
+The reading, with `right-steps` (given the calls, the generator writes them: 0.85):
+- **The agent finds the calls**, with 11 to 15 lookups of the 30 allowed. By the table in
+  `docs/agent-upper-bound-prompt.md` this is the first row: generation that chooses members by
+  looking them up is worth building. It closes about half of the way from the tool (0.42) to
+  the calls given (0.85).
+- The data side barely moves (0.77 against 0.73). g10 and g13 stay low for both: lookups
+  don't fix data, as the seed checks of 2026-11-16 said.
+- Limits: one session a ticket against a mean of two runs; six tickets chosen by kind of
+  miss, not at random; the first prompt kept the draft out of reach (fixed after g05's first
+  session; whether g05 was redone is not recorded, and the `a` runs may have been made from
+  the ticket alone, which counts against the agent, not for it). A sign strong enough to decide Phase B on, not a number to quote.
 
 ## The agent upper bound, no template (2026-11-17): half of what can be reached, where the tool makes almost none
 
