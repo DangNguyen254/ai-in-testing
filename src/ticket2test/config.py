@@ -408,14 +408,6 @@ class GenerateSettings(_Section):
     context_helpers: bool = True  # the code of the helpers the template calls, in the context
     context_entry_list: bool = True  # the class's other entries and their blocks, in the context
     base_entry_from_class: bool = True  # the base entry: the class entry the draft names most
-    # One line per member the test can call (its class's and bases' helpers, the members of
-    # the pages its class reaches), ranked by the draft's words. Off until a run measures it.
-    context_member_cards: bool = False
-    member_cards_max: int = Field(default=60, ge=1)
-    # One LLM call before generation: each draft step mapped to members from those cards
-    # (labels, checked by code), put into the context as a plan. Off until a run measures it.
-    step_plan: bool = False
-    step_plan_prompt: str = "step_plan_v1"
     # Code puts back every seed section of the base entry a new entry lacks (the framework
     # applies them, so they are never unread). On since the seed-floor run (2026-11-12).
     seed_floor: bool = True

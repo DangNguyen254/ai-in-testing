@@ -402,8 +402,6 @@ def config_snapshot(settings: Settings) -> dict[str, Any]:
         "generate.reuse.template_class_wins": g.reuse.template_class_wins,
         "generate.reuse.glossary_class_wins": g.reuse.glossary_class_wins,
         "generate.context_helpers": g.context_helpers,
-        "generate.context_member_cards": g.context_member_cards,
-        "generate.step_plan": g.step_plan,
         "generate.seed_floor": g.seed_floor,
         "generate.context_entry_list": g.context_entry_list,
         "generate.base_entry_from_class": g.base_entry_from_class,

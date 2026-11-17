@@ -177,10 +177,6 @@ generate:
   context_helpers: true           # design-step ablation switches (all on in baseline-0)
   context_entry_list: true
   base_entry_from_class: true
-  context_member_cards: false     # a line per callable member (helpers, page members); unmeasured
-  member_cards_max: 60
-  step_plan: false                # an LLM call maps each draft step to members; unmeasured
-  step_plan_prompt: step_plan_v1
   seed_floor: true                # code keeps the base's seed sections in new entries
   conventions_doc: null          # e.g. standin/CONVENTIONS.md; always included when set
   review_checklist_defaults:      # always on the reviewer checklist ("needs a real run")

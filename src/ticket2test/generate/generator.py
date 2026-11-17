@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import re
 import textwrap
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Any
@@ -29,8 +28,6 @@ from ticket2test.generate.context import (
 from ticket2test.generate.conventions import Conventions, convention_sections, with_conventions
 from ticket2test.generate.entries import build_entry, function_of, relabel
 from ticket2test.generate.inspect import data_use
-from ticket2test.generate.members import member_cards, member_cards_piece
-from ticket2test.generate.plan import step_plan_piece
 from ticket2test.index.catalog import SymbolCatalog
 from ticket2test.index.datafile import function_data_path, layout_of, module_data_path
 from ticket2test.index.extract import ClassInfo, module_name
@@ -89,7 +86,7 @@ def generate_test(
     model: str,
     conventions: str | None = None,
 ) -> GeneratedTest:
-    setup = prepare_generation(draft, retrieval, index, settings, conventions, client)
+    setup = prepare_generation(draft, retrieval, index, settings, conventions)
     result = complete_structured(
         client,
         setup.request,
@@ -97,7 +94,7 @@ def generate_test(
         max_retries=settings.llm.max_retries_on_bad_json,
         context=setup.validation_context,
     )
-    calls = result.attempts + setup.plan_calls
+    calls = result.attempts
     return assemble(setup, result.value, calls, provider, model, masker_of(client))
 
 
@@ -120,7 +117,6 @@ class GenerationSetup:
     conventions: Conventions = field(default_factory=Conventions)  # sections every entry has
     entry_chunk: Chunk | None = None  # whose entry is the base, when not the template's own
     siblings: dict[str, dict[str, Any]] = field(default_factory=dict)  # the class's entries
-    plan_calls: int = 0  # LLM calls the step plan took (generate.step_plan)
 
 
 def prepare_generation(
@@ -129,9 +125,7 @@ def prepare_generation(
     index: IndexData,
     settings: Settings,
     conventions: str | None = None,
-    client: LLMClient | None = None,
 ) -> GenerationSetup:
-    """``client``: for the step plan (``generate.step_plan``), the one LLM call made here."""
     gen, data = settings.generate, settings.data
     chunks = {c.id: c for c in index.chunks}
     template_chunk, found_key = _template(retrieval, chunks)
@@ -143,14 +137,6 @@ def prepare_generation(
     layout: DataFormat = template_chunk.data_format or data.format
 
     conventions_ = convention_sections(template_chunk.file_path, index, settings)
-    plan_calls: list[int] = []
-
-    def plan(cards: list[str]) -> Piece | None:
-        assert client is not None
-        piece, calls = step_plan_piece(draft, cards, settings, client)
-        plan_calls.append(calls)
-        return piece
-
     context = build_generation_context(
         draft,
         retrieval,
@@ -160,7 +146,6 @@ def prepare_generation(
         entry_key,
         conventions,
         entry_chunk=entry_chunk,
-        plan=plan if gen.step_plan and client is not None else None,
     )
     prompt = load_prompt(gen.prompt_version, settings.paths.prompts_dir)
     deployment = gen.deployment_decorators.get(draft.deployment_type, "")
@@ -219,7 +204,6 @@ def prepare_generation(
         conventions=conventions_,
         prompt_version=prompt.version,
         input_redactions=draft_scrub.redacted + context_scrub.redacted,
-        plan_calls=sum(plan_calls),
     )
 
 
@@ -896,11 +880,9 @@ def build_generation_context(
     entry_key: str | None,
     conventions: str | None = None,
     entry_chunk: Chunk | None = None,
-    plan: Callable[[list[str]], Piece | None] | None = None,
 ) -> BuiltContext:
     """``entry_key`` None: the template keeps no data, so no base entry, entry list or known
-    values are shown, and the template piece says the new test reads no data either.
-    ``plan``: makes the step-plan piece from the member cards (``generate.step_plan``)."""
+    values are shown, and the template piece says the new test reads no data either."""
     chunks = {c.id: c for c in index.chunks}
     catalog = index.catalog
     pieces: list[Piece] = []
@@ -946,7 +928,6 @@ def build_generation_context(
     )
     if helpers is not None:  # what they check and return, so the test doesn't redo it
         pieces.append(helpers)
-    cards_at = len(pieces)  # member cards go here, once the pages in play are known
 
     # The base test class (and its in-repo bases), so inherited helpers are visible.
     used: set[str] = {template_chunk.id}
@@ -974,17 +955,6 @@ def build_generation_context(
         used.add(chunk.id)
 
     page_objects = _page_objects_for(template_chunk, examples, hits, index)
-    if settings.generate.context_member_cards:
-        cards = member_cards_piece(
-            draft, template_chunk, [q for q, _ in page_objects], index, settings
-        )
-        if cards is not None:  # before the base classes and examples, so the budget keeps it
-            pieces.insert(cards_at, cards)
-    if plan is not None:
-        menu = member_cards(draft, template_chunk, [q for q, _ in page_objects], index, settings)
-        planned = plan(menu) if menu else None
-        if planned is not None:  # before the cards: what to call, then what else there is
-            pieces.insert(cards_at, planned)
     chains = chains_piece(catalog, [q for q, _ in page_objects])
     if chains is not None:
         pieces.append(chains)
