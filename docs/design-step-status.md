@@ -232,6 +232,34 @@ not reproduce the coding agent, and the next question is whether the step should
 coding agent (read-only, in the copy) instead. Cost: more than the first version, since whole
 files are re-sent every turn; measured on these two runs before any larger one.
 
+**The second version measured (2026-11-17, `planner-v2-pinned`): the prediction failed.**
+
+| | g06 | g13 | Predicted |
+|---|---|---|---|
+| The reference's calls in the plan | 0 of 4 | 1 of 6 | 3 of 4, 4 of 6 |
+| C2 of the written test | 0.00 | 0.67 | 0.75, 0.67 |
+| Turns; lookups | 1 of 8; **0** | 4 of 8; 7 | |
+| Rows | 3 seed, 6 gap | 2 call, 2 seed, 3 gap | |
+| Stopped | no actions asked | done, round 2 used | |
+
+With files readable and room to keep them, the model hardly looked: on g06 it asked for no
+lookup at all and returned six gaps on its first turn; on g13 seven lookups in four turns.
+The same model in a coding-agent session made 11 to 15 lookups on these tickets and found 4
+of 4 and 4 of 6. So what differs is not the tools or the view (both versions had enough of
+each to do better than nothing) but the loop: here the model is asked, once a turn, for a
+JSON object with an `actions` list, through a one-shot call; there it works in the agent loop
+it was trained for. Two versions, two failures, on the same two tickets: by the rule written
+before this run, a planner made of this project's own tools does not reproduce the coding
+agent. Changing the prompt again to make it look more would be the third change fitted to
+these two tickets (method point 8).
+
+What stands: the code check, the counters and the hand-over to the writer all work, and they
+don't depend on who makes the plan. **Open for the human:** let the planning step call a real
+coding agent (the Claude Code CLI the tool already uses as its model, with only its read,
+search and list tools, confined to the copy, a turn cap, and the same plan JSON checked by
+the same code). That changes the agent rule ("its tools are the project's own functions")
+and works only with the CLI provider, so it is the human's decision.
+
 **The three team questions (2026-11-17): the human's first answers, set aside until the
 mentor has been asked.** Nothing is built on them yet.
 - **Q1: no**, with this meaning: a test made of helper calls, one per step of the scenario
