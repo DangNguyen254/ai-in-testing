@@ -95,8 +95,10 @@ runs agree (data 0.77 against 0.73).
   agent's whole lead was there), never rejected for that alone. Rows that fail go back, for a
   capped number of rounds on one shared budget.
 - The plan reaches the writer the way `eval.oracle_steps` gives it the reference's calls (the
-  path `right-steps` measured), and a validator check makes the repair loop add a planned
-  call the test doesn't make.
+  path `right-steps` measured: 0.85 with nothing enforcing it). So this slice enforces
+  nothing either: planned calls the test doesn't make are counted in the run's record and
+  put on the reviewer's checklist. Enforcement through repair is added only if that count
+  shows the writer dropping them.
 - Counters in every run and in the golden report: turns and rounds used, how it stopped,
   near cap.
 - **Not in this slice:** `seed` rows and anything else about data; a scaffold without a
@@ -123,6 +125,16 @@ handing the plan to the writer, not in planning. If the plans don't hold them, t
 lookups are weaker than a coding agent's, and the tools are what to fix. `cold-area` is not
 part of this prediction: half of the reference's calls can't be reached there, and this slice
 keeps the template.
+
+**Built (2026-11-17, branch `planner`, off by default).** `generate/planner.py`,
+`models/plan.py`, `prompts/planner_v1.md`, `generate.planner` in the config (8 turns over all
+rounds, 2 rounds, a later round gets 2 turns, 4 lookups a turn; the tools and their output
+caps are the investigator's). It runs after placement is decided, for a new method or a new
+module, in the class the test goes into or is built like. A run's record has `plan` (how it
+stopped, turns, rounds, rows by kind, unknown rows, lookups: counts only), `plan_near_cap`
+and `plan_unmade`; the golden log prints the first; the plan itself is kept as `plan.json`
+next to the generated test. A planner that fails is a note and the test is written as
+without it. Tests: `tests/test_planner.py` (fake model, stand-in).
 
 **Cost.** Developed on the stand-in with the fake model, free. The first paid golden run is
 asked for when the stand-in checks pass; about two to three times a plain run.
