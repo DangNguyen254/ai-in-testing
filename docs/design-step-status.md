@@ -501,8 +501,9 @@ page_locators.
   change in the private config (`validation.check_helpers`, `validation.assertion_methods`,
   `data.expectation_sections`, `data.allowed_expectation_sets`, `style.json.key_separator`).
   Correction to the audit: data_keys is tool gap 3 and real defect 4 (not 4 and 3).
-- Next: the settings in the private config (the human or the suite-reading session, from the
-  private report); the tool gaps described as general patterns with invented names, so they
+- **The 5 settings applied by the human; `check-suite` again:** clean files 60 -> 64 of 171,
+  errors 1,459 -> 1,342 (data_keys 533 -> 447, data_shape 49 -> 20; the rest unchanged).
+- Next: the settings in the private config (done, above); the tool gaps described as general patterns with invented names, so they
   can be built into the stand-in and the validators fixed there (a follow-up prompt).
 
 **Step 3 rerun with the picks saved and the misses classified (2026-11-17, 0.03 USD; picks
