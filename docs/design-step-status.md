@@ -391,6 +391,38 @@ the ticket, a neighbour or a registry); a review packet. Compared with ours:
   nearest sibling changing only what the test's own steps set, and count exact reproductions
   (70% or more: code-only; under 40%: ask the ticket author for a sample response).
 
+**Validator audit (2026-11-17, `docs/validator-audit-prompt.md`; private report
+`t2t-private/output/validator-audit.{json,md}`).** 10 errors sampled per check (91 in all),
+each opened in the suite:
+
+| Check | Rule wrong | Config | Tool gap | Team inconsistent | Real defect | Change |
+|---|---|---|---|---|---|---|
+| assertions | 1 | 2 | 2 | 2 | 3 | split |
+| data_keys | 0 | 2 | 4 | 1 | 3 | split |
+| ids | 0 | 0 | 5 | 0 | 5 | split |
+| names | 0 | 0 | 8 | 0 | 2 | rule |
+| data_shape | 0 | 8 | 0 | 2 | 0 | setting |
+| page_objects | 0 | 0 | 6 | 0 | 4 | split |
+| base_class (7) | 0 | 0 | 7 | 0 | 0 | rule |
+| style | 4 | 0 | 0 | 6 | 0 | split |
+| data_file | 0 | 4 | 0 | 6 | 0 | setting |
+| raw_driver (1), page_locators (3) | 0 | 0 | 3 | 1 | 0 | |
+| **all** | **5** | **16** | **35** | **18** | **17** | |
+
+Ranked by how much they would make a generated test look less like the team's: data_file,
+data_keys, style, ids, assertions, names, data_shape, page_objects, base_class,
+page_locators.
+
+- The rules are mostly right: 5 of 91 rejections are a rule the team doesn't follow. 17 are
+  real defects in the suite the validators rightly catch.
+- **The biggest share, 35 of 91, is the tool not understanding a pattern the team uses** (all
+  base_class and 8 of 10 names errors). A generated test that uses such a pattern is rejected
+  and repaired towards something the tool understands: the repair loop pushes away from the
+  team exactly there. 16 more are settings in the private config.
+- Next: the settings in the private config (the human or the suite-reading session, from the
+  private report); the tool gaps described as general patterns with invented names, so they
+  can be built into the stand-in and the validators fixed there (a follow-up prompt).
+
 **Step 3 rerun with the picks saved and the misses classified (2026-11-17, 0.03 USD; picks
 kept in `t2t-private/output/pick-eval`).** Same means (0.42, ceiling 0.75). Each reference call
 of each run (112), hit or missed, by where it sits in the table:
