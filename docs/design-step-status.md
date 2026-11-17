@@ -260,6 +260,12 @@ search and list tools, confined to the copy, a turn cap, and the same plan JSON 
 the same code). That changes the agent rule ("its tools are the project's own functions")
 and works only with the CLI provider, so it is the human's decision.
 
+**Decided by the human (2026-11-17): the planning step does not call a real coding agent.**
+The reason: the project would then be no more than a validator a coding agent could call as
+a skill. The tool's own steps must do the work. The planner stays in the code, off by
+default, with both failed checks recorded above; what comes next is a rethink of the whole
+design, stage by stage, before anything else is built.
+
 **The three team questions (2026-11-17): the human's first answers, set aside until the
 mentor has been asked.** Nothing is built on them yet.
 - **Q1: no**, with this meaning: a test made of helper calls, one per step of the scenario
