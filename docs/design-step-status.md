@@ -96,6 +96,13 @@ The reading, with `right-steps` (given the calls, the generator writes them: 0.8
   the calls given (0.85).
 - The data side barely moves (0.77 against 0.73). g10 and g13 stay low for both: lookups
   don't fix data, as the seed checks of 2026-11-16 said.
+- **Where the gain sits** (`.scratch/agent_pages.py` on the same outputs): of the reference
+  calls the index resolves to a class and member, the agent makes 7 of 12 and the tool 14 of
+  24, the same share. The agent's lead is all in the calls the index can't resolve (compared
+  as written): g06 4 of 4 against 1 of 4, g04 and g10 one more each. So the agent finds
+  members the catalog doesn't know how to type. For the design this cuts both ways: lookups
+  reach what the catalog misses, and a plan "checked by code" would have to mark exactly
+  these rows `unknown`, not wrong.
 - Limits: one session a ticket against a mean of two runs; six tickets chosen by kind of
   miss, not at random; the first prompt kept the draft out of reach (fixed after g05's first
   session; whether g05 was redone is not recorded, and the `a` runs may have been made from
