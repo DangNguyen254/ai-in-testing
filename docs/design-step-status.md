@@ -483,6 +483,12 @@ page_locators.
   base_class and 8 of 10 names errors). A generated test that uses such a pattern is rejected
   and repaired towards something the tool understands: the repair loop pushes away from the
   team exactly there. 16 more are settings in the private config.
+- Follow-up (`docs/tool-gaps-prompt.md`): 15 distinct tool-gap patterns (ids 3, data_keys 3,
+  one shared with ids, assertions 2, names 2, page_objects 2, base_class 2, page_locators 1),
+  each with an invented example in `t2t-private/output/tool-gaps-public.md`; 5 settings to
+  change in the private config (`validation.check_helpers`, `validation.assertion_methods`,
+  `data.expectation_sections`, `data.allowed_expectation_sets`, `style.json.key_separator`).
+  Correction to the audit: data_keys is tool gap 3 and real defect 4 (not 4 and 3).
 - Next: the settings in the private config (the human or the suite-reading session, from the
   private report); the tool gaps described as general patterns with invented names, so they
   can be built into the stand-in and the validators fixed there (a follow-up prompt).
