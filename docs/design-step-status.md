@@ -364,6 +364,28 @@ The rest tie (g03, g14, and g09, g10 at 0 for both); g01 has no `right-template`
   or the picking is measured wrong. No prompt change is tried on these tickets (method
   point 8). The picking code stays, unused.
 
+**Step 3 rerun with the picks saved and the misses classified (2026-11-17, 0.03 USD; picks
+kept in `t2t-private/output/pick-eval`).** Same means (0.42, ceiling 0.75). Each reference call
+of each run (112), hit or missed, by where it sits in the table:
+
+| Kind of reference call | Hit | Missed |
+|---|---|---|
+| Not in the 40 rows shown | 0 | 22 |
+| Class, glue (made by half the class's tests or more), at the start | 23 | 5 |
+| Class, glue, in the middle | 9 | 3 |
+| Class, glue, at the end | 10 | 8 |
+| Class, specific (fewer than half), at the start / middle / end | 2 / 7 / 2 | 4 / 9 / 0 |
+| Folder only | 1 | 7 |
+
+Picked calls the reference doesn't make: 90 (three a run).
+
+- **My explanation was wrong.** I said the picks miss the glue no draft line names. Glue is
+  picked 42 times of 58 (72%); specific calls 11 of 24 (46%).
+- The misses: 22 are not in the rows at all (the ceiling), 16 glue (half of them at the end,
+  where checks sit), 13 specific, 7 from the folder only.
+- Read with the review: the table and the score both see calls only, and the references are
+  atypical. This doesn't decide anything until the measure is fixed.
+
 **The design review (2026-11-17, `docs/design-review-prompt.md`, a Sonnet session that read
 the tool, the real suite and the private folder; full report in
 `t2t-private/output/design-review.md`, names-free reply relayed).** The suite copy it read
