@@ -202,6 +202,36 @@ text (a file or a range of it, a text search, a folder listing; read-only, cappe
 copy only, which the agent rules allow), with a view large enough to keep them, and a plan
 that adds to the template's calls instead of replacing them when it has gaps.
 
+**Planner, second version: it reads files (decided 2026-11-17, the human: "do it"). Written
+before the code.**
+
+What changes, and only this: the lookups. The loop, the plan's rows, the code check, the
+counters and the switch stay.
+- Three tools over the repo copy as text, replacing the index tools for the planner: `read`
+  (a file or a line range), `grep` (a pattern across the copy), `list` (a folder). Read-only,
+  no path outside the copy, nothing executed, outputs scrubbed and capped.
+- Its own view: about 16,000 characters an output and 120,000 for the history (the
+  investigator's 3,000 and 24,000 were made for a cheap retrieval step).
+- It starts from the file of the class the test goes into and is told to read it first.
+- A member the catalog can't type is kept as `unknown` only when a tool output showed its
+  name; one that no output showed is sent back (`unseen`). So `unknown` is backed by what
+  was read, which is the design's "cited evidence is in the tool log".
+- The plan adds to the template: a gap row no longer tells the writer to leave the step out.
+
+**Prediction (g06 and g13, one run each, right template pinned, as in the two checks above):**
+
+| | g06 | g13 |
+|---|---|---|
+| The reference's calls in the plan (first version; the agent) | 3 of 4 or more (0; 4) | 4 of 6 or more (2; 4) |
+| C2 of the written test (first version; without the planner) | 0.75 or more (0.00; 0.25) | 0.67 or more (0.67; 0.75) |
+| Stops on a cap | at most one of the two | |
+
+If the plans reach those numbers, the 15 x 2 run of the Phase B prediction follows. If they
+don't, with the files readable and in view, a planner made of this project's own tools does
+not reproduce the coding agent, and the next question is whether the step should call a real
+coding agent (read-only, in the copy) instead. Cost: more than the first version, since whole
+files are re-sent every turn; measured on these two runs before any larger one.
+
 **The three team questions (2026-11-17): the human's first answers, set aside until the
 mentor has been asked.** Nothing is built on them yet.
 - **Q1: no**, with this meaning: a test made of helper calls, one per step of the scenario
