@@ -49,6 +49,10 @@ class Scores:
     c3_recall: float = 0.0
     c8_helpers: float = 0.0
     c8_blocks: float = 0.0
+    # C2 counting property writes too (``a.b.field = x`` on a self chain): the design review
+    # (2026-11-17) found C2 blind to them, and UI tests set page fields by assignment.
+    c2w_recall: float = 0.0
+    missing_writes: list[str] = field(default_factory=list)
     inlined: list[str] = field(default_factory=list)
     missing_helpers: list[str] = field(default_factory=list)
     missing_blocks: list[str] = field(default_factory=list)
@@ -75,6 +79,8 @@ class ReferenceFacts:
     # was written for this ticket, so a new file in the reference's folder is the right placement
     # (nothing points the tool at an empty class).
     new_class_expected: bool = False
+    writes: frozenset[str] = frozenset()  # property writes, as written, ending in "="
+    write_keys: frozenset[str] = frozenset()  # what each resolves to (``call_key``) + "="
 
 
 def reference_facts(
@@ -95,6 +101,7 @@ def reference_facts(
     info = record.info if record is not None else None
     cls = next((c for c in info.classes if c.name == first.class_name), None) if info else None
     calls = set().union(*(_calls(_function(c.code), settings) for c in refs))
+    writes = set().union(*(_writes(_function(c.code)) for c in refs))
     gone = (hidden or set()) | {c.id for c in refs}
     others = [
         c
@@ -114,6 +121,10 @@ def reference_facts(
         class_methods=tuple((m.name, m.code) for m in cls.methods) if cls else (),
         call_keys=frozenset(call_key(c, first.class_name, full_index) for c in calls),
         new_class_expected=not others,
+        writes=frozenset(writes),
+        write_keys=frozenset(
+            call_key(w.removesuffix("="), first.class_name, full_index) + "=" for w in writes
+        ),
     )
 
 
@@ -222,6 +233,18 @@ def score(
     )
     found.inlined = _inlined(missing_raw, gen_calls, dict(facts.class_methods))
     found.c2 = found.c2_recall == 1.0 and not found.inlined
+    gen_writes = set().union(*(_writes(fn) for _, fn in new)) if new else set()
+    if resolve:
+        ref_w = set(facts.write_keys)
+        gen_w = {
+            call_key(w.removesuffix("="), cls or None, index) + "="
+            for cls, fn in new
+            for w in _writes(fn)
+        }
+    else:
+        ref_w, gen_w = set(facts.writes), gen_writes
+    found.c2w_recall = _share(ref_keys | ref_w, gen_keys | gen_w)
+    found.missing_writes = sorted(ref_w - gen_w)
 
     id_field = settings.data.id_field
     ref_entries = list(facts.entries)
@@ -343,6 +366,49 @@ def _calls(fn: ast.FunctionDef | None, settings: Settings) -> set[str]:
                 short = name.removeprefix("self.")
                 if short.split(".")[0] not in skip and not short.startswith("assert"):
                     found.add(short)
+    return found
+
+
+def _writes(fn: ast.FunctionDef | None) -> set[str]:
+    """Property writes on a ``self`` chain (``self.nav.page.field = x``, or ``page.field = x``
+    with ``page = self.nav.page``), ``self.`` dropped, ending in "=". Plain attributes of
+    ``self`` itself (``self.x = ...``) are not page writes and are left out."""
+    if fn is None:
+        return set()
+    bound: dict[str, str] = {}
+    for node in ast.walk(fn):
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+        ):
+            value = node.value
+            target = value.func if isinstance(value, ast.Call) else value
+            if isinstance(target, ast.Attribute):
+                name = dotted(target)
+                head, _, rest = name.partition(".")
+                if head in bound and rest:
+                    name = f"{bound[head]}.{rest}"
+                if name.startswith("self."):
+                    bound[node.targets[0].id] = name + ("()" if isinstance(value, ast.Call) else "")
+    found: set[str] = set()
+    for node in ast.walk(fn):
+        targets = (
+            node.targets
+            if isinstance(node, ast.Assign)
+            else [node.target]
+            if isinstance(node, ast.AugAssign | ast.AnnAssign)
+            else []
+        )
+        for target in targets:
+            if not isinstance(target, ast.Attribute):
+                continue
+            name = dotted(target)
+            head, _, rest = name.partition(".")
+            if head in bound and rest:
+                name = f"{bound[head]}.{rest}"
+            if name.startswith("self.") and name.count(".") >= 2:
+                found.add(name.removeprefix("self.") + "=")
     return found
 
 

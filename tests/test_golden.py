@@ -521,3 +521,37 @@ def test_resuming_runs_again_what_failed_on_a_model_call_and_refuses_another_con
         run_golden(
             other, ROOT, settings, FakeLLMClient([]), 2, "smoke", tmp_path / "runs", resume=first
         )
+
+
+def test_property_writes_count_in_the_write_aware_helper_score(index: IndexData) -> None:
+    """The design review (2026-11-17): C2 counts calls only, while UI tests set page fields by
+    assignment. ``c2w_recall`` counts both; C2 itself is unchanged."""
+    from ticket2test.eval.reference import _function, _writes
+
+    settings = Settings()
+    ref = "tests/rules/test_rules.py::TestRules::test_rules_add_with_condition"
+    chunk = next(
+        c for c in index.chunks if c.id.endswith("TestRules.test_rules_add_with_condition")
+    )
+    writes = _writes(_function(chunk.code))
+    assert "nav.rules.wizard.name=" in writes and "nav.rules.wizard.action=" in writes
+    assert not any(w.count(".") < 2 for w in writes)  # ``self.x = ...`` is not a page write
+    facts = reference_facts([ref], index, settings)
+    assert facts is not None and facts.writes == frozenset(writes)
+
+    code = (STANDIN / chunk.file_path).read_text(encoding="utf-8")
+    key = "test_rules_add_with_condition"
+
+    def as_generated(text: str) -> GeneratedTest:
+        return _as_generated(index, text, []).model_copy(
+            update={"test_ids": [key], "new_test_ids": [key], "data_entries": []}
+        )
+
+    same = score(as_generated(code), facts, settings, [], True, None, index)
+    assert same.c2w_recall == 1.0 and not same.missing_writes
+    line = '      wizard.description = "Log requests from the north region"\n'
+    assert line in chunk.code
+    dropped = code.replace(chunk.code, chunk.code.replace(line, "", 1), 1)
+    less = score(as_generated(dropped), facts, settings, [], True, None, index)
+    assert less.c2_recall == same.c2_recall  # calls unchanged
+    assert less.c2w_recall < 1.0 and len(less.missing_writes) == 1
