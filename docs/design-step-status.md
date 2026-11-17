@@ -339,6 +339,31 @@ and step 4 (the picks to the writer, 15 x 2) follows. Under 0.56, one call doesn
 from a table either, and the choice goes to the QE (ticking rows, or naming the nearest
 test). In between: read which lines were missed before deciding. Cost: 30 short calls.
 
+**Usage table, step 3 measured (2026-11-17, `.scratch/pick_eval.py`, 15 x 2, Haiku API,
+30 calls, 0.04 USD): the prediction failed on all three lines.**
+
+| Measure | Predicted | Measured |
+|---|---|---|
+| Picks' recall of the reference's calls, mean | 0.65 or more | **0.42** (ceiling of the rows shown 0.75; `right-template` 0.57 on the same tickets) |
+| Tickets better than `right-template` | 8 or more | **4** (g02, g04, g06, g15) |
+| Tickets worse in both runs | 3 or fewer | **6** (g05, g07, g08, g11, g12, g13) |
+
+The rest tie (g03, g14, and g09, g10 at 0 for both); g01 has no `right-template` score.
+- The picks hold about half of what the rows hold (0.42 of 0.75). The rows are there; one
+  call doesn't pick the right ones from them, as one call didn't from the member cards.
+- Where the rows don't hold the call (g07, g12: ceiling 0), the tool scores 1.00 and the
+  picks 0: the template had what the table doesn't.
+- By the rule written before the run (under 0.56), one model call does not pick members
+  well from a counted table either. Three ways of having the model choose members (the step
+  plan from cards, the planner with lookups in two versions, picking from the table) have
+  now each failed against simply adapting the right template.
+- What stands: the usage table itself (it holds 75 to 80% of the right calls, and it is
+  free), and the finding that the knowledge is in the suite. What fails is the choice by a
+  model in one or a few calls. Per the rule, the choice goes to the QE next (ticking rows of
+  the table, or naming the nearest test), unless the design review shows a reason the table
+  or the picking is measured wrong. No prompt change is tried on these tickets (method
+  point 8). The picking code stays, unused.
+
 **The three team questions (2026-11-17): the human's first answers, set aside until the
 mentor has been asked.** Nothing is built on them yet.
 - **Q1: no**, with this meaning: a test made of helper calls, one per step of the scenario
