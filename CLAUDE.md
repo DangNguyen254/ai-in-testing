@@ -19,11 +19,12 @@ Ticket source → normalize → draft test cases (structured) → [human review]
   → validate (deterministic + `pytest --collect-only` in the sandbox) → repair loop (capped)
   → [human review] → output (code file + data file) → [a human runs it] → read the run's log
 ```
-The backbone is a **fixed workflow**: code decides the steps and their order. **Bounded agents** are allowed inside it, and only these four (updated 2026-10-22 by the human):
+The backbone is a **fixed workflow**: code decides the steps and their order. **Bounded agents** are allowed inside it, and only these five (the fifth added 2026-11-17 by the human):
 1. **Investigation** (retrieval): the AI explores the indexed suite with read-only tools until it judges it has enough context.
 2. **Missing-piece proposals**: when a needed helper or page-object member doesn't exist, the AI proposes it as a separate patch for review. It may add new code, never change existing framework code.
 3. **Repair**: the AI may run the deterministic validators and the sandbox collect and decide what to change, until they pass or the budget runs out. It may not remove checks the draft requires.
 4. **Log triage**: the AI reads a real run's console log and decides repair / environment problem / flag for review.
+5. **Planning** (generation): before the test is written, the AI looks members up in the indexed suite with the investigation's read-only tools and returns a plan, one row per draft line (a call, a check, a seed, or a marked gap). It writes no code; code checks every row before the writer uses the plan, and a gap is a valid row.
 
 Rules for every agent: its tools are the project's own functions (read-only over the index or a repo copy, plus the validators and the sandbox); it **never executes tests against real systems** (a human runs tests; the sandbox only collects, with no network); every loop has step and token budgets from config (Hard Constraint 6); and everything it returns is checked by code before it is used.
 

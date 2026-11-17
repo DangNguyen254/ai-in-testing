@@ -45,6 +45,11 @@ after the right-template result).
 - **Agent upper bound, no template (2026-11-17):** the agent makes 6 of the 12 reachable
   reference calls on six tickets, the tool 1 of 24; three of six tickets above 0 (predicted
   four). The first scoring (0.08) could not see a new class's calls; corrected below.
+- **Phase B decided (2026-11-17):** build the planning step (the model chooses members by
+  lookup, code checks, the writer writes from the plan), first slice behind
+  `generate.planner.enabled`, branch `planner`. Its prediction is written below, before any
+  code. The verdict on 15 outputs waits for the build. `generate.step_plan` and
+  `generate.context_member_cards` are **removed** (measured, moved nothing).
 - **Then (Phase A, nothing here tunes the tool):** the human's verdict on 15 outputs
   (`docs/verdict-sheet.md`); the agent upper bound on about five tickets
   (`docs/agent-upper-bound-prompt.md`). **Phase B:** one design direction, with its predicted
@@ -60,11 +65,67 @@ after the right-template result).
 - **On:** `knowledge.use_in_templates`, the joined-marker fix, the updated and reviewed
   glossary, `generate.seed_floor` (found and judged on the golden set: its real test is the
   held-out set). **Off:** `knowledge.search_named_classes`,
-  `generate.reuse.glossary_class_wins`, `generate.context_member_cards`, `generate.step_plan`,
+  `generate.reuse.glossary_class_wins`,
   `eval.oracle_template`, `eval.oracle_steps` (diagnostics, never on by default).
   **Removed:** `kind_as_preference`, `class_from_retrieval`, `dataless_hit_class`.
 - The container's memory limit is 8 GiB since today; one golden run uses up to 4.9 GiB, so
   runs go one at a time. Pushed on 2026-11-13; today's commits are local until the next OK.
+
+## Phase B (2026-11-17): the decision, and the prediction for the first build
+
+**Decision (the human, 2026-11-17).** Build the planning step: the model chooses the members
+by looking them up, code checks the plan, the writer writes from it. The person's verdict on
+the 15 yardstick outputs is put off until this is built and measured (it goes to the human's
+mentor, and outputs of the new build are the better thing to send). The three team questions
+are being answered by the human now, provisionally. The agent rule in `CLAUDE.md` has a fifth
+agent, Planning. `design-step` is merged into `main`; the work is on the branch `planner`.
+
+**Why this, from the measurements only** (section 6 of `docs/design-direction.md`):
+assumption 1 holds (`right-steps`: given the calls, helper recall 0.85) and assumption 2
+holds as far as six tickets can say (the agent upper bound: 0.69 against the tool's 0.42,
+four of six). Assumption 5 is mostly false (data can't be derived from calls), and the agent
+runs agree (data 0.77 against 0.73).
+
+**The first build is the smallest slice that puts assumption 2 inside the tool:**
+- `generate.planner.enabled` (off by default). After the template and the draft are known,
+  the model gets the draft as numbered lines and the investigation's read-only tools, within
+  a turn budget, and returns rows: `call` or `check` (a member), or `gap` (what is missing).
+- Code checks each row: the member exists (catalog), or it is marked `unknown` when the
+  catalog can't type the chain (a third of the references' calls are like that, and the
+  agent's whole lead was there), never rejected for that alone. Rows that fail go back, for a
+  capped number of rounds on one shared budget.
+- The plan reaches the writer the way `eval.oracle_steps` gives it the reference's calls (the
+  path `right-steps` measured), and a validator check makes the repair loop add a planned
+  call the test doesn't make.
+- Counters in every run and in the golden report: turns and rounds used, how it stopped,
+  near cap.
+- **Not in this slice:** `seed` rows and anything else about data; a scaffold without a
+  template; placement. The template path stays as it is underneath. Each is a later slice
+  with its own prediction.
+
+**Prediction, written before any code (15 x 2, Haiku API, against `seed-floor`):**
+
+| Measure | Yardstick | Predicted with the planner on |
+|---|---|---|
+| C2 mean recall, warm | 0.47 | 0.58 or more |
+| C2, the six agent tickets (g04 g05 g06 g10 g13 g15) | 0.40 | 0.55 or more (the agent: 0.69, with the place given) |
+| C3 mean recall, warm | 0.77 | within 0.03: this slice does nothing for data |
+| C1 | 60% | unchanged: placement is not touched |
+| Validators, of generated | 30/30 | no worse than 28 |
+| C2, `cold-class` | 0.38 | 0.45 or more |
+| Runs that hit or nearly hit a cap | | under a third; over that, the tools or the plan format are wrong, not the cap |
+| Model calls a run | about 4 | about 8 to 12 |
+
+By the keep rule, per ticket: kept when the tickets with a helper miss improve in both runs
+and none gets worse in both. If C2 stays within 0.05 of the yardstick while the plans
+themselves hold the reference's calls (scored like the agent's outputs), the loss is in
+handing the plan to the writer, not in planning. If the plans don't hold them, the tool's
+lookups are weaker than a coding agent's, and the tools are what to fix. `cold-area` is not
+part of this prediction: half of the reference's calls can't be reached there, and this slice
+keeps the template.
+
+**Cost.** Developed on the stand-in with the fake model, free. The first paid golden run is
+asked for when the stand-in checks pass; about two to three times a plain run.
 
 ## The agent upper bound, with neighbours (2026-11-17): helper recall 0.69, the tool 0.42 with the right template
 

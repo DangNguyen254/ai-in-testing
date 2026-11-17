@@ -130,7 +130,7 @@ marked gaps there. It is weeks of work, built beside the current path and compar
 | # | Assumption | Tested by | If true | If false |
 |---|---|---|---|---|
 | 1 | Given the right members, the generator writes a correct test. **Measured the same night: holds** (helper recall 0.56 to 0.85, 20 of 28 runs pass against 8 of 27; what still misses are members that don't exist where the test is written) | `right-steps` (`eval.oracle_template` + `eval.oracle_steps`, against `right-template`) | step 4 works as designed; the effort goes into step 2 | the writing itself is the limit: redesign step 4 first (smaller writing steps, code writing the calls from the plan), before any planner |
-| 2 | A model that can look things up finds the right members | the agent upper bound (`docs/agent-upper-bound-prompt.md`) | build the planning step | the knowledge isn't findable in the suite: the input must carry the steps (the QE's own test case as input), with marked gaps |
+| 2 | A model that can look things up finds the right members. **Measured 2026-11-17: holds on six tickets** (helper recall 0.69 against the tool's 0.42 with neighbours, better on four of six; with no template 6 of 12 reachable calls against 1 of 24) | the agent upper bound (`docs/agent-upper-bound-prompt.md`) | build the planning step | the knowledge isn't findable in the suite: the input must carry the steps (the QE's own test case as input), with marked gaps |
 | 3 | "Right member" means the team's usual one, not any that works | the verdict sheet, column F | the planner needs usage counts per member as evidence | C2 overstates the helper gap: loosen it, and put the effort into checks and data |
 | 4 | Style holds without a neighbour | `cold-area`; `cold-class` says yes at class level | the scaffold step only needs a suite-wide default | style itself needs a source: suite-wide conventions derived by code, before anything else |
 | 5 | What an entry must hold can be derived from the calls the test makes | **measured the same day, mostly false** (`.scratch/framework_probe.py`): 60% of a reference entry's paths are seed sections no call names, 31% an expectation section whose presence (not content) follows from a planned check, 9% custom keys | step 3 works without a neighbour | **this is the case:** the plan needs `seed` rows that say where each section comes from (an entry elsewhere in the suite, the draft's preconditions, or a marked gap); code derives only the expectation's presence and helper-read keys |
@@ -163,7 +163,8 @@ results. Read the results against those, not against a story made afterwards.
    in generation, helper code). One ticket overflows the context budget under a pinned
    template, which points at them.
 
-**Phase B, one design decision.** Use the table in section 6. Write the decision and its
+**Phase B, one design decision (made 2026-11-17: build the planning step; the decision, the
+first slice and its prediction are in the status doc, "Phase B").** Use the table in section 6. Write the decision and its
 predicted effect in the status doc before building.
 
 **Phase C, build and confirm.** Behind a switch, off by default, developed on the stand-in.
