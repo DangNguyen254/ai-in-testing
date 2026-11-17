@@ -229,6 +229,7 @@ def make_plan(
         sent_back=dict(sent_back),
         tool_calls=tool_calls,
         outputs_cut=outputs_cut,
+        outputs_dropped=transcript.render().count("(output removed to fit the budget"),
         llm_calls=llm_calls,
     )
 

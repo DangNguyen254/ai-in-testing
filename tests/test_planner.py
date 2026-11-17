@@ -147,6 +147,7 @@ def test_the_turn_budget_is_shared_and_never_exceeded(index: IndexData, tmp_path
     plan = make_plan(_draft(), template, "TestRules", index, settings, fake)
     assert len(fake.requests) == 3 and plan.turns == 3
     assert plan.stopped == "turn_budget" and plan.near_cap
+    assert plan.outputs_dropped == 0 and plan.summary().endswith("3 lookup(s), 0 cut, 0 dropped")
     assert [r.verdict for r in plan.rows].count("not_planned") == 3  # S2, S3, E: gaps
 
 

@@ -65,7 +65,9 @@ class Plan(BaseModel):
     near_cap: bool  # within one turn of the budget, or the last round was used
     sent_back: dict[str, int] = Field(default_factory=dict)  # verdict -> rows sent back
     tool_calls: int = 0
-    outputs_cut: int = 0
+    outputs_cut: int = 0  # tool outputs cut at the per-output cap
+    # Tool outputs no longer shown to the model when it last answered (the transcript cap).
+    outputs_dropped: int = 0
     llm_calls: int = 0
 
     def summary(self) -> str:
@@ -76,5 +78,6 @@ class Plan(BaseModel):
             f"{self.stopped}, {self.turns}/{self.max_turns} turn(s), {self.rounds}/"
             f"{self.max_rounds} round(s), near cap {'yes' if self.near_cap else 'no'}; "
             + ", ".join(f"{k} {n}" for k, n in kinds.items())
-            + f", unknown {unknown}, {self.tool_calls} lookup(s)"
+            + f", unknown {unknown}, {self.tool_calls} lookup(s), {self.outputs_cut} cut, "
+            f"{self.outputs_dropped} dropped"
         )
