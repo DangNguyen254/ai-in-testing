@@ -136,6 +136,44 @@ and `plan_unmade`; the golden log prints the first; the plan itself is kept as `
 next to the generated test. A planner that fails is a note and the test is written as
 without it. Tests: `tests/test_planner.py` (fake model, stand-in).
 
+**First paid check (2026-11-17, `planner-check`, g06 and g13, one run each): the planner
+runs inside its caps' mechanics, and plans badly.** Not a result on the prediction (two runs);
+a check that the thing works before 30 runs are spent.
+
+| | g06 | g13 |
+|---|---|---|
+| Stopped | turn budget, 8 of 8 turns, round 2 used | done, 5 of 8 turns, round 1 |
+| Lookups | 23 | 13 |
+| Rows | 3 seed, 6 gap, no call | 2 call, 2 seed, 3 gap |
+| Members named and refused by the check | 4 (helpers of the class, one level) | 0 |
+| ...that exist on the reference's class | 0 of 4: they were invented | |
+| The reference's calls found | 0 of 4 | 2 of 6 |
+| Planned in the reference's class | no (C1 failed) | yes |
+| C2 (yardstick) | 0.25 (0.25) | 0.67 (0.75) |
+| Planned, not in the test | 0 | 0 |
+
+(`.scratch/plan_facts.py`, `.scratch/plan_class.py`: counts only.) The same model as a coding
+agent, with the place given, found 4 of 4 and 4 of 6 on these two tickets.
+
+What holds: the check refused every invented member and turned it into a gap, nothing was
+guessed into the test, and the writer made every call it was given. What doesn't: the plans.
+Three differences from the agent's sessions, none measured yet, so none is fixed yet:
+1. **What it can keep in view.** The planner's tool outputs are cut at 3,000 characters each
+   and the whole transcript at 24,000 (the investigator's caps, made for a cheap retrieval
+   step); older outputs are dropped. With 23 lookups most of what it read was gone by the
+   time it wrote rows. The agent read 6 to 17 files whole. A dropped-output counter is the
+   free way to see this.
+2. **The place.** g06 was planned in the wrong class (placement is wrong on 40% of the
+   yardstick); the agent was given the right one. `eval.oracle_template` gives the planner
+   the same condition.
+3. **The prompt leans to gaps** ("a gap is a correct answer"): 5 of 16 rows are gaps the
+   model chose itself.
+
+Next, in this order: count dropped outputs (code, free); rerun the same two tickets with
+the right template pinned, so the planner is read apart from placement and like the agent
+(about a tenth of a run). The 15 x 2 run waits until the plans on these two are near the
+agent's.
+
 **The three team questions (2026-11-17): the human's first answers, set aside until the
 mentor has been asked.** Nothing is built on them yet.
 - **Q1: no**, with this meaning: a test made of helper calls, one per step of the scenario
